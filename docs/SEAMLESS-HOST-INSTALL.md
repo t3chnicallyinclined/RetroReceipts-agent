@@ -117,4 +117,17 @@ on an explicit user toggle.
 - `install.sh` stays as a manual/dev fallback (no longer a user requirement).
 
 ## Status
-DRAFT for review. Implementation + the peer's pipeline sign-off pending.
+IMPLEMENTED + Linux-verified. Landed on `main`: `agent/build.rs` + `agent/src/host.rs`
+(materialize/refresh + synchronous injector pre-check), `host-node/arcade-host/
+arcade_hostd.sh` (`ensure_injector` + gated `register` + `ensure-injector` subcommand),
+the peer's `agent/scripts/build-injector.sh` (mingw build + stage), and `agent/src/
+tray.rs` (toasts the precondition reason on failure + the don't-play warning on success).
+
+Two-branch compile-verify PASSED on the Bazzite `tauri44` distrobox: branch A (dll
+staged via `build-injector.sh`) builds; branch B (no dll) builds clean (no dead_code /
+unexpected-cfg); binary delta ≈ the 512 KB dll → `cfg(injector_bundled)` provably took
+and the dll embedded. Peer signed off as reviewer of record for `agent/`.
+
+Remaining to SHIP: version bump + a `--release` cut from this repo + manifest flip
+(peer), and a live one-toggle host test — which needs a box that can actually host
+(owner decision, since the Beelink is now the play box).

@@ -1,5 +1,14 @@
 # arcade-host — deploy & operate
 
+> ⚠ **SCOPE / STATUS.** This documents the LEGACY / alternative hosting path — a
+> headless-Steam lobby provider (`arcade_host.py`, Python) on the OVH box. It is NOT
+> the current shipping host node, and `arcade_host.py` is **not** in this repo. The
+> CURRENT path is the bash host-node (`arcade_host.sh` + `arcade_hostd.sh` + the
+> `../injector/` proxy `version.dll`), which the Retro Receipts agent **auto-installs**
+> when you toggle "Host this machine" — no manual steps. See `README.md` in this dir
+> and `../../docs/SEAMLESS-HOST-INSTALL.md`. Kept below for reference on the
+> headless-Steam approach (memory `mvc-headless-steam-vps`).
+
 The headless Steam lobby-provider daemon for NOBD ARCADE. Runs on the OVH box
 (`15.204.141.58`, user `ubuntu`) alongside the logged-in `nobd_arcade` Steam
 client. skinsync (nobd VPS) POSTs to it at wager-lock; it creates/owns the MvC2
