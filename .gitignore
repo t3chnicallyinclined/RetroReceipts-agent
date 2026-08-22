@@ -5,6 +5,10 @@
 .env
 *.env
 .env.*
+# EXCEPTION: pwa/.env is the PWA's non-secret build-time default — only PUBLIC_API_BASE (a client-exposed
+# same-origin default). It MUST be tracked so a fresh clone builds without setup. Real secrets / per-env
+# overrides belong in .env.local (still ignored). Do not put anything secret in pwa/.env.
+!pwa/.env
 *.pem
 *.key
 *.p12
