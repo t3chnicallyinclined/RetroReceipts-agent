@@ -44,8 +44,8 @@ enum UserEvent {
     UpdateResult(String),
 }
 
-/// Draw a 32×32 gold square with a dark border and a simple "M" — an in-code RGBA icon so the agent needs no
-/// external asset file. Not art; just a recognizable tray mark for the scaffold.
+/// Draw a 32×32 gold square with a dark border and the "RR" (Retro Receipts) monogram — an in-code RGBA icon
+/// so the agent needs no external asset file. Not art; just a recognizable tray mark.
 fn build_icon() -> Option<Icon> {
     const N: usize = 32;
     let gold = [212u8, 175, 55, 255];
@@ -62,16 +62,19 @@ fn build_icon() -> Option<Icon> {
             put(&mut rgba, x, y, if border { ink } else { gold });
         }
     }
-    // A crude "M": two vertical legs + two inner diagonals, in ink over the gold.
-    for y in 8..24 {
-        put(&mut rgba, 8, y, ink);
-        put(&mut rgba, 9, y, ink);
-        put(&mut rgba, 22, y, ink);
-        put(&mut rgba, 23, y, ink);
-    }
-    for k in 0..8 {
-        put(&mut rgba, 10 + k, 8 + k, ink);
-        put(&mut rgba, 21 - k, 8 + k, ink);
+    // A blocky "RR" (Retro Receipts) monogram, in ink over the gold. Two 8×11 R glyphs side by side.
+    const R_GLYPH: [&str; 11] = [
+        "11111100", "11000110", "11000110", "11000110", "11001100", "11111000", "11011000",
+        "11001100", "11000110", "11000011", "11000011",
+    ];
+    for &ox in &[7usize, 17] {
+        for (dy, row) in R_GLYPH.iter().enumerate() {
+            for (dx, ch) in row.bytes().enumerate() {
+                if ch == b'1' {
+                    put(&mut rgba, ox + dx, 10 + dy, ink);
+                }
+            }
+        }
     }
     Icon::from_rgba(rgba, N as u32, N as u32).ok()
 }
