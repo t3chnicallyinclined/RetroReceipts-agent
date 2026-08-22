@@ -1,0 +1,4 @@
+# The injector proxy dll is a BUILT binary (mingw-w64), staged here by scripts/build-injector.sh
+# BEFORE the agent compiles (build.rs embeds it via include_bytes!). Never commit it — this is a
+# public repo and it's a build artifact. This .gitignore keeps assets/ present in a fresh clone.
+version.dll

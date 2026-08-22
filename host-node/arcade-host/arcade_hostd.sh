@@ -122,13 +122,42 @@ do_unregister(){
   echo "[hostd] unregister -> ${resp:-<no response>}"
 }
 
+# --- injector auto-deploy (idempotent) -------------------------------------------------------------
+# The bash host flow drives the game through the injected proxy version.dll (arcade_host.sh reads the
+# live lobby via nobd_arcade.cmd/.result). The agent materializes setup_proxy.sh + the built version.dll
+# to $INJ_DIR; this installs them into the game dir + sets the Proton prefix DllOverride. Idempotent:
+# a no-op once the override is set. Requires the game CLOSED (prefix edit) and the prefix already built
+# (launch MvC2 once first) — both surfaced as clear messages, never a false success.
+INJ_DIR="${INJ_DIR:-$HOME/.local/share/retro-receipts/injector}"
+ensure_injector(){
+  local sp="$INJ_DIR/setup_proxy.sh" dll="$INJ_DIR/version.dll" steam
+  [ -f "$sp" ]  || { echo "[hostd] injector missing: $sp not materialized (host build lacks the injector)"; return 1; }
+  [ -s "$dll" ] || { echo "[hostd] injector version.dll missing/empty: $dll (rebuild the agent with the bundled injector)"; return 1; }
+  { [ -n "$GD" ] && [ -d "$GD" ]; } || { echo "[hostd] game dir not found (set \$MVC_GAME_DIR) — install MvC2 first"; return 1; }
+  steam="$(cd "$GD/../../.." 2>/dev/null && pwd)"   # STEAM root = up two from steamapps/common/<game>
+  if STEAM="$steam" GAMEDIR="$GD" SRC_DLL="$dll" bash "$sp" status 2>/dev/null | grep -q 'prefix override: SET'; then
+    echo "[hostd] injector already deployed"; return 0
+  fi
+  if [ "$(alive)" != 0 ]; then
+    echo "[hostd] injector needs installing but MvC2 is running — close the game, then re-toggle Host"; return 2
+  fi
+  echo "[hostd] deploying injector proxy (version.dll + prefix override)…"
+  STEAM="$steam" GAMEDIR="$GD" SRC_DLL="$dll" bash "$sp" install
+}
+
 case "${1:-tick}" in
   once|tick) tick;;
   loop) echo "[hostd] loop every ${INTERVAL:-8}s -> $HOST"; while true; do tick; sleep "${INTERVAL:-8}"; done;;
   # opt IN to hosting: enable + start the supervised loop (it registers via its first heartbeat).
   register)   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+              if ! ensure_injector; then
+                echo "[hostd] REGISTER ABORTED — injector not deployed (see above); hosting NOT enabled"; exit 1
+              fi
               systemctl --user enable --now arcade-hostd 2>/dev/null
               echo "[hostd] REGISTERED — hosting ON (service: $(systemctl --user is-active arcade-hostd 2>/dev/null))";;
+  # deploy/verify the injector ONLY (no service change). The agent calls this synchronously before
+  # 'register' so the tray gets an HONEST answer — prefix-not-built / game-running surface as a nonzero exit.
+  ensure-injector) ensure_injector; exit $?;;
   # opt OUT: drop from the pool now, then stop + disable the loop so it won't auto-host again.
   unregister) export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
               do_unregister
@@ -137,5 +166,5 @@ case "${1:-tick}" in
   status)     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
               echo "hosting: enabled=$(systemctl --user is-enabled arcade-hostd 2>/dev/null) active=$(systemctl --user is-active arcade-hostd 2>/dev/null)"
               echo "lobby: $(bash "$AH" status 2>/dev/null)";;
-  *) echo "usage: arcade_hostd.sh {tick|loop|register|unregister|status}";;
+  *) echo "usage: arcade_hostd.sh {tick|loop|register|unregister|status|ensure-injector}";;
 esac
