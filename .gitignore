@@ -1,0 +1,78 @@
+# Retro Receipts — agent (public client) .gitignore
+# This repo is PUBLIC. Nothing secret, no game data, no build output.
+
+# ── Secrets — NEVER commit ──
+.env
+*.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.sec
+secrets.json
+secrets.yaml
+secrets.yml
+credentials.json
+*.token
+*_token
+.metasync_host_token
+minisign*.sec
+id_rsa*
+id_ed25519*
+
+# ── Rust / Tauri (agent) build ──
+target/
+**/target/
+*.rs.bk
+
+# ── Injector (C) build output — ship SOURCE, not binaries ──
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+*.exe
+
+# ── Node / SvelteKit (pwa) ──
+**/node_modules/
+**/.svelte-kit/
+**/build/
+**/.vercel/
+**/.output/
+
+# ── Local data / logs / backups ──
+*.log
+*.bak
+*.bak.*
+records.json
+matches.json
+tokens.json
+loadouts.json
+latest.json
+agent-latest*.json
+
+# ── ROM-derived game data (BYOR — the app ships NO game data) ──
+**/*.arc
+**/*.gdi
+**/*.afs
+**/track*.bin
+**/test-atlas/
+**/skins/**/*.png
+
+# ── Internal / reverse-engineering docs — keep OUT of the public client repo ──
+CLAUDE.md
+.claude/
+**/*-EXPERT*.md
+**/*-HANDOVER*.md
+**/*-CONTEXT*.md
+docs/STEAM-*.md
+docs/*-RE-*.md
+docs/*RE-NOTES*.md
+docs/*STRUCT-MAP*.md
+docs/*NETPLAY*.md
+docs/*BOOT-RE*.md
+
+# ── OS ──
+.DS_Store
+Thumbs.db
