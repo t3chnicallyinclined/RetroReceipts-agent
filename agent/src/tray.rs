@@ -323,9 +323,21 @@ pub fn run() -> ! {
                             Ok(()) => {
                                 host::HOST_MODE.store(true, Ordering::Relaxed);
                                 prefs::save_host_mode(true);
+                                // Reinforce the safety-critical rule prominently — a toast is far more
+                                // visible than the disabled banner row, and playing on a host box breaks
+                                // hosting (same Steam account can't host AND play).
+                                updater::toast(
+                                    "Hosting enabled",
+                                    "This machine is now a host node. Don't play on it while hosting is on.",
+                                );
                             }
                             Err(e) => {
+                                // Revert the toggle (never lie about the real state) AND tell the user WHY.
+                                // host_enable's Err carries the actionable precondition — "launch MvC2 once
+                                // so Proton builds its prefix", "close the game", or "injector not bundled".
+                                // Without this the toggle just silently flips back off with no explanation.
                                 eprintln!("[tray] host enable refused: {e}");
+                                updater::toast("Hosting not enabled", &e);
                                 handles.host_item.set_checked(false);
                                 host::HOST_MODE.store(false, Ordering::Relaxed);
                             }
