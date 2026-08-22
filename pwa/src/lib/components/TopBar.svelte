@@ -19,8 +19,8 @@
 
 <header class="bar">
 	<a class="brand" href="{base}/ranks">
-		<span class="cab">M</span>
-		<span class="wordmark">Meta<span class="g">Sync</span></span>
+		<span class="cab">RR</span>
+		<span class="wordmark">Retro <span class="g">Receipts</span></span>
 	</a>
 	<span class="seam" aria-hidden="true"></span>
 	<nav class="tabs">
@@ -77,7 +77,9 @@
 		background: linear-gradient(160deg, var(--gold), color-mix(in srgb, var(--gold) 55%, #ff5c2c));
 		color: var(--gold-ink);
 		font-weight: 900;
-		font-size: 17px;
+		font-style: italic;
+		font-size: 13px;
+		letter-spacing: -0.04em;
 	}
 	.wordmark {
 		font-size: 15.5px;

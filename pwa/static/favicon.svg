@@ -6,6 +6,7 @@
     </linearGradient>
   </defs>
   <rect x="24" y="24" width="464" height="464" rx="120" fill="url(#fav)"/>
-  <path d="M140 372 V140 L256 300 L372 140 V372" fill="none" stroke="#241700"
-        stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="256" y="256" text-anchor="middle" dominant-baseline="central"
+        font-family="'Arial Black','Helvetica Neue',system-ui,sans-serif" font-weight="900"
+        font-style="italic" font-size="256" letter-spacing="-18" fill="#241700">RR</text>
 </svg>
