@@ -270,12 +270,17 @@ pub fn host_status() -> HostStatus {
         }
         match run_hostd("status") {
             Ok(out) => {
-                let low = out.to_lowercase();
-                let active = low.contains("ok:true")
-                    || low.contains("\"ok\":true")
-                    || low.contains("\"ok\": true")
-                    || (low.contains("active") && !low.contains("inactive"))
-                    || (low.contains("enabled") && !low.contains("disabled"));
+                // Read hosting state from the systemd line ONLY — `arcade_hostd.sh status` prints
+                // "hosting: enabled=<is-enabled> active=<is-active>" then a "lobby: {json}" line. Do NOT
+                // infer hosting from that json: its "ok":true only means the status query succeeded and is
+                // present even when the service is disabled (a stale/cached lobby .result), which used to
+                // FALSELY light up HOST MODE on a box that isn't hosting. `enabled` is the persistent "this
+                // box hosts" intent the toggle reflects (survives a momentary service restart/inactive).
+                let active = out
+                    .lines()
+                    .find(|l| l.trim_start().starts_with("hosting:"))
+                    .map(|l| l.contains("enabled=enabled"))
+                    .unwrap_or(false);
                 HostStatus {
                     supported: true,
                     installed: true,
