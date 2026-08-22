@@ -1,6 +1,6 @@
 [package]
 name = "metasync-agent"
-version = "0.3.5"  # LOCKSTEP with the MetaSync release train (latest.json / GitHub release). 0.3.5 = update-available heads-up (non-modal toast + "🔔 Update ready" tray row + 3h re-check) + Proton idle-scan back-off (the REAL CPU fix — rate-limits the 896MB blind scan when idle, full cadence in-fight).
+version = "0.3.6"  # LOCKSTEP with the MetaSync release train (latest.json / GitHub release). 0.3.6 = seamless host-node install — the agent EMBEDS the arcade-host scripts + injector version.dll and materializes them on the "Host this machine" toggle (no manual install.sh / injector build), then deploys + verifies the injector before claiming ON; honest precondition surfacing via non-modal toast (launch MvC2 once / close the game / injector not bundled) instead of a silent toggle revert. FIRST release BUILT FROM the RetroReceipts-agent repo (0.3.5 was re-uploaded byte-identical at the cutover).
 description = "MetaSync tray agent — headless Windows tray companion that reads MvC2 memory, applies skins, and reports matches (replaces the Tauri webview)"
 authors = ["tristech"]
 edition = "2021"
