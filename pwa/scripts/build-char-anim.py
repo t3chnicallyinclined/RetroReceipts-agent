@@ -44,10 +44,12 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REWRITE = os.path.normpath(os.path.join(HERE, ".."))
-STUDIO = os.path.normpath(os.path.join(REWRITE, "..", "mvc2-skin-studio"))
+# REWRITE is the SvelteKit app root (pwa/ in RetroReceipts-agent — no app/ subdir). The sibling skin-studio
+# repo is resolved via the SKIN_STUDIO env var, with a layout-agnostic default (two dirs up from the app root).
+STUDIO = os.environ.get("SKIN_STUDIO") or os.path.normpath(os.path.join(REWRITE, "..", "..", "mvc2-skin-studio"))
 ANIM_DIR = os.path.join(STUDIO, "web", "anim")
 BUILDER = os.path.join(STUDIO, "tools", "build_skin_studio_data.py")
-OUT_DIR = os.path.join(REWRITE, "app", "static", "chars-anim")
+OUT_DIR = os.path.join(REWRITE, "static", "chars-anim")
 
 MAX_LOOP = 30           # cap a *detected* idle loop (bounds sheet size; e.g. Cable's 25-frame idle)
 MAX_NOLOOP = 20         # cap when NO loop is detected (conservative — can't tell where idle ends)

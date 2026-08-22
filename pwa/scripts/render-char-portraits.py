@@ -21,9 +21,16 @@ import sys
 
 from PIL import Image
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8")   # Windows console defaults to cp1252 → the "→" in the summary print crashes it (and would abort the deploy)
+except Exception:
+    pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_SRC = os.path.normpath(os.path.join(HERE, "..", "..", "mvc-live-skins", "web", "idle_frames.json"))
-OUT_DIR = os.path.normpath(os.path.join(HERE, "..", "app", "static", "chars"))
+# app root is HERE/.. (pwa/ in RetroReceipts-agent — no app/ subdir). idle_frames source via the IDLE_FRAMES
+# env var, with a layout-agnostic default (three dirs up from scripts/ → the projects-root sibling mvc-live-skins).
+DEFAULT_SRC = os.environ.get("IDLE_FRAMES") or os.path.normpath(os.path.join(HERE, "..", "..", "..", "mvc-live-skins", "web", "idle_frames.json"))
+OUT_DIR = os.path.normpath(os.path.join(HERE, "..", "static", "chars"))
 
 
 def render(entry):

@@ -12,6 +12,7 @@
 import { spawnSync, spawn } from 'node:child_process';
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
 
 // Async child runner — MUST be used for the render-check while the in-process server is up: spawnSync would
@@ -33,6 +34,21 @@ const cfg = ENVS[envName];
 if (!cfg) {
 	console.error('usage: node scripts/release-app.mjs <staging|prod>');
 	process.exit(2);
+}
+
+// ── 0) regenerate ROM-derived character art (gitignored/BYOR → a fresh checkout has none) ────────────
+// Portraits (static/chars/) + idle animations (static/chars-anim/) are ROM-derived and never committed, so
+// they MUST be regenerated at deploy from a local ROM/source. If regeneration fails but the assets already
+// exist locally we deploy those; if it fails AND there are none, we abort (a deploy with no character art is
+// not shippable). Sources are env-overridable: MVC_ROM / IDLE_FRAMES / SKIN_STUDIO.
+const ROM = process.env.MVC_ROM || 'C:/Users/trist/projects/NOBD-DC-ONLINE/dc_data/roms/mvc2us/track03.bin';
+const haveAssets = existsSync('static/chars') && existsSync('static/chars-anim');
+console.log('\n▶ regenerate ROM-derived assets (portraits + idle animations)');
+const genP = spawnSync('python', ['scripts/render-char-portraits.py'], { stdio: 'inherit', shell: true });
+const genA = spawnSync('python', ['scripts/build-char-anim.py', ROM], { stdio: 'inherit', shell: true });
+if (genP.status !== 0 || genA.status !== 0) {
+	if (haveAssets) console.warn('⚠ asset regeneration failed — falling back to existing static/chars + static/chars-anim');
+	else { console.error('✗ asset regeneration failed and no existing assets to fall back on — aborting'); process.exit(1); }
 }
 
 // ── 1) build ──────────────────────────────────────────────────────────────────────────────────────
