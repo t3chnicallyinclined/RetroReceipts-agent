@@ -27,7 +27,7 @@ ssh -i ~/.ssh/maplecast_automation ubuntu@15.204.141.58
 
 mkdir -p ~/arcade-host
 # copy arcade_host.py, arcade.env.example, arcade-host.service, test_client.sh
-# (scp them from this repo's arcade-host/ dir, or from the smoke-test copy at ~/arcade_host.py)
+# (scp them from this repo's host-node/arcade-host/ dir, or from the smoke-test copy at ~/arcade_host.py)
 cp ~/arcade_host.py ~/arcade-host/arcade_host.py   # if you used the smoke-test copy
 
 cd ~/arcade-host
@@ -40,8 +40,8 @@ chmod 600 arcade.env
 From your workstation instead of copying by hand:
 ```bash
 scp -i ~/.ssh/maplecast_automation \
-  arcade-host/arcade_host.py arcade-host/arcade.env.example \
-  arcade-host/arcade-host.service arcade-host/test_client.sh \
+  host-node/arcade-host/arcade_host.py host-node/arcade-host/arcade.env.example \
+  host-node/arcade-host/arcade-host.service host-node/arcade-host/test_client.sh \
   ubuntu@15.204.141.58:~/arcade-host/
 ```
 
