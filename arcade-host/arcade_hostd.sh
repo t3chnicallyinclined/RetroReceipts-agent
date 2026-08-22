@@ -24,13 +24,17 @@ REGION="${REGION:-}"
 HOST_TOKEN="${HOST_TOKEN:-}"
 TOKEN_FILE="${TOKEN_FILE:-$HOME/.metasync_host_token}"
 HOST_STEAMID="${HOST_STEAMID:-}"   # operator SteamID (owner of the lobbies); default = read from game
-# arcade lobby STANDARD — what this node's automation creates its lobbies with (arcade_host.sh sets these
-# on the Create-Lobby screen). Reported every heartbeat so the Fleet card shows the real lobby details.
-ARCADE_FT="${ARCADE_FT:-2}"                  # Victory Condition target: First to N
-ARCADE_ONE_BUTTON="${ARCADE_ONE_BUTTON:-false}"  # one-button special moves (arcade standard = off)
-ARCADE_VERSION="${ARCADE_VERSION:-US}"        # game version (US = English Version)
+# Money-match lobby standard. FIXED defaults: English version + one-button OFF. The Victory Condition
+# (First-to-N) is set PER-MATCH from the securing wager (FT3/FT5) by arcade_host.sh; idle lobbies use
+# ARCADE_FT_DEFAULT. We report the ACTUAL current settings (read from arcade_host's state file) so the
+# Fleet card shows reality.
+ARCADE_FT_DEFAULT="${ARCADE_FT:-3}"           # idle-lobby Victory Condition (First to N)
 ARCADE_PLAYERS="${ARCADE_PLAYERS:-2}"         # number of player slots
 ARCADE_GAME="${ARCADE_GAME:-MvC2}"            # game label
+STATE="${ARCADE_STATE_FILE:-$HOME/.local/share/retro-receipts/arcade-host/lobby_state}"
+cur_ft(){  local FT=$ARCADE_FT_DEFAULT; [ -f "$STATE" ] && . "$STATE"; echo "${FT:-$ARCADE_FT_DEFAULT}"; }
+cur_ob(){  local OB=off;  [ -f "$STATE" ] && . "$STATE"; [ "${OB:-off}" = off ] && echo false || echo true; }
+cur_ver(){ local VER=en;  [ -f "$STATE" ] && . "$STATE"; [ "${VER:-en}" = en ] && echo US || echo JP; }
 
 alive(){ pgrep -cf '[M]arvelVsCapcomFightingCollection.exe'; }
 jget(){ echo "$1" | grep -oE "\"$2\":\"[^\"]*\"" | head -1 | sed -E "s/\"$2\":\"([^\"]*)\"/\1/"; }
@@ -59,13 +63,13 @@ launch_game(){
 
 # Ensure a live spectate-referee lobby exists (self-healing).
 ensure_host(){
-  if [ "$(alive)" = 0 ]; then launch_game; bash "$AH" boot >/dev/null 2>&1; return; fi
+  if [ "$(alive)" = 0 ]; then launch_game; bash "$AH" boot "$ARCADE_FT_DEFAULT" >/dev/null 2>&1; return; fi
   local st id; st=$(bash "$AH" status); id=$(jget "$st" lobby_id)
   if [ -z "$id" ] || [ "$id" = "0" ]; then
     echo "[hostd] no lobby -> host"
-    st=$(bash "$AH" host); id=$(jget "$st" lobby_id)
+    st=$(bash "$AH" host "$ARCADE_FT_DEFAULT"); id=$(jget "$st" lobby_id)
     if [ -z "$id" ] || [ "$id" = "0" ]; then   # host failed (not at anchor) -> cold boot recover
-      echo "[hostd] host failed -> boot recover"; bash "$AH" boot >/dev/null 2>&1
+      echo "[hostd] host failed -> boot recover"; bash "$AH" boot "$ARCADE_FT_DEFAULT" >/dev/null 2>&1
     fi
   fi
 }
@@ -84,17 +88,28 @@ heartbeat(){
   os=$(os_info); sp=$(steam_ping)
   body=$(printf '{"steamid":"%s","name":"%s","lobby_id":"%s","owner":"%s","join":"%s","region":"%s","os":"%s","steam_ping_ms":%s,"ft":%s,"one_button":%s,"version":"%s","players":%s,"game":"%s"}' \
          "$owner" "$NODE_NAME" "$id" "$owner" "$join" "$REGION" "$os" "${sp:--1}" \
-         "$ARCADE_FT" "$ARCADE_ONE_BUTTON" "$ARCADE_VERSION" "$ARCADE_PLAYERS" "$ARCADE_GAME")
+         "$(cur_ft)" "$(cur_ob)" "$(cur_ver)" "$ARCADE_PLAYERS" "$ARCADE_GAME")
   hdr=(-H 'content-type: application/json')
   [ -n "$HOST_TOKEN" ] && hdr+=(-H "authorization: Bearer $HOST_TOKEN")
   resp=$(curl -s -m 6 -X POST "$HOST/skinsync/arcade/host/heartbeat" "${hdr[@]}" -d "$body" 2>&1)
   echo "[hostd] HB lobby=$id owner=$owner -> ${resp:-<no response>}"
-  # ROTATE-AFTER-SETTLE: the server raises "rotate":true on the heartbeat once the match this node
-  # refereed has paid out. Leave the lobby (kicks the settled pair) + create a fresh one so the next
-  # quarter gets a clean cabinet with a NEW lobby id. cycle ends in spectate (both player slots free).
+  # PER-MATCH FT: the server's `assigned` carries the match's best_of; set Victory Condition to its FT
+  # (best_of = ft*2-1  =>  ft = (best_of+1)/2). If the current lobby's FT differs, cycle to match. The new
+  # lobby id heartbeats next tick. ⚠ FOLLOW-UP: the server must re-sync the reserved wager's lobby_id to
+  # this new lobby after the cycle (else the player's join link points at the pre-cycle lobby).
+  local bo mft
+  bo=$(printf '%s' "$resp" | grep -oE '"best_of":[0-9]+' | grep -oE '[0-9]+' | head -1)
+  if [ -n "$bo" ] && [ "$bo" -gt 0 ]; then mft=$(( (bo + 1) / 2 ))
+    if [ "$mft" != "$(cur_ft)" ]; then
+      echo "[hostd] assigned FT$mft != current FT$(cur_ft) -> cycling lobby to match"
+      bash "$AH" cycle "$mft" 2>&1 | sed 's/^/[hostd] cycle: /'; return
+    fi
+  fi
+  # ROTATE-AFTER-SETTLE: server raises "rotate":true once this node's match paid out. Cycle to a fresh
+  # idle lobby at the default FT (kicks the settled pair; new lobby id; ends in spectate).
   if printf '%s' "$resp" | grep -q '"rotate":true'; then
-    echo "[hostd] ROTATE signalled -> cycling to a fresh lobby"
-    bash "$AH" cycle 2>&1 | sed 's/^/[hostd] cycle: /'
+    echo "[hostd] ROTATE signalled -> cycling to a fresh lobby (FT$ARCADE_FT_DEFAULT)"
+    bash "$AH" cycle "$ARCADE_FT_DEFAULT" 2>&1 | sed 's/^/[hostd] cycle: /'
   fi
 }
 
