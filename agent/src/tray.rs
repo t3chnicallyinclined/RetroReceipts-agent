@@ -1,11 +1,11 @@
 // Tray shell — the agent's only UI. No window: a tray icon + a native context menu, pumped by a tao event
 // loop. Production menu:
-//   • "MetaSync Agent · v{VERSION}"  (disabled header)
+//   • "Retro Receipts Agent · v{VERSION}"  (disabled header)
 //   • "🎮 {status}"                  (disabled; reader::status_line(), refreshed on the 1s timer)
 //   • "Signed in as {name}"          (disabled; reader::signed_in_name(), "Steam not detected" when none)
 //   • "🎛 HOST MODE — …"            (disabled; blank unless HOST_MODE — "don't play on this machine" banner)
 //   • ── separator ──
-//   • "Open MetaSync"                — opens the web app (config::WEB_APP) in the default browser
+//   • "Open Retro Receipts"                — opens the web app (config::WEB_APP) in the default browser
 //   • "Apply my skins" (✓)          — checkable, PERSISTED pref; gates the painter (painter::SKINS_ENABLED)
 //   • "Pause reporting" (✓)          — checkable, session-only; gates the reader's reports (reader::PAUSED)
 //   • "Host lobbies (this machine)" (✓) — checkable, PERSISTED; LINUX-ONLY (greyed on Windows); shells out to
@@ -123,7 +123,7 @@ fn host_indicator_text() -> String {
 fn build_menu() -> (Menu, MenuHandles) {
     let menu = Menu::new();
 
-    let header = MenuItem::new(format!("MetaSync Agent · v{}", config::VERSION), false, None);
+    let header = MenuItem::new(format!("Retro Receipts Agent · v{}", config::VERSION), false, None);
     let status = MenuItem::new(reader::status_line(), false, None);
     let signed = MenuItem::new(signed_in_text(), false, None);
     // Prominent, disabled banner shown only while this box is a host. Blank (empty row) otherwise; text is
@@ -131,7 +131,7 @@ fn build_menu() -> (Menu, MenuHandles) {
     let host_indicator = MenuItem::new(host_indicator_text(), false, None);
     let sep1 = PredefinedMenuItem::separator();
 
-    let open = MenuItem::new("Open MetaSync", true, None);
+    let open = MenuItem::new("Open Retro Receipts", true, None);
     // Initial check states read the flags main.rs already restored (skins) / the process default (pause).
     let apply_skins = CheckMenuItem::new(
         "Apply my skins",
@@ -271,7 +271,7 @@ pub fn run() -> ! {
         match event {
             Event::NewEvents(StartCause::Init) => {
                 let mut builder = TrayIconBuilder::new()
-                    .with_tooltip(format!("MetaSync v{}", config::VERSION));
+                    .with_tooltip(format!("RR v{}", config::VERSION));
                 if let Some(m) = menu.take() {
                     builder = builder.with_menu(Box::new(m));
                 }
@@ -365,7 +365,7 @@ pub fn run() -> ! {
                                     config::VERSION
                                 )));
                                 updater::notify(
-                                    "MetaSync",
+                                    "Retro Receipts",
                                     &format!("You're on the latest version (v{}).", config::VERSION),
                                 );
                             }
@@ -386,7 +386,7 @@ pub fn run() -> ! {
                                     u.version
                                 )));
                                 updater::notify(
-                                    "MetaSync Update",
+                                    "Retro Receipts Update",
                                     &format!(
                                         "Installing update v{}…\n\nThe agent will restart when it's done.",
                                         u.version
@@ -400,7 +400,7 @@ pub fn run() -> ! {
                                             "Update failed: {e}"
                                         )));
                                         updater::notify(
-                                            "MetaSync Update",
+                                            "Retro Receipts Update",
                                             &format!("Update failed:\n\n{e}"),
                                         );
                                     }

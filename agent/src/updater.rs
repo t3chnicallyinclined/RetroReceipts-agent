@@ -310,8 +310,8 @@ pub fn note_deferred_update(version: &str, force: bool) {
             *last = Some(version.to_string());
         }
         toast(
-            "MetaSync update ready",
-            &format!("MetaSync {version} is ready — it'll install automatically when you close the game."),
+            "Retro Receipts update ready",
+            &format!("Retro Receipts {version} is ready — it'll install automatically when you close the game."),
         );
     }
 }

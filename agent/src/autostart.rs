@@ -125,7 +125,7 @@ mod imp {
         let entry = format!(
             "[Desktop Entry]\n\
              Type=Application\n\
-             Name=MetaSync Agent\n\
+             Name=Retro Receipts Agent\n\
              Comment=Reads MvC2 memory, applies skins, and reports matches\n\
              Exec={exe}\n\
              Terminal=false\n\

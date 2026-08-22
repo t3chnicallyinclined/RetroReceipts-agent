@@ -100,12 +100,12 @@ fn main() {
                         eprintln!("[updater] applying {} (current {})", u.version, config::VERSION);
                         match updater::apply_update(&u) {
                             Ok(()) => {
-                                updater::notify("MetaSync", &format!("Updated to v{} — restarting.", u.version));
+                                updater::notify("Retro Receipts", &format!("Updated to v{} — restarting.", u.version));
                                 updater::restart()
                             }
                             Err(e) => {
                                 eprintln!("[updater] apply failed: {e}");
-                                updater::notify("MetaSync Update", &format!("Update failed:\n\n{e}"));
+                                updater::notify("Retro Receipts Update", &format!("Update failed:\n\n{e}"));
                             }
                         }
                     }

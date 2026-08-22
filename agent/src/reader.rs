@@ -3083,19 +3083,19 @@ pub fn status_line() -> String {
     // supervisor/watchdog heal it within seconds; this makes the brief window visible instead of silent.
     let tick = READER_TICK.load(std::sync::atomic::Ordering::SeqCst);
     if tick != 0 && gs_now_ms().saturating_sub(tick) > 8_000 {
-        return "⚠ MetaSync — reader stalled, recovering…".into();
+        return "⚠ Retro Receipts — reader stalled, recovering…".into();
     }
     let a = agent_status().lock().unwrap();
     if !a.game_running {
-        return "MetaSync — watching for MvC2".into();
+        return "Retro Receipts — watching for MvC2".into();
     }
     let base = match a.state.as_str() {
         "match" => {
             let opp = a.opponent.as_deref().unwrap_or("opponent");
             format!("🎮 in a match vs {} ({}-{})", opp, a.score.0, a.score.1)
         }
-        "select" => "MetaSync — match starting…".into(),
-        _ => "MetaSync — MvC2 running".into(),
+        "select" => "Retro Receipts — match starting…".into(),
+        _ => "Retro Receipts — MvC2 running".into(),
     };
     if a.reporting { format!("{}  ● reporting", base) } else { base }
 }

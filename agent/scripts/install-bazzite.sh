@@ -14,7 +14,7 @@ set -euo pipefail
 BIN_URL="https://github.com/t3chnicallyinclined/mvc2-metasync/releases/download/v0.3.0/metasync-agent-linux"
 DEST="$HOME/.local/bin/metasync-agent"
 
-echo "▶ MetaSync agent — Bazzite install"
+echo "▶ Retro Receipts agent — Bazzite install"
 mkdir -p "$HOME/.local/bin"
 
 echo "  downloading…"
@@ -52,7 +52,7 @@ disown 2>/dev/null || true
 
 sleep 1.5
 if pgrep -x metasync-agent >/dev/null; then
-  echo "✅ MetaSync is running — look for its icon in your system tray."
+  echo "✅ Retro Receipts is running — look for its icon in your system tray."
   echo "   It starts automatically at login now. Sign in at https://nobd.net/app to link your account."
 else
   echo "❌ it didn't stay running. Launch it in a terminal to see the error:  $DEST"
