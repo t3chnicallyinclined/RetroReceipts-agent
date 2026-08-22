@@ -16,7 +16,7 @@ The same event contract also unifies the server side: leaderboard-delta polling,
 
 1. **Feeders emit events; sinks never see offsets.** The event vocabulary is the only coupling point.
 2. **Cartridges are data, not code.** No dynamic native plugin loading, ever (we have been burned by the DLL-plant class before). Games that genuinely need logic get a first-party Rust driver in-tree.
-3. **Read-only contract for cartridges.** Write capability (the MvC2 skins painter) is first-party only and outside this architecture.
+3. **Read-only, full stop.** The agent observes game memory; it never writes it. The only writer today is the legacy MvC2 skins painter, which is a **deprecation candidate** (owner call 2026-08-22: skins were an MvC2-era feature, not part of the tracker product). Its downlink is skins-only — `handle_cmd_event` ignores every command type but `"skin"`, and `Proc::open_rw` has exactly one caller (`painter.rs`) — so dropping skins makes the agent strictly one-directional: events up, nothing down. Design for that end state; do not add a second writer.
 4. **Client events are claims.** Anything money touches requires a server-side corroboration source (Steam leaderboard reconcile, lobby co-occurrence). Trust is per-game and earned.
 5. **Abstract only what we've met.** Exactly two integration shapes are confirmed in the wild: (a) native build + static pointer chains, (b) emulated core + guest-RAM base hunt + fixed offsets. Build for those two; let a third real game bend the design later.
 6. **Proven RE ports verbatim.** The MvC2 reader's logic is not re-expressed in the spec language; it becomes the first native driver, unchanged.
@@ -101,7 +101,7 @@ Covers immediately (offsets already public, per the scouting report): GGXX AC+R,
 
 Ownership notes reflect the current session split (agent/tray runtime + money + server = peer sessions; PWA + app deploys = this session). Final assignment TBD with peers — nothing here is claimed unilaterally.
 
-**WS1 — Core extraction.** Promote `mem.rs` → `rr-core`; parameterize `find_game_pid`; add u32 chain mode, AOB scanner, region-fingerprint scanner (generalize the MvC2 512MB-reservation technique). Exit: MvC2 agent runs unchanged on `rr-core`.
+**WS1 — Core extraction.** Promote `mem.rs` → `rr-core`; parameterize `find_game_pid`; add u32 chain mode, AOB scanner, region-fingerprint scanner (generalize the MvC2 512MB-reservation technique). Scope reduction if skins are dropped (see §1.3): `open_rw`/`write` leave `rr-core` entirely, along with `painter.rs`, the SSE command downlink (`start_cmd_subscribe`/`cmd_sse_once`/`handle_cmd_event`), `fetch_loadout`, and the tray skins toggle — `rr-core` becomes a read-only surface. Pointer-follow through rollback savestate copies **stays** (needed for reads). Exit: MvC2 agent runs unchanged on `rr-core`.
 
 **WS2 — Event model.** Define `rr-events`; refactor `reader.rs` so the MvC2 loop emits events into an internal channel consumed by the existing report path. **Behavior-neutral** — byte-identical server traffic, verified against a live session. Exit: parity confirmed on Windows + Bazzite.
 
