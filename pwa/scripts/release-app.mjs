@@ -107,7 +107,8 @@ console.log(`▶ serving build at ${url}`);
 // Signed-out exercises the empty/marketing states; signed-in exercises the live branches (MyMatch on
 // /match, profile on /u/…, settings) — that's where runtime bugs actually hide, so it gets full coverage.
 const outURLs = ['', 'match', 'ranks', 'hosts', 'tournament'].map((p) => url + p);
-const inURLs = ['', 'match', 'ranks', 'regions', 'hosts', 'settings', 'tournament', 'tournament/create', 'tournament/0/manage', 'u/76561197960287930'].map((p) => url + p);
+// NB: no standalone 'regions' route — the region ladder is a tab inside /ranks (regionView), covered by 'ranks'.
+const inURLs = ['', 'match', 'ranks', 'hosts', 'settings', 'tournament', 'tournament/create', 'tournament/0/manage', 'u/76561197960287930'].map((p) => url + p);
 const codeOut = await run('node', ['scripts/render-check.mjs', ...outURLs]);
 const codeIn = await run('node', ['scripts/render-check.mjs', ...inURLs], { SIGNED_IN: '1' });
 server.close();
