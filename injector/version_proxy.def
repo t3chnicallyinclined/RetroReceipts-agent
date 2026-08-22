@@ -1,0 +1,33 @@
+; version_proxy.def -- export-forwarding table for the proxy version.dll.
+;
+; Every export of the REAL version.dll is forwarded verbatim to "versionorig.dll"
+; (a byte copy of the real Proton/Wine version.dll placed next to the game exe by
+; setup_proxy.sh). The proxy therefore adds ZERO behavior to version.dll itself --
+; its only job is to get our DllMain (dllmain.c) executed inside the game process.
+;
+; The 16 names + ordinals below were extracted from the actual Proton prefix
+; version.dll for appid 2634890 (system32\version.dll). If a future Proton build
+; changes the set, regenerate with gen_def.py. VerLanguageNameA/W are themselves
+; forwarders to kernel32 inside version.dll; chaining through versionorig is fine.
+;
+; NOTE: LIBRARY name intentionally omitted -- the output filename (version.dll)
+; is what the loader keys on; an explicit "LIBRARY version" is not required and
+; avoids any ordinal/name-decoration surprises with mingw ld.
+
+EXPORTS
+GetFileVersionInfoA=versionorig.GetFileVersionInfoA @1
+GetFileVersionInfoExA=versionorig.GetFileVersionInfoExA @2
+GetFileVersionInfoExW=versionorig.GetFileVersionInfoExW @3
+GetFileVersionInfoSizeA=versionorig.GetFileVersionInfoSizeA @4
+GetFileVersionInfoSizeExA=versionorig.GetFileVersionInfoSizeExA @5
+GetFileVersionInfoSizeExW=versionorig.GetFileVersionInfoSizeExW @6
+GetFileVersionInfoSizeW=versionorig.GetFileVersionInfoSizeW @7
+GetFileVersionInfoW=versionorig.GetFileVersionInfoW @8
+VerFindFileA=versionorig.VerFindFileA @9
+VerFindFileW=versionorig.VerFindFileW @10
+VerInstallFileA=versionorig.VerInstallFileA @11
+VerInstallFileW=versionorig.VerInstallFileW @12
+VerLanguageNameA=versionorig.VerLanguageNameA @13
+VerLanguageNameW=versionorig.VerLanguageNameW @14
+VerQueryValueA=versionorig.VerQueryValueA @15
+VerQueryValueW=versionorig.VerQueryValueW @16

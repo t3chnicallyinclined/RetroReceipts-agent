@@ -1,0 +1,85 @@
+[package]
+name = "metasync-agent"
+version = "0.3.5"  # LOCKSTEP with the MetaSync release train (latest.json / GitHub release). 0.3.5 = update-available heads-up (non-modal toast + "🔔 Update ready" tray row + 3h re-check) + Proton idle-scan back-off (the REAL CPU fix — rate-limits the 896MB blind scan when idle, full cadence in-fight).
+description = "MetaSync tray agent — headless Windows tray companion that reads MvC2 memory, applies skins, and reports matches (replaces the Tauri webview)"
+authors = ["tristech"]
+edition = "2021"
+rust-version = "1.77"
+
+[[bin]]
+name = "metasync-agent"
+path = "src/main.rs"
+
+[dependencies]
+# Tray shell — icon + native menu + event loop. tray-icon 0.24 depends on muda ^0.19.1, so these resolve
+# together; tao provides the winit-style event loop the tray + menu pump their events into.
+#
+# CROSS-PLATFORM: all three are cross-platform and need NO extra Rust deps for Linux — on target_os="linux"
+# they pull their own native bindings transitively (tray-icon → libappindicator + gtk; tao → gtk; muda → gtk +
+# libxdo; appindicator → libdbus). No tray dep is added under [target.'cfg(target_os="linux")'] here because
+# nothing is missing from that tree. The Bazzite/Fedora BUILD box does need the matching -devel system
+# packages (build-env, not crates): gtk3-devel, libayatana-appindicator-gtk3-devel, libxdo-devel, dbus-devel,
+# pkgconf-pkg-config (Debian/Ubuntu: libgtk-3-dev, libayatana-appindicator3-dev, libxdo-dev, libdbus-1-dev,
+# pkg-config). Tray creation already happens AFTER the tao event loop inits gtk (built on StartCause::Init in
+# tray.rs), matching tray-icon's Linux/winit example ordering.
+tray-icon = "0.24"
+muda = "0.19"
+tao = "0.36"
+
+# Opens https://nobd.net/app in the user's default browser (no window of our own).
+open = "5"
+
+# NON-MODAL update heads-up: a real OS toast/balloon (Windows Action-Center toast + Linux libnotify/dbus) so
+# a deferred update (MvC2 open) can be surfaced WITHOUT a focus-stealing MessageBox mid-match. Cross-platform:
+# on Linux it uses the session dbus (DBUS_SESSION_BUS_ADDRESS, present under the systemd --user service); on
+# Windows it shows a WinRT toast. See updater::toast. (The modal MessageBox path — updater::notify — stays for
+# the "updated—restarting" / "update failed" outcomes.)
+notify-rust = "4"
+
+# Self-updater skeleton (T1): fetch the manifest + signed binary, verify the minisign signature, swap the exe.
+# Also the reader's HTTP client (T2): result / heartbeat / live-match / register + gamestate uploads.
+ureq = { version = "2", features = ["json", "tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+minisign-verify = "0.2"
+self-replace = "1"
+
+# T2: gzip the per-frame gamestate recording before upload (spool_gamestate), ported verbatim from the app.
+flate2 = "1"
+
+# minisign .sig files from `cargo tauri signer sign` are base64-encoded (Tauri convention); the self-updater
+# base64-decodes them back to raw minisign text before verifying. See updater::verify_signature.
+base64 = "0.22"
+
+# Windows-only: process-memory + toolhelp APIs used by mem.rs (ported verbatim from src-tauri). Same version
+# + feature set as the shipped app so the proven RE compiles byte-for-byte. Autostart uses winreg (below),
+# so the Registry/Shell features are intentionally NOT pulled here — kept minimal.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_System_Memory",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Diagnostics_ToolHelp",
+  # T2: HKCU reads for the local Steam identity (ActiveUser account id + persona) — reg_dword / reg_string.
+  "Win32_System_Registry",
+  # Single-instance guard: CreateMutexW is gated behind Win32_Security (its first arg is SECURITY_ATTRIBUTES,
+  # which we pass as NULL). Needed for the named-mutex guard in single_instance.rs.
+  "Win32_Security",
+  # Update-result popup (MessageBoxW) so the user sees "updated / failed" without re-opening the tray menu.
+  "Win32_UI_WindowsAndMessaging",
+] }
+# HKCU\...\Run autostart key — far simpler than the raw windows-crate registry API.
+winreg = "0.55"
+
+# Unix (Linux/Proton) only: keeps mem.rs's #[cfg(unix)] backend compilable if ever cross-built. The agent
+# itself is Windows-only, so this is never exercised on the shipping target — it only preserves mem.rs verbatim.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+# Match the app's beta profile: fast compiles, agent is I/O-bound so heavy opt buys ~nothing at runtime.
+codegen-units = 16
+lto = false
+opt-level = 1
+strip = true
