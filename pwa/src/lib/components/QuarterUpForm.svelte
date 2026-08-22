@@ -1,30 +1,51 @@
 <script lang="ts">
-	import { auth } from '$lib/stores/auth.svelte';
 	import { wallet } from '$lib/stores/wallet.svelte';
 	import { wager } from '$lib/stores/wager.svelte';
 
-	// 🪙 Quarter-up form — pick a stake + a first-to target, then put a quarter up. Reused for BOTH an
-	// OPEN marquee challenge (no opp) and a directed "challenge this player" (opp set). Stakes mirror the
-	// desktop's 🪙 1/2/4/8 denominations; FT the arcade 2/3/5. All writes ride wager.offer → auth.post.
+	// 🪙 Quarter-up form — put a quarter up (open marquee challenge) or challenge a specific player.
+	// Format is First-to-3 for now (owner decision). Stake: preset 🪙10 or 🪙25, or a custom amount — from
+	// the floor up to what you have, capped at the server max (100/side). All writes ride wager.offer.
 	let {
 		opp = '',
 		oppName = ''
 	}: { opp?: string; oppName?: string } = $props();
 
-	const STAKES = [1, 2, 4, 8];
-	let stake = $state(2);
-	const ft = 2; // fixed to first-to-2 for now — single option, so no picker is shown
+	// Keep in lockstep with the server (config.rs): wager_floor(FT3)=10, WAGER_STAKE_MAX=100 per side.
+	const FT = 3;
+	const FLOOR = 10;
+	const STAKE_MAX = 100;
+	const PRESETS = [10, 25];
+
+	let mode = $state<'preset' | 'custom'>('preset');
+	let presetStake = $state(10);
+	let customVal = $state<number | null>(null);
 	let busy = $state(false);
 	let notice = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
 	const bal = $derived(wallet.balance);
+	// "as much as you have" — the ceiling is your balance, but never past the server cap.
+	const capMax = $derived(bal != null ? Math.min(bal, STAKE_MAX) : STAKE_MAX);
+	// The effective stake: the chosen preset, or the custom amount (0 when the custom box is empty).
+	const stake = $derived(mode === 'custom' ? (customVal ?? 0) : presetStake);
+	const tooLow = $derived(stake < FLOOR);
 	const tooRich = $derived(bal != null && stake > bal);
+	const tooBig = $derived(stake > STAKE_MAX);
+	const invalid = $derived(!Number.isInteger(stake) || tooLow || tooRich || tooBig);
+
+	function pickPreset(v: number) {
+		mode = 'preset';
+		presetStake = v;
+	}
+	// A preset is offerable only if it clears the cap and your balance (both presets already clear the floor).
+	function presetOk(v: number): boolean {
+		return v <= STAKE_MAX && (bal == null || v <= bal);
+	}
 
 	async function submit() {
-		if (busy || tooRich) return;
+		if (busy || invalid) return;
 		busy = true;
 		notice = null;
-		const body: { stake: number; ft: number; opp?: string } = { stake, ft };
+		const body: { stake: number; ft: number; opp?: string } = { stake, ft: FT };
 		if (opp) body.opp = opp;
 		const res = await wager.offer(body);
 		busy = false;
@@ -32,8 +53,8 @@
 			notice = {
 				kind: 'ok',
 				text: opp
-					? `Challenge sent to ${oppName || 'them'} — 🪙 ${stake} on the line.`
-					: `🪙 ${stake} is on the marquee — waiting for a taker.`
+					? `Challenge sent to ${oppName || 'them'} — 🪙 ${stake}, first to ${FT}.`
+					: `🪙 ${stake} on the marquee (first to ${FT}) — waiting for a taker.`
 			};
 		} else {
 			notice = { kind: 'err', text: res.error ?? 'Could not put your quarter up.' };
@@ -43,40 +64,69 @@
 
 <div class="qform">
 	<div class="controls">
-	<div class="pickers">
-		<div class="pk">
-			<span class="pk-l">Stake</span>
-			<div class="opts" role="group" aria-label="Stake">
-				{#each STAKES as v (v)}
+		<div class="pickers">
+			<div class="pk">
+				<span class="pk-l">Stake · FT{FT}</span>
+				<div class="opts" role="group" aria-label="Stake">
+					{#each PRESETS as v (v)}
+						<button
+							type="button"
+							class="opt"
+							class:on={mode === 'preset' && presetStake === v}
+							disabled={busy || !presetOk(v)}
+							aria-pressed={mode === 'preset' && presetStake === v}
+							onclick={() => pickPreset(v)}>🪙 {v}</button
+						>
+					{/each}
 					<button
 						type="button"
 						class="opt"
-						class:on={stake === v}
-						disabled={busy || (bal != null && v > bal)}
-						aria-pressed={stake === v}
-						onclick={() => (stake = v)}>🪙 {v}</button
+						class:on={mode === 'custom'}
+						disabled={busy || (bal != null && bal < FLOOR)}
+						aria-pressed={mode === 'custom'}
+						onclick={() => (mode = 'custom')}>Custom</button
 					>
-				{/each}
+					{#if mode === 'custom'}
+						<input
+							class="custom"
+							type="number"
+							inputmode="numeric"
+							min={FLOOR}
+							max={capMax}
+							step="1"
+							placeholder="{FLOOR}–{capMax}"
+							bind:value={customVal}
+							aria-label="Custom stake (quarters)"
+						/>
+					{/if}
+				</div>
 			</div>
+		</div>
+
+		<div class="foot">
+			{#if bal != null}<span class="echo">you have 🪙 {bal}</span>{/if}
+			<button type="button" class="put" disabled={busy || invalid} onclick={submit}>
+				{#if busy}
+					Putting it up…
+				{:else if opp}
+					Challenge {oppName || 'player'} ▸
+				{:else}
+					Put it up ▸
+				{/if}
+			</button>
 		</div>
 	</div>
 
-	<div class="foot">
-		{#if bal != null}<span class="echo">you have 🪙 {bal}</span>{/if}
-		<button type="button" class="put" disabled={busy || tooRich} onclick={submit}>
-			{#if busy}
-				Putting it up…
-			{:else if opp}
-				Challenge {oppName || 'player'} ▸
-			{:else}
-				Put it up ▸
-			{/if}
-		</button>
-	</div>
-	</div>
-
-	{#if tooRich && !busy}
-		<div class="hint">Not enough quarters for that stake — pick a lower one.</div>
+	{#if !busy}
+		{#if tooRich}
+			<div class="hint">Not enough quarters — you have 🪙 {bal}.</div>
+		{:else if mode === 'custom' && tooLow}
+			<div class="hint">Minimum 🪙 {FLOOR} for first to {FT}.</div>
+		{:else if mode === 'custom' && tooBig}
+			<div class="hint">Max 🪙 {STAKE_MAX} per side.</div>
+		{:else}
+			<div class="hint">First to {FT} · 🪙 {FLOOR} min · up to 🪙 {capMax}.</div>
+		{/if}
 	{/if}
 	{#if notice}
 		<div class="notice {notice.kind}" role="status">{notice.text}</div>
@@ -121,6 +171,7 @@
 		display: flex;
 		gap: 6px;
 		flex-wrap: wrap;
+		align-items: center;
 	}
 	.opt {
 		font: inherit;
@@ -150,6 +201,20 @@
 	.opt:disabled {
 		opacity: 0.42;
 		cursor: default;
+	}
+	.custom {
+		font: inherit;
+		/* 16px so iOS/iPadOS Safari doesn't auto-zoom the page on focus */
+		font-size: 16px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		width: 82px;
+		color: var(--ink);
+		background: var(--panel-2);
+		border: 1px solid var(--gold-soft);
+		border-radius: 8px;
+		padding: 0 8px;
+		min-height: 30px;
 	}
 	.foot {
 		display: flex;
