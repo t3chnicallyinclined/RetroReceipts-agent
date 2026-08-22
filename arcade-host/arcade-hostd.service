@@ -1,0 +1,17 @@
+[Unit]
+Description=Retro Receipts arcade host-node daemon (keeps a spectate-referee lobby alive + heartbeats the pool)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# HOST_STEAMID is auto-read from the running game if unset. REGION/NODE_NAME optional.
+Environment=INTERVAL=8
+Environment=METASYNC_HOST=https://nobd.net
+# %h = the user's home; installer places the scripts under ~/.local/share/retro-receipts/arcade-host
+ExecStart=/usr/bin/bash %h/.local/share/retro-receipts/arcade-host/arcade_hostd.sh loop
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
