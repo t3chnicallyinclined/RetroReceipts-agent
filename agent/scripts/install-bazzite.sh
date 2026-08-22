@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MetaSync tray agent — one-shot installer for Bazzite / Fedora Atomic (KDE Plasma or GNOME).
+# Retro Receipts tray agent — one-shot installer for Bazzite / Fedora Atomic (KDE Plasma or GNOME).
 #
 # Installs a native binary to ~/.local/bin (writable on an immutable OS — $HOME is not read-only), then
 # launches it. On first run the agent writes its OWN XDG autostart entry (~/.config/autostart/…) so it starts
@@ -11,7 +11,9 @@
 #   curl -fsSL https://nobd.net/skinsync/update/install-bazzite.sh | bash
 set -euo pipefail
 
-BIN_URL="https://github.com/t3chnicallyinclined/mvc2-metasync/releases/download/v0.3.0/metasync-agent-linux"
+# Always the latest release's Linux binary (GitHub redirects /latest/ to the current release); the agent
+# self-updates from the signed manifest thereafter, so this only needs to land ANY recent build.
+BIN_URL="https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/metasync-agent-linux"
 DEST="$HOME/.local/bin/metasync-agent"
 
 echo "▶ Retro Receipts agent — Bazzite install"

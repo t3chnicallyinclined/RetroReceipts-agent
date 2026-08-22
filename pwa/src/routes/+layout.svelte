@@ -4,6 +4,7 @@
 	import RankSprite from '$lib/components/RankSprite.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
+	import DownloadAgent from '$lib/components/DownloadAgent.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 
@@ -22,6 +23,7 @@
 <div class="app">
 	<div class="wrap">
 		<TopBar />
+		<DownloadAgent />
 		<main>
 			{@render children()}
 		</main>
