@@ -145,10 +145,52 @@ pub fn safe_to_apply() -> bool {
     crate::mem::find_game_pid().is_none()
 }
 
+/// The systemd `--user` unit this process runs under, parsed from `/proc/self/cgroup` (cgroup v2). Returns the
+/// leaf `*.service` component (e.g. `"metasync-agent.service"`), NOT the `user@UID.service` ancestor. `None`
+/// if we can't resolve it (the caller then falls back to the self-spawn relaunch).
+#[cfg(target_os = "linux")]
+fn systemd_unit_name() -> Option<String> {
+    // cgroup v2 is a single "0::/user.slice/…/app.slice/metasync-agent.service" line. Take the LAST path
+    // segment ending in ".service" — the leaf app unit — but EXCLUDE the `user@UID.service` manager: a
+    // context with no app-level service leaf must resolve to None (→ fall back to self-spawn), never to the
+    // user manager, or the restart would bounce the whole user session.
+    let cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    cg.lines()
+        .flat_map(|l| l.rsplit_once("::").map(|(_, p)| p).unwrap_or(l).split('/'))
+        .filter(|seg| seg.ends_with(".service") && !seg.starts_with("user@"))
+        .last()
+        .map(|s| s.to_string())
+}
+
 /// Relaunch the just-updated exe and exit THIS (still-old-code) process. `self_replace` swapped the file on
 /// disk, but the running image is still the old binary — only a fresh launch runs the new code. The `--updated`
 /// arg tells the new process to wait briefly for us to exit + release the single-instance mutex before it claims it.
 pub fn restart() -> ! {
+    // ── Linux + managed by a systemd --user service ──────────────────────────────────────────────────
+    // The self-spawn below (even setsid-detached) stays inside our unit's cgroup, so systemd's default
+    // KillMode=control-group KILLS the freshly-spawned agent when this (old) main process exits — and
+    // Restart=on-failure never fires on a clean exit(0). Net on a systemd host: "updated but never
+    // reopened" (found live on the Beelink at 0.3.6). Fix: ask the systemd MANAGER to restart the unit —
+    // it re-execs the now-swapped binary itself and survives our cgroup teardown. `--no-block` returns
+    // before systemd tears us down (so we're not killed mid-request); the queued job then stop→starts us.
+    // systemd serializes stop-before-start, so the fresh ExecStart claims the single-instance lock cleanly
+    // with no need for the `--updated` handshake. Non-systemd (XDG autostart / manual) uses the self-spawn.
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("INVOCATION_ID").is_some() {
+            if let Some(unit) = systemd_unit_name() {
+                let restarted = std::process::Command::new("systemctl")
+                    .args(["--user", "restart", "--no-block", &unit])
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+                if restarted {
+                    std::process::exit(0);
+                }
+                // systemctl unavailable/failed → fall through to the self-spawn relaunch below.
+            }
+        }
+    }
     if let Ok(exe) = std::env::current_exe() {
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("--updated");
