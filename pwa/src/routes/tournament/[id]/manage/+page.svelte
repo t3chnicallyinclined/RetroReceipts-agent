@@ -11,7 +11,7 @@
 	import { TourneyStore } from '$lib/stores/tourney.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import { teamAbbr } from '$lib/chars';
 	import { statusMeta, shortId, type Registration, type BracketMatch } from '$lib/tourney';
 
@@ -638,7 +638,7 @@
 						<a class="ewho" href="{base}/u/{r.steamid}">
 							<Avatar url={players[r.steamid]?.avatar} size={26} alt={pname(r.steamid)} />
 							<span class="enm">
-								{#if players[r.steamid]?.cc}<span class="ef">{flagEmoji(players[r.steamid]?.cc)}</span>{/if}
+								{#if players[r.steamid]?.cc}<span class="ef"><Flag cc={players[r.steamid]?.cc} w={16} /></span>{/if}
 								{pname(r.steamid)}
 							</span>
 						</a>

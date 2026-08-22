@@ -3,7 +3,8 @@
 	import { base } from '$app/paths';
 	import { api } from '$lib/config';
 	import { charName } from '$lib/chars';
-	import { flagEmoji, timeAgo } from '$lib/format';
+	import { timeAgo } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import Avatar from './Avatar.svelte';
 
 	// The SET modal — a game-by-game view of one match session. Opened with a session_id from a result OR
@@ -233,7 +234,7 @@
 		{#if crowned}<span class="crown" aria-hidden="true">👑</span>{/if}
 		<Avatar url={avatarOf(sid)} size={46} alt={nameOf(sid)} />
 		<span class="who">
-			{#if is17(sid)}<a class="pnm" href="{base}/u/{sid}">{#if ccOf(sid)}{flagEmoji(ccOf(sid))} {/if}{nameOf(sid)}</a>
+			{#if is17(sid)}<a class="pnm" href="{base}/u/{sid}">{#if ccOf(sid)}<Flag cc={ccOf(sid)} w={16} /> {/if}{nameOf(sid)}</a>
 			{:else}<span class="pnm">{nameOf(sid)}</span>{/if}
 		</span>
 		{#if elo}<span class="delta" class:up={elo > 0} class:down={elo < 0}>{elo > 0 ? '+' : ''}{elo} ELO</span>{/if}

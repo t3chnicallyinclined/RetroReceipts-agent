@@ -4,7 +4,7 @@
 	import Avatar from './Avatar.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor } from '$lib/ranks';
 	import { statValue } from '$lib/boards';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import type { Player, LeaderboardTab } from '$lib/types';
 
 	let {
@@ -38,12 +38,12 @@
 		{#if player.steamid}
 			<a class="lnk" href="{base}/u/{player.steamid}">
 				<Avatar url={player.avatar} size={20} alt={player.name} />
-				{#if player.cc}<span class="flag">{flagEmoji(player.cc)}</span>{/if}
+				{#if player.cc}<span class="flag"><Flag cc={player.cc} w={16} /></span>{/if}
 				<span class="nm">{player.name || 'Player'}</span>
 			</a>
 		{:else}
 			<Avatar url={player.avatar} size={20} alt={player.name} />
-			{#if player.cc}<span class="flag">{flagEmoji(player.cc)}</span>{/if}
+			{#if player.cc}<span class="flag"><Flag cc={player.cc} w={16} /></span>{/if}
 			<span class="nm">{player.name || 'Player'}</span>
 		{/if}
 		{#if me}<span class="me-tag">YOU</span>{/if}

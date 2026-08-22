@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import Avatar from './Avatar.svelte';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 
 	// Top-bar identity: a "Sign in through Steam" button when signed out, or the user's avatar+name
@@ -12,7 +12,7 @@
 	<div class="chip">
 		<a class="who" href="{base}/u/{auth.steamid}" title="Your profile">
 			<Avatar url={auth.me?.avatar} size={24} alt={auth.me?.name ?? 'You'} />
-			<span class="nm">{#if auth.me?.cc}{flagEmoji(auth.me.cc)} {/if}{auth.me?.name || 'You'}</span>
+			<span class="nm">{#if auth.me?.cc}<Flag cc={auth.me.cc} w={16} /> {/if}{auth.me?.name || 'You'}</span>
 		</a>
 		<button class="out" onclick={() => auth.logout()} title="Sign out" aria-label="Sign out">⎋</button>
 	</div>

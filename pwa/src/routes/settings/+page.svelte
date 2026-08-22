@@ -13,7 +13,8 @@
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import SuggestModal from '$lib/components/SuggestModal.svelte';
 	import { rankOf, gamesOf } from '$lib/ranks';
-	import { flagEmoji, timeAgo } from '$lib/format';
+	import { timeAgo } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 
 	const me = $derived(auth.me);
 	const gp = $derived(me ? gamesOf({ wins: me.wins, losses: me.losses }) : 0);
@@ -109,7 +110,7 @@
 			<a class="who" href="{base}/u/{auth.steamid}">
 				<Avatar url={me?.avatar} size={44} alt={me?.name ?? 'You'} />
 				<div class="whotext">
-					<b class="nm">{#if me?.cc}{flagEmoji(me.cc)} {/if}{me?.name || 'You'}</b>
+					<b class="nm">{#if me?.cc}<Flag cc={me.cc} w={16} /> {/if}{me?.name || 'You'}</b>
 					{#if r}<span class="sub"><RankBadge rating={me?.rating ?? 0} games={gp} size={14} /> <span class="rk-{r.s}">{r.n}</span> · {me?.rating ?? '—'}</span>{/if}
 				</div>
 			</a>

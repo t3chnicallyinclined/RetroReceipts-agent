@@ -16,7 +16,7 @@
 	import MoneyH2H from '$lib/components/MoneyH2H.svelte';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 
 	const store = new ProfileStore();
 	const stats = new PlayerStatsStore();
@@ -150,7 +150,7 @@
 		<div class="id">
 			<Avatar url={p.avatar} size={64} alt={p.name} />
 			<div class="who">
-				<h1 class="nm">{#if p.cc}<span class="flag">{flagEmoji(p.cc)}</span> {/if}{p.name || 'Player'}</h1>
+				<h1 class="nm">{#if p.cc}<span class="flag"><Flag cc={p.cc} w={20} /></span> {/if}{p.name || 'Player'}</h1>
 				{#if loc}<span class="loc">{loc}</span>{/if}
 			</div>
 		</div>
@@ -251,7 +251,7 @@
 						<Avatar url={nemesis.avatar} size={38} alt={nemesis.name ?? 'Opponent'} />
 						<div class="rwho">
 							<span class="rname"
-								>{#if nemesis.cc}<span class="rf">{flagEmoji(nemesis.cc)}</span> {/if}{nemesis.name ||
+								>{#if nemesis.cc}<span class="rf"><Flag cc={nemesis.cc} w={16} /></span> {/if}{nemesis.name ||
 									'Opponent'}</span
 							>
 							<span class="rrec">{nemesis.wins}<i>W</i> · {nemesis.losses}<i>L</i></span>
@@ -269,7 +269,7 @@
 						<Avatar url={victim.avatar} size={38} alt={victim.name ?? 'Opponent'} />
 						<div class="rwho">
 							<span class="rname"
-								>{#if victim.cc}<span class="rf">{flagEmoji(victim.cc)}</span> {/if}{victim.name ||
+								>{#if victim.cc}<span class="rf"><Flag cc={victim.cc} w={16} /></span> {/if}{victim.name ||
 									'Opponent'}</span
 							>
 							<span class="rrec">{victim.wins}<i>W</i> · {victim.losses}<i>L</i></span>

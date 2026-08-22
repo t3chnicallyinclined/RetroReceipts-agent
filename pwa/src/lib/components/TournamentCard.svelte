@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
-	import { flagEmoji, whenLabel } from '$lib/format';
+	import { whenLabel } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import {
 		statusMeta,
 		formatLabel,
@@ -37,7 +38,7 @@
 
 	<div class="foot">
 		<span class="loc" title={place}>
-			<span class="flag">{flagEmoji(t.cc)}</span>
+			<span class="flag"><Flag cc={t.cc} w={16} /></span>
 			<span class="lt">{place || (t.online ? 'Online' : '—')}</span>
 		</span>
 		<span class="cost" class:free>{cost}</span>

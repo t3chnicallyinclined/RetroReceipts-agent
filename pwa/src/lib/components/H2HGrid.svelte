@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { base } from '$app/paths';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import { winrateColor } from '$lib/ranks';
 
 	// Full head-to-head grid — one card per opponent (profile.vs / playerstats.vs). Mirrors the old app's
@@ -40,7 +40,7 @@
 <div class="h2h">
 	{#each cards as c (c.id)}
 		<svelte:element this={c.href ? 'a' : 'div'} class="card" href={c.href}>
-			<b class="hn">{#if c.cc}<span class="hf">{flagEmoji(c.cc)}</span> {/if}{c.name}</b>
+			<b class="hn">{#if c.cc}<span class="hf"><Flag cc={c.cc} w={16} /></span> {/if}{c.name}</b>
 			<span class="hr"><b class="w">{c.wins}</b><i>–</i><b class="l">{c.losses}</b></span>
 			<span class="hb"><i style="width:{c.wr}%;background:{c.col}"></i></span>
 			<span class="hg">{c.wr}% · {c.games} game{c.games === 1 ? '' : 's'}</span>

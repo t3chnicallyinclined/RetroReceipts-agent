@@ -12,7 +12,7 @@
 	import RankInfoModal from '$lib/components/RankInfoModal.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { rankOf } from '$lib/ranks';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
 	import type { LeaderboardTab, LeaderboardPeriod } from '$lib/types';
@@ -221,7 +221,7 @@
 		<a class="you-card" href="{base}/u/{auth.steamid}">
 			<span class="you-tag">YOU</span>
 			<Avatar url={auth.me?.avatar} size={30} alt={auth.me?.name ?? 'You'} />
-			<span class="you-name">{#if auth.me?.cc}{flagEmoji(auth.me.cc)} {/if}{auth.me?.name || 'You'}</span>
+			<span class="you-name">{#if auth.me?.cc}<Flag cc={auth.me.cc} w={16} /> {/if}{auth.me?.name || 'You'}</span>
 			{#if myTier}
 				<span class="you-tier bd-tier">
 					<RankBadge rating={auth.me?.rating ?? 0} games={myGames} size={16} />

@@ -4,7 +4,7 @@
 	import Avatar from './Avatar.svelte';
 	import { rankOf, gamesOf, winrateOf, RK_PLATE } from '$lib/ranks';
 	import { statValue, MAST } from '$lib/boards';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import type { Player, LeaderboardTab } from '$lib/types';
 
 	let {
@@ -30,10 +30,10 @@
 		<a class="av-link" href="{base}/u/{player.steamid}" aria-label={player.name || 'Player'}>
 			<Avatar url={player.avatar} size={crown ? 58 : 46} alt={player.name} />
 		</a>
-		<a class="pnm plink" href="{base}/u/{player.steamid}">{#if player.cc}{flagEmoji(player.cc)} {/if}{player.name || 'Player'}</a>
+		<a class="pnm plink" href="{base}/u/{player.steamid}">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{player.name || 'Player'}</a>
 	{:else}
 		<Avatar url={player.avatar} size={crown ? 58 : 46} alt={player.name} />
-		<b class="pnm">{#if player.cc}{flagEmoji(player.cc)} {/if}{player.name || 'Player'}</b>
+		<b class="pnm">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{player.name || 'Player'}</b>
 	{/if}
 	{#if !scoped}
 		<span class="ptier bd-tier">

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import { api } from '$lib/config';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 
 	// 🪙 MONEY-MATCH RECEIPT — "RETRO RECEIPTS" treatment of a player's money-match head-to-head. Who they've
 	// made the most coins from and lost the most to, rendered as a literal dark-theme receipt: monospace,
@@ -169,7 +169,7 @@
 	{@const info = resolve(r)}
 	<svelte:element this={info.href ? 'a' : 'div'} class="li" href={info.href}>
 		<div class="li-main">
-			<span class="li-nm">{#if info.cc}<span class="cf">{flagEmoji(info.cc)}</span> {/if}{info.name}</span>
+			<span class="li-nm">{#if info.cc}<span class="cf"><Flag cc={info.cc} w={16} /></span> {/if}{info.name}</span>
 			<span class="lead" aria-hidden="true"></span>
 			<span class="li-amt {dir}">{signed(r.net)}</span>
 		</div>

@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import { COUNTRIES, US_REGIONS, CC_NAME, searchCities, type CityHit } from '$lib/represent';
 
 	// Owner-only "Represent" editor: set your country / city / region so a flag shows by your name and your
@@ -167,7 +168,7 @@
 					{#each citySuggestions as h (h.cc + '|' + h.name + '|' + h.region)}
 						<button type="button" class="copt" role="option" aria-selected="false" onclick={() => pickCity(h)}>
 							<span class="cn">{h.name}</span>
-							<span class="cr">{h.region}{#if h.cc}&nbsp;{flagEmoji(h.cc)}{/if}</span>
+							<span class="cr">{h.region}{#if h.cc}&nbsp;<Flag cc={h.cc} w={16} />{/if}</span>
 						</button>
 					{/each}
 				</div>
@@ -198,7 +199,7 @@
 
 	<div class="preview">
 		{#if repPreview}
-			Representing {#if cc}<span class="pf">{flagEmoji(cc)}</span> {/if}<b>{repPreview}</b>
+			Representing {#if cc}<span class="pf"><Flag cc={cc} w={16} /></span> {/if}<b>{repPreview}</b>
 		{:else}
 			Pick a country + city to appear on the Regions board.
 		{/if}

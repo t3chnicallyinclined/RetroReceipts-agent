@@ -6,7 +6,7 @@
 	import type { Profile } from '$lib/stores/profile.svelte';
 	import { rankOf } from '$lib/ranks';
 	import { charName } from '$lib/chars';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import RankBadge from './RankBadge.svelte';
 	import Avatar from './Avatar.svelte';
 	import CharSprite from './CharSprite.svelte';
@@ -120,8 +120,6 @@
 			.filter(Boolean)
 			.map((n) => charName(Number(n)))
 			.join(' / ');
-
-	const flag = (cc?: string) => (cc ? flagEmoji(cc) : '');
 </script>
 
 {#snippet chip(id: number, idx: number, accent: string)}
@@ -143,7 +141,7 @@
 			<Avatar url={auth.me?.avatar as string | undefined} size={52} alt={myName} />
 			<div class="who">
 				<div class="sidetag">You</div>
-				<div class="nm">{#if flag(auth.me?.cc)}<span class="fl">{flag(auth.me?.cc)}</span> {/if}{myName}</div>
+				<div class="nm">{#if auth.me?.cc}<span class="fl"><Flag cc={auth.me?.cc} w={16} /></span> {/if}{myName}</div>
 				<div class="rk">
 					<RankBadge rating={myRating} games={myGames || null} size={15} />
 					<span class="rk-t rk-{myTier.s}">{myTier.n}</span>
@@ -172,7 +170,7 @@
 			{#if inMatch}
 				<div class="who">
 					<div class="sidetag">Opponent</div>
-					<div class="nm">{oppName}{#if flag(oppProfile?.cc)} <span class="fl">{flag(oppProfile?.cc)}</span>{/if}</div>
+					<div class="nm">{oppName}{#if oppProfile?.cc} <span class="fl"><Flag cc={oppProfile?.cc} w={16} /></span>{/if}</div>
 					<div class="rk">
 						<RankBadge rating={oppRating} games={oppGames || null} size={15} />
 						<span class="rk-t rk-{oppTier.s}">{oppTier.n}</span>

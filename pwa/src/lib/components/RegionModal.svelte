@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import { api } from '$lib/config';
-	import { flagEmoji } from '$lib/format';
+	import Flag from '$lib/components/Flag.svelte';
 	import { rankOf } from '$lib/ranks';
 	import Avatar from './Avatar.svelte';
 	import RankBadge from './RankBadge.svelte';
@@ -85,7 +85,7 @@
 	<div class="dlg" bind:this={dlg} role="dialog" aria-modal="true" aria-label="{region.name} players" tabindex="-1">
 		<header class="dhd">
 			<div class="dhd-l">
-				<span class="flag">{flagEmoji(region.cc)}</span>
+				<span class="flag"><Flag cc={region.cc} w={16} /></span>
 				<div class="ttl">
 					<b>{region.name}</b>
 					{#if sub}<span class="sub">{sub}</span>{/if}
@@ -116,7 +116,7 @@
 						<Avatar url={p.avatar} size={30} alt={p.name ?? 'Player'} />
 						<span class="who">
 							{#if is17(p.steamid)}
-								<a class="pn" href="{base}/u/{p.steamid}">{#if p.cc}{flagEmoji(p.cc)} {/if}{p.name || 'Player'}</a>
+								<a class="pn" href="{base}/u/{p.steamid}">{#if p.cc}<Flag cc={p.cc} w={16} /> {/if}{p.name || 'Player'}</a>
 							{:else}
 								<span class="pn">{p.name || 'Player'}</span>
 							{/if}
