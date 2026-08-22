@@ -9,17 +9,8 @@
 		region,
 		pos,
 		level = 'city',
-		hideFlag = false,
-		hideRegion = false,
 		onOpen
-	}: {
-		region: Region;
-		pos: number;
-		level?: RegionLevel;
-		hideFlag?: boolean;
-		hideRegion?: boolean;
-		onOpen?: (r: Region) => void;
-	} = $props();
+	}: { region: Region; pos: number; level?: RegionLevel; onOpen?: (r: Region) => void } = $props();
 
 	const clickable = $derived(!!onOpen);
 	const stop = (e: Event) => e.stopPropagation(); // the top-player link navigates without opening the drill-in
@@ -49,20 +40,13 @@
 		top?.steamid && String(top.steamid).length === 17 ? `${base}/u/${top.steamid}` : null
 	);
 	// Country rows: `name` already IS the country, so a "· <country>" sub would just repeat it (matches Tauri).
-	// Grouped city rows (under a region header) drop the redundant region label — just the country remains.
-	const sub = $derived(
-		level === 'country'
-			? ''
-			: hideRegion
-				? (region.country ?? '')
-				: [region.region, region.country].filter(Boolean).join(' · ')
-	);
+	const sub = $derived(level === 'country' ? '' : [region.region, region.country].filter(Boolean).join(' · '));
 </script>
 
 <div class="rg" class:clickable {...rootAttrs}>
 	<div class="lead">
 		<span class="place">{pos}</span>
-		{#if !hideFlag}<span class="flag"><Flag cc={region.cc} title={region.country} w={16} /></span>{/if}
+		<span class="flag"><Flag cc={region.cc} title={region.country} w={16} /></span>
 		<div class="id">
 			<b class="nm">{region.name}</b>
 			{#if sub}<span class="sub">{sub}</span>{/if}

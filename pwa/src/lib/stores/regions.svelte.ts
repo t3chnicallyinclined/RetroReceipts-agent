@@ -28,6 +28,7 @@ export interface Region {
 	losses?: number;
 	avg_rating?: number;
 	top?: RegionTop;
+	cities?: Region[]; // set only on a client-aggregated region row — its constituent cities (drill-in merges their rosters)
 }
 
 interface RegionsResponse {

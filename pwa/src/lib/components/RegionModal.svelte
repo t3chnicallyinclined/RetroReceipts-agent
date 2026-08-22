@@ -42,19 +42,44 @@
 		};
 	});
 
+	async function fetchRoster(cc?: string, city?: string): Promise<PlayerRow[]> {
+		const qs = new URLSearchParams({ tab: 'wins', limit: '50' });
+		if (cc) qs.set('country', cc);
+		if (city) qs.set('city', city);
+		try {
+			const res = await fetch(api(`/skinsync/leaderboard?${qs}`), { headers: { accept: 'application/json' } });
+			if (!res.ok) return [];
+			const j = (await res.json()) as { players?: PlayerRow[] };
+			return Array.isArray(j.players) ? j.players : [];
+		} catch {
+			return [];
+		}
+	}
+
 	async function load() {
 		loading = true;
 		error = null;
-		const qs = new URLSearchParams({ tab: 'wins', limit: '50' });
-		if (region.cc) qs.set('country', region.cc);
-		// Country drill-in filters by cc ONLY — a country row's `name` is the country, not a city (setting
-		// city=<country name> matches zero players → empty roster). City rows filter by cc + city name.
-		if (level !== 'country' && region.name) qs.set('city', region.name);
 		try {
-			const res = await fetch(api(`/skinsync/leaderboard?${qs}`), { headers: { accept: 'application/json' } });
-			if (!res.ok) throw new Error(`region ${res.status}`);
-			const j = (await res.json()) as { players?: PlayerRow[] };
-			players = Array.isArray(j.players) ? j.players : [];
+			if (region.cities && region.cities.length) {
+				// Region drill-in: merge the rosters of every city in this region → ALL its users.
+				const rosters = await Promise.all(region.cities.map((c) => fetchRoster(c.cc, c.name)));
+				const seen = new Set<string>();
+				const merged: PlayerRow[] = [];
+				for (const r of rosters)
+					for (const p of r) {
+						const k = p.steamid || (p.name ?? '');
+						if (k && !seen.has(k)) {
+							seen.add(k);
+							merged.push(p);
+						}
+					}
+				merged.sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0));
+				players = merged.slice(0, 50);
+			} else {
+				// City drill-in: cc + city name. Country drill-in: cc ONLY (a country row's `name` is the
+				// country, not a city — city=<country> matches zero players).
+				players = await fetchRoster(region.cc, level !== 'country' ? region.name : undefined);
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'error';
 		} finally {

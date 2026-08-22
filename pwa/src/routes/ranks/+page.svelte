@@ -80,6 +80,35 @@
 	}
 	const regionList = $derived(regions.regions);
 	const regionCold = $derived(regions.loading && regionList.length === 0);
+	// Aggregate the city ladder into ONE ROW PER MAJOR REGION (e.g. SoCal) — the region is the row; its
+	// cities' players/wins are summed into it (drill in to see all its users). Client-side off each city's
+	// `region` tag (the server returns city rows only). Largest region by total wins first.
+	type RegionAgg = Region & { cities: Region[] };
+	const regionAgg = $derived.by((): RegionAgg[] => {
+		const map = new Map<string, RegionAgg>();
+		for (const c of regionList) {
+			const rname = (c.region || c.country || 'Other').trim();
+			const key = `${rname}|${c.cc ?? ''}`;
+			let g = map.get(key);
+			if (!g) {
+				g = { name: rname, cc: c.cc, country: c.country, players: 0, wins: 0, losses: 0, games: 0, avg_rating: 0, cities: [] };
+				map.set(key, g);
+			}
+			g.cities.push(c);
+			g.players = (g.players ?? 0) + (c.players ?? 0);
+			g.wins = (g.wins ?? 0) + (c.wins ?? 0);
+			g.losses = (g.losses ?? 0) + (c.losses ?? 0);
+			g.games = (g.games ?? 0) + (c.games ?? 0);
+			if (!g.top || (c.top?.wins ?? 0) > (g.top.wins ?? 0)) g.top = c.top; // region's winningest player
+		}
+		for (const g of map.values()) {
+			const totP = g.cities.reduce((s, c) => s + (c.players ?? 0), 0) || 1;
+			g.avg_rating = Math.round(g.cities.reduce((s, c) => s + (c.avg_rating ?? 0) * (c.players ?? 0), 0) / totP);
+			const n = g.cities.length;
+			g.region = `${n} ${n === 1 ? 'city' : 'cities'}`; // → row sub: "4 cities · United States"
+		}
+		return [...map.values()].sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0));
+	});
 	let openRegion = $state<Region | null>(null); // region drill-in (players + stats) modal
 	let openTier = $state<string | null>(null); // rank-info modal — the focused tier slug (null = closed)
 	// Masthead adapts to the active mode (green REGIONS/REPRESENT vs the stat masthead).
@@ -185,7 +214,7 @@
 				<span class="r col-top">Top player</span>
 			</div>
 			<div class="rbd-body">
-				{#each regionList as rg, i (rg.name + '|' + (rg.region ?? '') + '|' + (rg.cc ?? ''))}
+				{#each regionAgg as rg, i (rg.name + '|' + (rg.cc ?? ''))}
 					<RegionRow region={rg} pos={i + 1} onOpen={(r) => (openRegion = r)} />
 				{/each}
 			</div>
