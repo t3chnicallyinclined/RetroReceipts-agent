@@ -184,6 +184,14 @@ Milestones gate on exit criteria, not dates. Order respects dependencies; WS5 ca
 - **M4 — Community SDK.** WS7 published. *Exit: first external cartridge PR merged green.*
 - **M5 — Fleet expansion.** WS8: MVCFC 5-pack + CFC1 live; ≥3 games at `certified`. *Exit: money matches run in a second game.*
 
+### Non-goals (decided, not open)
+
+**Skins / cosmetics are not part of the multi-game roadmap.** No new game gets a skins feature — not at M1, not at M5, not ever as a cartridge capability. The MvC2 painter is legacy from the product's skin-suite era and is itself a deprecation candidate (§1.3); it is the exception being retired, not the pattern being extended.
+
+This is stated as a non-goal because the opposite case is easy to make and will be made: palette and skin tooling *is* publicly documented for several roadmap targets (Vampire Savior palette data in the CPS2 maps, MBAACC palette editors, and ACPR_IM already shares palettes between +R players online). Availability is not the constraint. The constraints are that RR is a tracker — ranks, receipts, H2H, money matches — and that a read-only agent is a materially better product: a simpler promise to users ("we only read your game, we never write to it"), a simpler contract for community cartridges, and no possibility of our writes being read as tampering by any publisher. Adding a writer back for one game forfeits all three for every game.
+
+If cosmetics ever return as a product idea, they come back as a **separate first-party application** with its own threat model — never as a capability the cartridge runtime grants.
+
 ---
 
 ## 7. Open questions (for reviewers)
