@@ -60,18 +60,21 @@ agent-latest*.json
 **/test-atlas/
 **/skins/**/*.png
 
-# ── Internal / reverse-engineering docs — keep OUT of the public client repo ──
+# ── Internal-only docs (private) ──
+# NOTE: community RE docs STAY PUBLIC (owner decision 2026-08-22): STEAM-CODE-MAP.md,
+# STEAM-RE-NOTES.md, MVC-NETPLAY-HANDSHAKE-PROTOCOL.md are intentionally tracked for the community.
+# Only the genuinely-internal docs below are excluded (mirrors the old mvc2-metasync rules).
 CLAUDE.md
 .claude/
 **/*-EXPERT*.md
 **/*-HANDOVER*.md
 **/*-CONTEXT*.md
-docs/STEAM-*.md
-docs/*-RE-*.md
-docs/*RE-NOTES*.md
-docs/*STRUCT-MAP*.md
-docs/*NETPLAY*.md
-docs/*BOOT-RE*.md
+docs/MVC2-STEAM-EXPERT.md
+docs/STEAM-FIGHTER-STRUCT-MAP.md
+docs/TRAINING-DATA-WISHLIST.md
+docs/COLLECTION-BOOT-RE-HANDOVER.md
+docs/KOM-SURREALDB-UNIFICATION.md
+docs/BETA-READINESS.md
 
 # ── OS ──
 .DS_Store
