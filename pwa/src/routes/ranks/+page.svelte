@@ -98,7 +98,7 @@
 	const myTier = $derived(auth.me ? rankOf(auth.me.rating ?? 0, myGames) : null);
 </script>
 
-<svelte:head><title>Ranks · MetaSync</title></svelte:head>
+<svelte:head><title>Ranks · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (adapts for the Regions board mode) -->
 <section class="mast" style="--acc:{heroAcc}">

@@ -359,7 +359,7 @@
 	}
 </script>
 
-<svelte:head><title>Manage · {doc?.name || 'Tournament'} · MetaSync</title></svelte:head>
+<svelte:head><title>Manage · {doc?.name || 'Tournament'} · Retro Receipts</title></svelte:head>
 
 <section class="mast" style="--acc:#8b6dff">
 	<div class="ghost" aria-hidden="true">COMMAND</div>

@@ -28,7 +28,7 @@
 	const cold = $derived(tournaments.loading && list.length === 0);
 </script>
 
-<svelte:head><title>Tournaments · MetaSync</title></svelte:head>
+<svelte:head><title>Tournaments · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions) -->
 <section class="mast" style="--acc:#8b6dff">

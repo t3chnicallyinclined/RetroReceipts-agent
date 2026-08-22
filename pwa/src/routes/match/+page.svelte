@@ -142,7 +142,7 @@
 	const coldLoad = $derived(matchfeed.loading && results.length === 0);
 </script>
 
-<svelte:head><title>Match · MetaSync</title></svelte:head>
+<svelte:head><title>Match · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions) -->
 <section class="mast" style="--acc:var(--live)">

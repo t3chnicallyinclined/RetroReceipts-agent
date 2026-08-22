@@ -24,7 +24,7 @@
 	const inMatch = $derived(list.filter((h) => hostStatus(h) === 'match').length);
 </script>
 
-<svelte:head><title>Fleet · MetaSync</title></svelte:head>
+<svelte:head><title>Fleet · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions · /match) -->
 <section class="mast" style="--acc:var(--p2)">

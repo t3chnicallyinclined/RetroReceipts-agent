@@ -27,7 +27,7 @@
 		s.split(',').map((x) => Number(x)).filter((n) => Number.isFinite(n));
 </script>
 
-<svelte:head><title>Tier List · MetaSync</title></svelte:head>
+<svelte:head><title>Tier List · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions) -->
 <section class="mast" style="--acc:#b98cff">

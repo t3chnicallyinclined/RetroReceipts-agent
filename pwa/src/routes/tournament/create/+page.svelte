@@ -333,7 +333,7 @@
 	);
 </script>
 
-<svelte:head><title>{isEdit ? 'Edit' : 'Create'} tournament · MetaSync</title></svelte:head>
+<svelte:head><title>{isEdit ? 'Edit' : 'Create'} tournament · Retro Receipts</title></svelte:head>
 
 <section class="mast" style="--acc:#8b6dff">
 	<div class="ghost" aria-hidden="true">ORGANIZE</div>
@@ -513,7 +513,7 @@
 					{/each}
 				</div>
 				<div class="micro">
-					🪙 Quarters are MetaSync <b>play money</b> — everyone starts with a stack, nothing to buy or cash
+					🪙 Quarters are Retro Receipts <b>play money</b> — everyone starts with a stack, nothing to buy or cash
 					out. Entrants stake at registration; <b>the champion takes the pot</b>. Drops and no-shows are refunded.
 				</div>
 			</div>

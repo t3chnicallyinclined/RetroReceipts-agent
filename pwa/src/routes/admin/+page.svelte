@@ -153,7 +153,7 @@
 	const online = $derived(stats?.online_players ?? []);
 </script>
 
-<svelte:head><title>Admin · MetaSync</title></svelte:head>
+<svelte:head><title>Admin · Retro Receipts</title></svelte:head>
 
 <section class="mast">
 	<div class="mrow">

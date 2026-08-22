@@ -20,8 +20,8 @@ export default defineConfig({
 			scope: SCOPE,
 			base: SCOPE,
 			manifest: {
-				name: 'MvC MetaSync',
-				short_name: 'MetaSync',
+				name: 'Retro Receipts',
+				short_name: 'RR',
 				description: 'Marvel vs Capcom 2 — live ranks, tournaments & stats.',
 				theme_color: '#0a0c12',
 				id: SCOPE,

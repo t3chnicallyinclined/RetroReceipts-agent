@@ -94,7 +94,7 @@
 	const ledgerLabel = (kind?: string) => LEDGER_LABEL[kind ?? ''] ?? (kind || 'Adjustment');
 </script>
 
-<svelte:head><title>Settings · MetaSync</title></svelte:head>
+<svelte:head><title>Settings · Retro Receipts</title></svelte:head>
 
 <section class="mast">
 	<h1 class="mtitle">SETTINGS</h1>
@@ -254,7 +254,7 @@
 <!-- About -->
 <div class="rail sec-hd">About</div>
 <div class="card about">
-	<span>MvC MetaSync — live ranks, tournaments &amp; stats for Marvel vs Capcom 2.</span>
+	<span>Retro Receipts — live ranks, tournaments &amp; stats for Marvel vs Capcom 2.</span>
 	<button class="verbtn" onclick={() => (showChangelog = true)} title="View changelog">
 		<span class="ver">v{APP_VERSION}</span>
 		<span class="whatsnew">What’s new</span>

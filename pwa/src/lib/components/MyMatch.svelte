@@ -189,7 +189,7 @@
 				<div class="who scan">
 					<div class="sidetag">Opponent</div>
 					<div class="nm scanning">scanning…</div>
-					<div class="rec first">{agentReported ? 'looking for opponent' : 'start MetaSync to sync your match'}</div>
+					<div class="rec first">{agentReported ? 'looking for opponent' : 'start Retro Receipts to sync your match'}</div>
 				</div>
 				<div class="scanbox" aria-hidden="true"></div>
 			{/if}
@@ -234,7 +234,7 @@
 		<div class="ghostvs" aria-hidden="true">VS</div>
 		<div class="out-msg">
 			<div class="out-h">See your live match here</div>
-			<div class="out-p">Sign in with Steam and run the MetaSync agent — your VS card, live set score, and opponent show up the moment you're in a match.</div>
+			<div class="out-p">Sign in with Steam and run the Retro Receipts agent — your VS card, live set score, and opponent show up the moment you're in a match.</div>
 			<a class="out-cta" href="{base}/settings">Sign in</a>
 		</div>
 	</section>

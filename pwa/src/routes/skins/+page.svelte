@@ -102,7 +102,7 @@
 	}
 </script>
 
-<svelte:head><title>Skins · MetaSync</title></svelte:head>
+<svelte:head><title>Skins · Retro Receipts</title></svelte:head>
 
 <section class="mast" style="--acc:#8b6dff">
 	<div class="ghost" aria-hidden="true">SKINS</div>

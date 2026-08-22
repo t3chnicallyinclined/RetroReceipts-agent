@@ -212,7 +212,7 @@
 	}
 </script>
 
-<svelte:head><title>{title} · MetaSync</title></svelte:head>
+<svelte:head><title>{title} · Retro Receipts</title></svelte:head>
 
 {#snippet seat(sid: string | null | undefined, from: string | undefined, bye: boolean | undefined, win: boolean)}
 	<div class="seat" class:win>

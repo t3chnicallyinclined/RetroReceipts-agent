@@ -30,7 +30,7 @@
 		<a
 			class="agent update"
 			href="{base}/settings"
-			title="A newer agent (v{st?.latest}) is available — open the MetaSync tray icon → Check for updates"
+			title="A newer agent (v{st?.latest}) is available — open the Retro Receipts tray icon → Check for updates"
 		>
 			<span class="hex" aria-hidden="true">⬢</span>
 			<span class="v"><span class="word">Update </span>v{st?.ver} → v{st?.latest}</span>

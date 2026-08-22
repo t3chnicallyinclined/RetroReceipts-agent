@@ -136,7 +136,7 @@
 	let openSession = $state<string | null>(null);
 </script>
 
-<svelte:head><title>{title} · MetaSync</title></svelte:head>
+<svelte:head><title>{title} · Retro Receipts</title></svelte:head>
 
 {#if cold}
 	<div class="empty">LOADING…</div>

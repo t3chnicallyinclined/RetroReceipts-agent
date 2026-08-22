@@ -2,7 +2,7 @@
 	let { title, blurb }: { title: string; blurb: string } = $props();
 </script>
 
-<svelte:head><title>{title} · MetaSync</title></svelte:head>
+<svelte:head><title>{title} · Retro Receipts</title></svelte:head>
 
 <section class="cs">
 	<span class="rail">{title}</span>

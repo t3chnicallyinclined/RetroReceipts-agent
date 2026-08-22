@@ -3,6 +3,7 @@
 	import { regions, type Region, type RegionLevel, type RegionSort } from '$lib/stores/regions.svelte';
 	import RegionRow from '$lib/components/RegionRow.svelte';
 	import RegionModal from '$lib/components/RegionModal.svelte';
+	import Flag from '$lib/components/Flag.svelte';
 
 	onMount(() => {
 		void regions.load();
@@ -38,10 +39,44 @@
 			`. Play ${regions.minGames} games to put your ${place} on the map.`
 	);
 
+	// City board grouped by MAJOR region (e.g. SoCal) with its cities nested — larger regions (by total
+	// wins) first. Country level stays flat (each row is already a country). Grouping is client-side: the
+	// server already tags each city with its `region`. Cities keep the server's order within a group, and
+	// each keeps its GLOBAL rank so overall standing is still visible.
+	interface RegionGroup {
+		key: string;
+		region: string;
+		cc?: string;
+		country?: string;
+		cities: Region[];
+		wins: number;
+		losses: number;
+		players: number;
+	}
+	const grouped = $derived.by((): RegionGroup[] => {
+		if (level !== 'city') return [];
+		const map = new Map<string, RegionGroup>();
+		for (const c of list) {
+			const region = (c.region || c.country || 'Other').trim();
+			const key = `${region}|${c.cc ?? ''}`;
+			let g = map.get(key);
+			if (!g) {
+				g = { key, region, cc: c.cc, country: c.country, cities: [], wins: 0, losses: 0, players: 0 };
+				map.set(key, g);
+			}
+			g.cities.push(c);
+			g.wins += c.wins ?? 0;
+			g.losses += c.losses ?? 0;
+			g.players += c.players ?? 0;
+		}
+		return [...map.values()].sort((a, b) => b.wins - a.wins);
+	});
+	const rankOf = (r: Region) => list.indexOf(r) + 1; // GLOBAL rank (position in the server-sorted list)
+
 	let openRegion = $state<Region | null>(null); // region drill-in (players roster) modal
 </script>
 
-<svelte:head><title>Regions · MetaSync</title></svelte:head>
+<svelte:head><title>Regions · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks) -->
 <section class="mast" style="--acc:#34d39a">
@@ -96,9 +131,39 @@
 			<span class="r col-top">Top player</span>
 		</div>
 		<div class="bd-body">
-			{#each list as rg, i (rg.name + '|' + (rg.region ?? '') + '|' + (rg.cc ?? ''))}
-				<RegionRow region={rg} pos={i + 1} {level} onOpen={(r) => (openRegion = r)} />
-			{/each}
+			{#if level === 'country'}
+				{#each list as rg, i (rg.name + '|' + (rg.cc ?? ''))}
+					<RegionRow region={rg} pos={i + 1} {level} onOpen={(r) => (openRegion = r)} />
+				{/each}
+			{:else}
+				{#each grouped as g (g.key)}
+					<section class="rgroup">
+						<header class="rhead">
+							<Flag cc={g.cc} title={g.country} w={22} />
+							<div class="rh-id">
+								<b>{g.region}</b>
+								<span
+									>{g.cities.length} {g.cities.length === 1 ? 'city' : 'cities'} · {g.players}
+									{g.players === 1 ? 'player' : 'players'}</span
+								>
+							</div>
+							<span class="rh-rec">{g.wins}<i>–</i>{g.losses}</span>
+						</header>
+						<div class="rcities">
+							{#each g.cities as rg (rg.name + '|' + (rg.cc ?? ''))}
+								<RegionRow
+									region={rg}
+									pos={rankOf(rg)}
+									{level}
+									hideFlag
+									hideRegion
+									onOpen={(r) => (openRegion = r)}
+								/>
+							{/each}
+						</div>
+					</section>
+				{/each}
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -268,6 +333,65 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 	}
+
+	/* Region grouping (city level): a major-region header band, cities nested beneath it. */
+	.rgroup {
+		border-bottom: 1px solid var(--line);
+	}
+	.rgroup:last-child {
+		border-bottom: none;
+	}
+	.rhead {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 9px 14px;
+		background: color-mix(in srgb, var(--panel-2) 70%, transparent);
+		border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+	}
+	.rh-id {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+		flex: 1 1 auto;
+	}
+	.rh-id b {
+		font-size: 13px;
+		font-weight: 900;
+		font-style: italic;
+		letter-spacing: 0.01em;
+		text-transform: uppercase;
+		color: var(--ink);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.rh-id span {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--faint);
+	}
+	.rh-rec {
+		flex: none;
+		font-size: 12px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		color: var(--dim);
+	}
+	.rh-rec i {
+		font-style: normal;
+		color: var(--faint);
+		margin: 0 1px;
+	}
+	/* Nested city rows: a subtle left rule (the page's green accent) signals they belong to the region above. */
+	.rcities {
+		margin-left: 14px;
+		border-left: 2px solid color-mix(in srgb, #34d39a 45%, transparent);
+	}
+
 	@media (max-width: 560px) {
 		.bd-head .col-top {
 			display: none;

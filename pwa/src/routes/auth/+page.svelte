@@ -13,7 +13,7 @@
 	});
 </script>
 
-<svelte:head><title>Signing in · MetaSync</title></svelte:head>
+<svelte:head><title>Signing in · Retro Receipts</title></svelte:head>
 
 <div class="wrap">
 	<span class="spin" aria-hidden="true"></span>
