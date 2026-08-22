@@ -83,6 +83,9 @@ mod bundled {
     pub const ACT_SHOT_SH: &str = include_str!("../../host-node/arcade-host/act_shot.sh");
     pub const HOSTD_SERVICE: &str = include_str!("../../host-node/arcade-host/arcade-hostd.service");
     pub const SETUP_PROXY_SH: &str = include_str!("../../host-node/injector/setup_proxy.sh");
+    // Only embed the dll when build.rs actually staged a real one — its sole use (in ensure_materialized)
+    // is behind the same cfg, so gating the const keeps a dev build (no dll) warning-clean.
+    #[cfg(injector_bundled)]
     pub const VERSION_DLL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/version.dll"));
     /// Written next to the installed scripts so an agent upgrade re-materializes them. The `+inj` suffix
     /// (present only when a real dll is embedded) makes a dev→release upgrade also refresh the dll.
