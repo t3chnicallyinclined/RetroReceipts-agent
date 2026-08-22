@@ -31,6 +31,10 @@ export interface Host {
 	steam_ping_ms?: number;
 	/** Total matches this node has refereed (lifetime), for the fleet's per-node telemetry line. */
 	matches_hosted?: number;
+	/** Money (quarter-match) matches this node has refereed (lifetime); server-added (absent until then). */
+	money_hosted?: number;
+	/** 🪙 quarters this node has earned as host (lifetime house fees); server-added (absent until then). */
+	earned?: number;
 	// --- lobby settings the node CREATES its lobbies with (the cabinet's rules; shown on the card) ---
 	/** Victory Condition target ("First to N"); 0/absent = unknown. */
 	ft?: number;

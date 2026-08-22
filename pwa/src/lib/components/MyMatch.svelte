@@ -11,6 +11,7 @@
 	import Avatar from './Avatar.svelte';
 	import CharSprite from './CharSprite.svelte';
 	import { agent } from '$lib/stores/agent.svelte';
+	import { hosts } from '$lib/stores/hosts.svelte';
 
 	// THE live "versus" scoreboard — the signed-in user's CURRENT match, ported from the Tauri app's
 	// #link plate scoreboard + #matchupStrip. Renders NOTHING unless you're signed in AND in a live match
@@ -29,6 +30,9 @@
 	}
 
 	const me = $derived(auth.steamid);
+	// You're an online host node → you REFEREE (spectate), you don't play. Suppress the player VS card entirely
+	// (the cabinet banner above is your surface). Reads the shared fleet poll HostBanner already drives on /match.
+	const isHost = $derived(!!me && !!hosts.byId(me));
 	// The live now-playing row that includes me (network feed → live wins/ratings/join_link). Undefined = idle.
 	const mine = $derived(me ? matchfeed.nowPlaying.find((p) => p.a === me || p.b === me) : undefined);
 	const oppId = $derived(mine ? (mine.a === me ? mine.b : mine.a) : '');
@@ -132,7 +136,10 @@
 	</div>
 {/snippet}
 
-{#if me}
+{#if isHost}
+	<!-- You're hosting this machine — the cabinet banner above is your surface. A host referees (spectates),
+	     so there's no player VS card here. -->
+{:else if me}
 	<section class="mm" class:idle={!inMatch} aria-label="Your current match">
 		<div class="ghostvs" aria-hidden="true">VS</div>
 

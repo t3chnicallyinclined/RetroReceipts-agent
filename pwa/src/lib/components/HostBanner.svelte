@@ -81,11 +81,21 @@
 			{/if}
 		</p>
 
+		{#if self}
+			<!-- operator contribution — how much this cabinet has done + earned (money_hosted/earned fill in
+			     once the server surfaces them; matches_hosted is live today). -->
+			<div class="stats">
+				<span class="st"><b>{host.matches_hosted ?? 0}</b> hosted</span>
+				{#if host.money_hosted != null}<span class="st">🪙 <b>{host.money_hosted}</b> money matches</span>{/if}
+				{#if host.earned != null}<span class="st">🪙 <b>{host.earned}</b> earned</span>{/if}
+			</div>
+		{/if}
+
 		<div class="chips">
 			{#if host.region}<span class="c">{host.region}</span>{/if}
 			{#if showPing}<span class="c ping {pingCls}">{ping}ms</span>{/if}
 			{#if ftLabel}<span class="c">{ftLabel}</span>{/if}
-			{#if host.matches_hosted != null}<span class="c"><b>{host.matches_hosted}</b> refereed</span>{/if}
+			{#if !self && host.matches_hosted != null}<span class="c"><b>{host.matches_hosted}</b> refereed</span>{/if}
 			{#if ago}<span class="c dim">{ago} ago</span>{/if}
 		</div>
 
@@ -189,6 +199,20 @@
 	}
 	.chips .ping.bad {
 		color: var(--loss);
+	}
+	.stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 16px;
+		font-size: 12px;
+		color: var(--dim);
+		font-variant-numeric: tabular-nums;
+	}
+	.stats .st b {
+		font-size: 15px;
+		font-weight: 900;
+		color: var(--ink);
+		margin-right: 3px;
 	}
 	.warn {
 		margin: 0;
