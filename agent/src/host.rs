@@ -244,8 +244,10 @@ pub fn host_disable() {
 }
 
 /// Query the daemon's state. Linux: returns `installed=false` when the script is absent; otherwise runs
-/// `status` and parses it loosely — enabled/active/ok:true means hosting, guarding against systemd's
-/// "inactive"/"disabled" (which contain "active"/"abled"). Non-Linux: `supported=false`.
+/// `status` and reads the `hosting: enabled=<> active=<>` systemd line ONLY — `enabled=enabled` = hosting
+/// (the persistent intent the toggle reflects; a host mid-restart stays ON). The `lobby: {json}` line is
+/// deliberately ignored: its `"ok":true` can persist from a stale `.result` and would false-light HOST
+/// MODE on a box that isn't hosting. Non-Linux: `supported=false`.
 pub fn host_status() -> HostStatus {
     #[cfg(target_os = "linux")]
     {
