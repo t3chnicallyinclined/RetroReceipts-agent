@@ -14,6 +14,7 @@
 	import TeamBars from '$lib/components/TeamBars.svelte';
 	import H2HGrid from '$lib/components/H2HGrid.svelte';
 	import MoneyH2H from '$lib/components/MoneyH2H.svelte';
+	import HostBanner from '$lib/components/HostBanner.svelte';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
 	import Flag from '$lib/components/Flag.svelte';
@@ -172,6 +173,9 @@
 	{/if}
 
 	<RankProgress rating={rating} games={gp} pa={acc[0]} />
+
+	<!-- 🎛 Cabinet status — shows only when this player runs an online host node (self-hides otherwise). -->
+	<HostBanner steamid={sid} self={auth.authed && auth.steamid === sid} />
 
 	{#if canChallenge}
 		<div class="challenge">

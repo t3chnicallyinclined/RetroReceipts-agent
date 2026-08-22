@@ -44,6 +44,36 @@ export interface Host {
 	game?: string;
 	/** short friendly join code shown in-lobby (e.g. "DST6FU"); "" if the node can't read it. */
 	lobby_code?: string;
+
+	// --- assignment enrichment (server adds these when the cabinet is bound to a match; all absent = idle/open).
+	//     One slot at a time today (queue = future multi-assign). The banner reads them defensively — until the
+	//     server ships the enrichment these stay undefined and the banner falls back to the lobby status. ---
+	/** raw assignment slot: "mm:<id>" | "t:<tid>#<mid>" | "" — the mode discriminator. */
+	assigned_match?: string;
+	/** money-match assignment (cabinet bound to a wager). */
+	wager?: {
+		id: string;
+		status?: string; // open | locked
+		stake?: number;
+		pot?: number;
+		ft?: number;
+		challenger?: { name?: string; steamid?: string };
+		acceptor?: { name?: string; steamid?: string } | null;
+		cw?: number;
+		aw?: number;
+	};
+	/** tournament-match assignment (cabinet bound to a bracket match). */
+	tourney?: {
+		tid?: string;
+		name?: string;
+		match_id?: string;
+		round?: string;
+		A?: { name?: string; steamid?: string };
+		B?: { name?: string; steamid?: string };
+		best_of?: number;
+		score?: string;
+		status?: string;
+	};
 }
 
 interface HostsResponse {
@@ -90,6 +120,13 @@ export class HostsStore {
 
 	#reqId = 0;
 	#timer: ReturnType<typeof setInterval> | null = null;
+	#refs = 0; // refcounted so /hosts + /match + /u can each drive the poll independently
+
+	/** The online host row for a steamid, or null (used by the cabinet-status banner on /match + /u). */
+	byId(steamid: string | null | undefined): Host | null {
+		const sid = String(steamid || '');
+		return sid ? (this.hosts.find((h) => h.steamid === sid) ?? null) : null;
+	}
 
 	async load(): Promise<void> {
 		const myReq = ++this.#reqId;
@@ -113,17 +150,20 @@ export class HostsStore {
 		}
 	}
 
-	/** Begin polling (immediate load + every 6s). Idempotent — safe to call again on tab resume. */
+	/** Begin polling (immediate load + every 6s). Refcounted — safe for multiple consumers (/hosts, /match,
+	 *  /u) to each start/stop; the poll runs while at least one is active. */
 	start(): void {
+		this.#refs++;
 		void this.load();
 		if (this.#timer == null && typeof window !== 'undefined') {
 			this.#timer = setInterval(() => void this.load(), POLL_MS);
 		}
 	}
 
-	/** Stop polling (tab hidden / route left). Keeps the last-good list in place. */
+	/** Release one consumer. The poll stops only when the last one leaves; keeps the last-good list. */
 	stop(): void {
-		if (this.#timer != null) {
+		this.#refs = Math.max(0, this.#refs - 1);
+		if (this.#refs === 0 && this.#timer != null) {
 			clearInterval(this.#timer);
 			this.#timer = null;
 		}

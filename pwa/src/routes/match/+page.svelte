@@ -10,6 +10,7 @@
 	import Marquee from '$lib/components/Marquee.svelte';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
+	import HostBanner from '$lib/components/HostBanner.svelte';
 
 	// Live match center + 🪙 quarter-match surfaces — all push off the app-wide `matches` SSE channel (a
 	// mode-scoped seed fetch backs Live Results; a seed fetch for the wager rail/marquee). onMount opens the
@@ -157,6 +158,9 @@
 
 <!-- Result Check honest-beta banner — the reserved amber surface (DESIGN §gold budget) -->
 <ResultCheckBanner />
+
+<!-- 🎛 Your cabinet — shows only when the signed-in viewer is an online host node (self-hides otherwise). -->
+{#if me}<HostBanner steamid={me} self />{/if}
 
 <!-- 🪙 one-tap accept funnel — arrived via a share link (?mm=). The hero accept target: challenger + pot +
      a single Accept button (Steam sign-in only, no app download). Never shows a join/lobby link. -->
