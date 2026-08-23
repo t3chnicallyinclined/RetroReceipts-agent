@@ -3,7 +3,8 @@
 // hydration crash, undefined access) is caught before it ever reaches an environment. That is the exact
 // class of bug that took prod down once; this script exists so it can't again.
 //
-//   node scripts/release-app.mjs staging   # → nobd.net/app-staging   (I push here; you test)
+//   node scripts/release-app.mjs preview   # → build + gate + serve LOCALLY, deploy nothing
+//   node scripts/release-app.mjs staging   # → nobd.net/app-staging   (SHARED SLOT — coordinate first)
 //   node scripts/release-app.mjs prod       # → nobd.net/app           (promote once staging looks right)
 //
 // staging and prod are built from the SAME working tree; they differ only in BASE_PATH (asset-url prefix +
@@ -26,6 +27,11 @@ function run(cmd, args, extraEnv) {
 }
 
 const ENVS = {
+	// `preview` deploys NOWHERE — it builds, runs the gate, and holds the local server open so a human (or a
+	// headless screenshot) can look at the real built app. Added because /app-staging is a SINGLE shared slot
+	// on a shared box: a `staging` run from one checkout silently overwrites another session's staging build.
+	// Visual review never actually needed the shared slot — the gate already serves the build in-process.
+	preview: { base: '/app', dir: null, hold: true, port: 4189 },
 	staging: { base: '/app-staging', dir: '/var/www/metasync-app/app-staging' },
 	prod: { base: '/app', dir: '/var/www/metasync-app/app' }
 };
@@ -98,7 +104,10 @@ const server = http.createServer(async (req, res) => {
 		res.end('err');
 	}
 });
-const PORT = 4188;
+// Port is per-target on purpose: two release runs from DIFFERENT checkouts (e.g. another session pushing
+// staging while you preview) both bind this, and the second dies with EADDRINUSE mid-build. `preview`
+// therefore gets its own port so a local look never contends with somebody's real deploy.
+const PORT = cfg.port ?? 4188;
 await new Promise((r) => server.listen(PORT, r));
 const url = `http://localhost:${PORT}${base}/`;
 console.log(`▶ serving build at ${url}`);
@@ -113,6 +122,16 @@ const outURLs = ['', 'match', 'ranks', 'hosts', 'tournament', 'r/nope', 'r/sessi
 const inURLs = ['', 'match', 'ranks', 'hosts', 'settings', 'tournament', 'tournament/create', 'tournament/0/manage', 'u/76561197960287930', 'r/nope', 'r/session/76561197960287930'].map((p) => url + p);
 const codeOut = await run('node', ['scripts/render-check.mjs', ...outURLs]);
 const codeIn = await run('node', ['scripts/render-check.mjs', ...inURLs], { SIGNED_IN: '1' });
+if (cfg.hold) {
+	// preview: keep serving so the build can be inspected; nothing is deployed. Ctrl-C to stop.
+	const verdict = codeOut === 0 && codeIn === 0 ? '✅ render-check passed' : '✗ render-check FAILED (see above)';
+	console.log(`
+${verdict}
+
+▶ PREVIEW ONLY — nothing deployed. Browse: ${url}
+  (Ctrl-C to stop the server.)`);
+	await new Promise(() => {}); // hold forever
+}
 server.close();
 if (codeOut !== 0 || codeIn !== 0) {
 	console.error('\n✗ RENDER-CHECK FAILED — NOT deploying. Fix the errors above and re-run.');
