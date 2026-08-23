@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import Avatar from './Avatar.svelte';
+	import QuarterUpModal from './QuarterUpModal.svelte';
 	import { timeAgo } from '$lib/format';
 	import { hostStatus, type Host, type HostStatus } from '$lib/stores/hosts.svelte';
 
@@ -26,6 +27,10 @@
 	// can a challenger put a quarter up here? — the cabinet is hosting with a free player seat, not mid-match.
 	const canPlay = $derived((status === 'available' || status === 'standby') && players < playerSeats);
 	const ago = $derived(timeAgo(host.last_seen_ms));
+
+	// 🪙 the money-match offer modal (open marquee call OR a directed challenge) — opened from the CTA below
+	// instead of bouncing to /match. Rendered per-card but inert until opened.
+	let qopen = $state(false);
 
 	// Per-node telemetry (all optional; a node with no report yet degrades to nothing shown).
 	//   • ping chip hides on unknown (-1/absent); colour thresholds: <60 green, <150 amber, else red.
@@ -102,15 +107,26 @@
 	{/if}
 
 	{#if canPlay}
-		<a class="join" href="{base}/match" title="Put a quarter up — start a money match on this cabinet">
+		<button
+			type="button"
+			class="join"
+			onclick={() => (qopen = true)}
+			title="Put a quarter up — set the stake and who takes it"
+		>
 			<span class="coin" aria-hidden="true">🪙</span><span>Put a quarter up</span>
-		</a>
+		</button>
 	{:else}
 		<span class="join off" aria-hidden="true">
 			{status === 'match' ? '⚔ Match in progress' : status === 'idle' ? 'Cabinet starting up…' : 'Cabinet full'}
 		</span>
 	{/if}
 </article>
+
+<QuarterUpModal
+	bind:open={qopen}
+	host={{ name: host.name, steamid: host.steamid }}
+	returnTo="{base}/hosts"
+/>
 
 <style>
 	.host {
@@ -313,11 +329,14 @@
 	}
 
 	.join {
-		display: inline-flex;
+		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
+		width: 100%;
+		box-sizing: border-box;
 		text-decoration: none;
+		font: inherit;
 		font-size: 12px;
 		font-weight: 800;
 		letter-spacing: 0.02em;
@@ -326,6 +345,7 @@
 		border: 1px solid transparent;
 		border-radius: 999px;
 		padding: 8px 14px;
+		cursor: pointer;
 	}
 	.join .coin {
 		font-size: 12px;

@@ -132,6 +132,7 @@
 		for (const r of REGIONS) counts.set(r.key, { count: 0, match: false });
 		const pins: Pin[] = [];
 		let locating = 0;
+		const locatingHosts: Host[] = []; // un-placeable nodes → shown in the tray so nothing is invisible
 
 		for (const h of list) {
 			const g = h as GeoHost;
@@ -174,6 +175,7 @@
 			} else {
 				// (e) no geo, no known country, no recognizable region text → can't be placed yet.
 				locating += 1;
+				locatingHosts.push(h);
 			}
 		}
 
@@ -183,7 +185,7 @@
 		});
 		const activeRegions = regions.reduce((n, r) => n + (r.count > 0 ? 1 : 0), 0);
 
-		return { total: list.length, activeRegions, locating, regions, pins };
+		return { total: list.length, activeRegions, locating, regions, pins, locatingHosts };
 	});
 
 	const ariaLabel = $derived(
@@ -312,6 +314,22 @@
 				<text class="emptymsg" x="180" y="96" text-anchor="middle">No arcades online right now.</text>
 			{/if}
 		</svg>
+
+		{#if model.locatingHosts.length}
+			<!-- un-geo'd cabinets: visible here (not silently dropped) until the server resolves their host
+			     location by IP — then they pin onto the map above. -->
+			<div
+				class="locating-tray"
+				title="Awaiting location — these arcades pin onto the map once their host's location is known (by IP)."
+			>
+				<span class="lt-lbl"><span class="lt-dot" aria-hidden="true"></span> Locating</span>
+				<div class="lt-chips">
+					{#each model.locatingHosts as h (h.steamid)}
+						<span class="lt-chip" class:hot={hostStatus(h) === 'match'}>{h.name}</span>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 </figure>
 
@@ -503,6 +521,60 @@
 		paint-order: stroke fill;
 		stroke: var(--bg);
 		stroke-width: 1;
+	}
+
+	/* "Locating" tray — the holding pen for cabinets we can't place yet (no geo). Kept inside the map panel
+	   so they read as part of the map surface, not hidden away; each pins above the moment geo lands. */
+	.locating-tray {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px 10px;
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px dashed var(--line);
+	}
+	.lt-lbl {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex: none;
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--faint);
+	}
+	.lt-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--gold);
+		box-shadow: 0 0 6px color-mix(in srgb, var(--gold) 70%, transparent);
+	}
+	.lt-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.lt-chip {
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--dim);
+		background: var(--panel-2);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 3px 9px;
+		white-space: nowrap;
+	}
+	.lt-chip.hot {
+		color: var(--hot);
+		border-color: color-mix(in srgb, var(--hot) 45%, var(--line));
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.lt-dot {
+			animation: rr-breathe 1.9s ease-in-out infinite;
+		}
 	}
 
 	/* Motion only when the viewer allows it — a gentle breathe on live nodes, a stronger pulse for matches. */
