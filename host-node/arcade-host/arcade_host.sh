@@ -56,11 +56,25 @@ set_options(){ local tgt=${1:-3}; _load_state
   FT=$tgt; _save_state
 }
 
+# Arm the injector for a 3-SEAT money-host lobby (host-as-spectator + 2 players) BEFORE CreateLobby fires.
+# Without this the game's native create yields a dormant 2-seat lobby ("1 of 2 players") and a hosted 1v1
+# wager can never fill. probe_cl arms the CreateLobby hook (cMaxMembers 2->3 rewrite); register_lc arms the
+# LobbyCreated listener (SlotPublicMax=3 / SlotPublicOpen=2 mirror); set_lobby_max 3 sets the value. The host
+# takes a PUBLIC seat (verified on the Beelink: eLobbyType=2, SlotPrivateMax=0 -> 3 public = host + 2 open).
+# Out-of-band via the injector cmd channel — does NOT move the menu cursor, so it's safe between set_options
+# and the CREATE tap. Requires the armed injector dll (862f44f+) on the box.
+arm_3seat(){
+  printf 'probe_cl'        > "$GD/nobd_arcade.cmd"; sleep 0.2
+  printf 'register_lc'     > "$GD/nobd_arcade.cmd"; sleep 0.2
+  printf 'set_lobby_max 3' > "$GD/nobd_arcade.cmd"; sleep 0.2
+}
+
 # create from the ANCHOR (Online Play w/ Custom Match selected): -> popup -> settings -> set -> CREATE.
 do_create(){ local ft=${1:-3}
   tap $ENTER; sleep 0.7                        # anchor(Custom Match) -> popup (Create Lobby top)
   tap $ENTER; sleep 0.7                        # popup -> Create Lobby settings (Game top)
   set_options "$ft"                            # English + one-button OFF + Victory=First-to-ft
+  arm_3seat                                    # host + 2 players (money-match 1v1 needs a 3rd seat)
   tap $ENTER                                   # CREATE (Enter from any field confirms)
   local r id; for i in $(seq 15); do sleep 1; r=$(rl)
     id=$(echo "$r"|grep -oE '"lobby_id":"[0-9]+"'|grep -oE '[0-9]+'|head -1)
@@ -75,6 +89,7 @@ do_boot(){ local ft=${1:-3}
   tap $ENTER; sleep 0.9                        # popup -> Create Lobby settings (Game top) = FACTORY
   _seed_factory                               # cold boot resets settings to factory (jp/on/FT1)
   set_options "$ft"                            # English + one-button OFF + Victory=First-to-ft
+  arm_3seat                                    # host + 2 players (money-match 1v1 needs a 3rd seat)
   tap $ENTER                                   # CREATE
   local r id; for i in $(seq 18); do sleep 1; r=$(rl)
     id=$(echo "$r"|grep -oE '"lobby_id":"[0-9]+"'|grep -oE '[0-9]+'|head -1)
