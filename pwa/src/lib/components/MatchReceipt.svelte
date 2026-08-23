@@ -166,6 +166,16 @@
 </ReceiptPaper>
 
 <style>
+	/* The paper's rules are scoped to ReceiptPaper, so a .rule rendered inside a snippet the CALLER owns
+	   gets no styling from there — Svelte scopes CSS to the component whose markup holds the element.
+	   Only .dash is needed here; the double rules are ReceiptPaper's own markup. */
+	.rule {
+		height: 0;
+		margin: 9px 0;
+	}
+	.rule.dash {
+		border-top: 1px dashed color-mix(in srgb, var(--faint) 70%, transparent);
+	}
 	.meta {
 		display: grid;
 		gap: 1px;
