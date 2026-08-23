@@ -87,6 +87,53 @@ disk. Same-character, same-colour "mirror" matchups produce **byte-identical** p
 sides, so per-side recolouring needs the slot's side (from the array order above), not the palette
 bytes alone.
 
+## Networking: lobbies & matchmaking (Steam)
+
+Online play (ranked and Custom Match) is built on the ordinary **Steam matchmaking lobby**
+API — `ISteamMatchmaking` — so lobby behaviour is observable/steerable the same way it is in any
+Steamworks title, no game-specific netcode required for the *lobby* layer. (The fight itself —
+rollback + inputs — is direct P2P between the two players and host-independent.)
+
+### Creating a lobby
+
+A Custom Match create resolves to a normal `CreateLobby(eLobbyType, cMaxMembers)` on the
+matchmaking interface (vtable slot `+0x68`). Observed defaults for a Custom Match: `eLobbyType=2`
+(public/listed), `cMaxMembers=2`. The **`eLobbyType`** is the standard Steam enum — `0` private,
+`1` friends-only, `2` public, `3` invisible — so it controls whether the room is listed in the
+in-game browser or reachable only by an explicit join. The engine's lobby holds **up to 9
+members**, so `cMaxMembers=2` is just the default for a 1v1, not a ceiling.
+
+The create runs **producer/worker**: the menu posts a request that a worker later consumes and turns
+into the `CreateLobby` call. Because it's a plain vtable call, a tool can hook
+`ISteamMatchmaking::CreateLobby` and observe (or rewrite) `eLobbyType`/`cMaxMembers` at the moment
+of creation — which is a clean way to configure a room *deterministically* (fixed size, chosen
+visibility) without scripting the create-screen menu. Mirror any change into the lobby-data keys
+below so the game's own parser agrees with the Steam-level cap.
+
+### Lobby metadata (`SetLobbyData` keys)
+
+After create, the host publishes the room state as string key/value pairs the joining client parses:
+
+| Key | Meaning |
+|---|---|
+| `OwnerId` | host SteamID, `%016llX` |
+| `SlotPublicMax` / `SlotPublicOpen` | public seat count / seats still open |
+| `SlotPrivateMax` / `SlotPrivateOpen` | private (invite) seats |
+| `SearchKeyNum` / `SearchKey%d` | matchmaking search filters |
+| `BinarySize` / `BinaryData` | a 128-byte opaque **match-settings blob** (→ lobby-info `+0x50`) |
+
+The FT count (e.g. "FT10") is a **social convention**, not a lobby key. The match rules that *are*
+encoded live in the 128-byte `BinaryData` blob (contents not yet decoded).
+
+### Joining by link
+
+The game only consumes `+connect_lobby <id>` on launch, but a standard Steam deep link joins a
+running lobby by id — build it yourself as
+`steam://joinlobby/2634890/<lobbyID>/<ownerID>` (2634890 = the app id). This works even for an
+**unlisted** lobby (types 0/1/3) — the id is the only thing needed — which makes the link itself an
+access token when the room isn't in the public browser. `InviteUserToLobby` (matchmaking vtable
+`+0x80`) is the game's programmatic invite path.
+
 ## Caveats
 
 - All offsets are for the current Steam build at time of writing; a patch can move them.
