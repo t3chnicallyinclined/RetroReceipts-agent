@@ -1,31 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { resultcheck } from '$lib/stores/resultcheck.svelte';
 	import ResultCheckPanel from './ResultCheckPanel.svelte';
 
-	// 🔔 Result Check bell — the global indicator that a reported result needs your check (a contest you filed,
-	// or an opponent disputing one of your matches). Owns the Result Check lifecycle app-wide (mirrors WalletChip):
-	// load on sign-in, poll while visible, pause while hidden. Hidden when signed-out. Opens the Result Check panel.
+	// 🔔 Result Check bell — pure render of the global "a result needs your check" indicator. The Result Check
+	// lifecycle is owned centrally by AppLive in +layout. Opens the Result Check panel.
 	let open = $state(false);
-
-	$effect(() => {
-		void resultcheck.load(auth.steamid);
-	});
-
-	onMount(() => {
-		resultcheck.connect(auth.steamid);
-		const onVis = () => {
-			if (document.hidden) resultcheck.disconnect();
-			else resultcheck.connect(auth.steamid);
-		};
-		document.addEventListener('visibilitychange', onVis);
-		return () => {
-			document.removeEventListener('visibilitychange', onVis);
-			resultcheck.disconnect();
-		};
-	});
-
 	const show = $derived(auth.authed);
 	const count = $derived(resultcheck.unread);
 </script>

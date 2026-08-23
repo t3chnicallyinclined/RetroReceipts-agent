@@ -1,34 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { wallet } from '$lib/stores/wallet.svelte';
 
-	// 🪙 balance chip — the single global home of the quarters balance (DESIGN §5). It lives in the top bar
-	// and OWNS the wallet lifecycle app-wide: load on sign-in, refresh live off the `matches` channel, and
-	// pause while the tab is hidden (CPU discipline — mirrors the other live surfaces). Links to Settings,
-	// where the full ledger lives. Hidden when signed-out or before the first balance lands.
-	$effect(() => {
-		// re-runs whenever the signed-in id changes (sign in / out) — keeps the balance bound to the user.
-		void wallet.load(auth.steamid);
-	});
-
-	onMount(() => {
-		wallet.connect();
-		const onVis = () => {
-			if (document.hidden) wallet.disconnect();
-			else {
-				wallet.connect();
-				void wallet.load(auth.steamid);
-			}
-		};
-		document.addEventListener('visibilitychange', onVis);
-		return () => {
-			document.removeEventListener('visibilitychange', onVis);
-			wallet.disconnect();
-		};
-	});
-
+	// 🪙 balance chip — pure render of the app-wide quarters balance. The wallet lifecycle (load / live / pause)
+	// is owned centrally by AppLive in +layout, so this chip can appear or disappear per breakpoint without
+	// killing the subscription. Links to Settings, where the full ledger lives.
 	const show = $derived(auth.authed && wallet.balance != null);
 </script>
 

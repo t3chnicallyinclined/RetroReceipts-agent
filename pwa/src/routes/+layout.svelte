@@ -4,6 +4,7 @@
 	import RankSprite from '$lib/components/RankSprite.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
+	import AppLive from '$lib/components/AppLive.svelte';
 	import DownloadAgent from '$lib/components/DownloadAgent.svelte';
 	import RankInfoModal from '$lib/components/RankInfoModal.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
@@ -24,6 +25,9 @@
 		theme.init();
 	});
 </script>
+
+<!-- headless: owns the app-wide live-data lifecycle (wallet / agent / result-check / wager) so the chrome is pure-render -->
+<AppLive />
 
 <!-- rank-badge sprite: injected once, referenced by every RankBadge via <use> -->
 <RankSprite />
