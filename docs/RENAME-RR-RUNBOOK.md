@@ -76,12 +76,14 @@ Correctness invariants confirmed by review:
   migrated + reboot-durable on the Beelink (was /tmp, ephemeral).
 
 Release steps (execute when the Beelink is free — needs the distrobox for the dll + Linux build + the canary):
-1. [ ] Stage the injector into the bundle: run `agent/scripts/build-injector.sh` at the LATEST injector HEAD in
-       the tauri44 distrobox → stages agent/assets/version.dll. ⚠ HEAD = cf10024 + 8fd828e (the CM-obj+0xb0
-       header-count poke + default-3 flip) — NOT the earlier 862f44f/ff6baef2, which set cMaxMembers/SlotPublicMax
-       but left the lobby header showing 1/2. The dll sha is NON-reproducible (mingw PE timestamp) — do NOT
-       sha-pin; verify the invariant instead (16 forwarders → versionorig.*) and that a live create reads back
-       `cm_b0=poked` + header 1/3. Confirm the final injector head sha with projects-2b before building.
+1. [ ] Stage the injector into the bundle: run `agent/scripts/build-injector.sh` at the ORIGINAL/reverted
+       injector HEAD in the tauri44 distrobox → stages agent/assets/version.dll. ⚠ NO injector CHANGE for 0.3.8:
+       projects-2b reverted the lobby-size experiments (862f44f/cf10024/8fd828e) — proven on the box that the
+       3-seat header is a create-MENU field, not the injector. So bundle the ORIGINAL injector (no set_lobby_max
+       / no +0xb0 poke). Confirm the reverted head sha with projects-2b. The 3-SEAT FIX ships as the create-menu
+       "Number of Players"=3 wiring in host-node/arcade-host/arcade_host.sh (committed 6fb30be), bundled into the
+       agent via include_str! — no dll involvement. dll sha is non-reproducible (mingw timestamp) → verify the
+       16-forwarder invariant, not a hash.
 2. [ ] Build Windows rr-agent.exe (local MSVC) + Linux rr-agent-linux (distrobox), both from HEAD with the dll staged (cfg injector_bundled).
 3. [ ] Sign each with `cargo tauri signer sign` (key ~/.mvc-updater/signing.key, empty pw via cmd.exe) → base64 .sig.
 4. [ ] `gh release create v0.3.8` on RetroReceipts-agent with EXACTLY: rr-agent.exe, rr-agent.exe.sig,
@@ -91,7 +93,9 @@ Release steps (execute when the Beelink is free — needs the distrobox for the 
 6. [ ] Bump server config LATEST_AGENT_VER 0.3.2→0.3.8 + redeploy rr-server (the /rr/agent update-nag banner).
 7. [ ] CANARY the Beelink 0.3.7→0.3.8 once (coordinate projects-2b): confirm relaunch (not the 0.3.6 no-reopen
        bug — 0.3.7 carries the fix), `[migrate] state dir` log, ONE agent.lock holder, mvc-live-skins gone, then it polls /rr.
-8. [ ] Ping projects-a5 to flip the PWA DownloadAgent link metasync-agent.exe → rr-agent.exe (lockstep with the release).
+8. [ ] DownloadAgent lockstep ELIMINATED — projects-a5 made DownloadAgent read the manifest's `url` (fallback =
+       hardcoded), so the manifest flip in step 5 auto-updates the download button. No coordinated PWA edit; just
+       FYI projects-a5 when 0.3.8 is live.
 
 ## Progress
 - [x] Stage 1 server shim + nginx (LIVE)
