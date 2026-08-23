@@ -10,11 +10,13 @@
 	// OR when no agent has reported a build; true only once one has). The AgentChip owns the load lifecycle
 	// app-wide, so this just reads the same signal.
 	// The Windows link resolves from the SAME manifest the tray's self-updater reads, so a renamed or moved
-	// release asset needs no edit here (the agent binary is being renamed metasync-agent -> rr-agent). This
-	// URL is only the fallback for when that fetch can't happen — offline, blocked, or a malformed manifest.
+	// release asset needs no edit here — that held through the metasync-agent -> rr-agent rename in 0.3.8,
+	// which the button picked up with no deploy. This URL is only the fallback for when that fetch can't
+	// happen (offline, blocked, malformed manifest); it floats to the newest release so only a further
+	// FILENAME change would strand it.
 	// Linux needs no equivalent: it installs through install-bazzite.sh, which resolves the binary itself.
 	const WIN_URL_FALLBACK =
-		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/metasync-agent.exe';
+		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/rr-agent.exe';
 	const LINUX_CMD = 'curl -fsSL https://nobd.net/rr/update/install-bazzite.sh | bash';
 
 	let winUrl = $state(WIN_URL_FALLBACK);
