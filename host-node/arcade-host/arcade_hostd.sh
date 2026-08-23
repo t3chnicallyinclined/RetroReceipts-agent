@@ -29,7 +29,7 @@ HOST_STEAMID="${HOST_STEAMID:-}"   # operator SteamID (owner of the lobbies); de
 # ARCADE_FT_DEFAULT. We report the ACTUAL current settings (read from arcade_host's state file) so the
 # Fleet card shows reality.
 ARCADE_FT_DEFAULT="${ARCADE_FT:-3}"           # idle-lobby Victory Condition (First to N)
-ARCADE_PLAYERS="${ARCADE_PLAYERS:-2}"         # number of player slots
+ARCADE_PLAYERS="${ARCADE_PLAYERS:-3}"         # player slots reported to the Fleet card — matches arcade_host.sh's create-menu Number-of-Players=3 (host-spectator + 2 players)
 ARCADE_GAME="${ARCADE_GAME:-MvC2}"            # game label
 STATE="${ARCADE_STATE_FILE:-$HOME/.local/share/retro-receipts/arcade-host/lobby_state}"
 cur_ft(){  local FT=$ARCADE_FT_DEFAULT; [ -f "$STATE" ] && . "$STATE"; echo "${FT:-$ARCADE_FT_DEFAULT}"; }
