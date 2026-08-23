@@ -76,8 +76,12 @@ Correctness invariants confirmed by review:
   migrated + reboot-durable on the Beelink (was /tmp, ephemeral).
 
 Release steps (execute when the Beelink is free — needs the distrobox for the dll + Linux build + the canary):
-1. [ ] Stage the injector into the bundle: run `agent/scripts/build-injector.sh` at 862f44f in the tauri44
-       distrobox → stages agent/assets/version.dll; **confirm sha256 = ff6baef21e1381f53ee280af4e128d369f60b89db89a71e1b737034b8ac97e7c** BEFORE building.
+1. [ ] Stage the injector into the bundle: run `agent/scripts/build-injector.sh` at the LATEST injector HEAD in
+       the tauri44 distrobox → stages agent/assets/version.dll. ⚠ HEAD = cf10024 + 8fd828e (the CM-obj+0xb0
+       header-count poke + default-3 flip) — NOT the earlier 862f44f/ff6baef2, which set cMaxMembers/SlotPublicMax
+       but left the lobby header showing 1/2. The dll sha is NON-reproducible (mingw PE timestamp) — do NOT
+       sha-pin; verify the invariant instead (16 forwarders → versionorig.*) and that a live create reads back
+       `cm_b0=poked` + header 1/3. Confirm the final injector head sha with projects-2b before building.
 2. [ ] Build Windows rr-agent.exe (local MSVC) + Linux rr-agent-linux (distrobox), both from HEAD with the dll staged (cfg injector_bundled).
 3. [ ] Sign each with `cargo tauri signer sign` (key ~/.mvc-updater/signing.key, empty pw via cmd.exe) → base64 .sig.
 4. [ ] `gh release create v0.3.8` on RetroReceipts-agent with EXACTLY: rr-agent.exe, rr-agent.exe.sig,
