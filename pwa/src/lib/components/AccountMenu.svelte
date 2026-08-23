@@ -72,6 +72,9 @@
 						{:else if presence === 'ok'}<span class="rv good">v{agent.status?.ver} · online</span>
 						{:else}<span class="rv dim">offline</span>{/if}
 					</a>
+					<a class="row" href="{base}/skins" role="menuitem" onclick={close}>
+						<span class="ri">🎨</span><span class="rl">My Skins</span><span class="rv dim">›</span>
+					</a>
 					<a class="row" href="{base}/u/{sid}" role="menuitem" onclick={close}>
 						<span class="ri">👤</span><span class="rl">Profile</span><span class="rv dim">›</span>
 					</a>

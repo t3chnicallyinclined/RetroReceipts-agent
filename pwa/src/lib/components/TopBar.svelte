@@ -7,25 +7,17 @@
 	import AccountMenu from './AccountMenu.svelte';
 
 	// The single global arena bar. Desktop: brand cab + calm text nav (the active tab is the ONLY skew + the
-	// only nav gold — a thin tick), a "⋯ More" menu for secondary sections, then the status/account atoms.
-	// Mobile: brand + atoms; the bottom TabBar carries nav. Quiet by design — gold is spent only on the active
-	// tab tick + the wallet chip, so the molten challenge strip is the one loud thing when it fires.
+	// only nav gold — a thin tick), then the status/account atoms. Nav is the competitive core only
+	// (Match · Ranks · Tournament); Skins lives in the account menu, Fleet is folded into Match. Mobile:
+	// brand + atoms; the bottom TabBar carries nav. Quiet by design — gold is spent only on the active tab
+	// tick + the wallet, so the molten challenge strip is the one loud thing when it fires.
 	const path = $derived(page.url.pathname);
-	const primary = $derived(NAV.filter((t) => t.primary));
-	const more = $derived(NAV.filter((t) => !t.primary));
 	function active(href: string): boolean {
 		const full = base + href;
 		if (href === '/ranks') return path === base + '/' || path.startsWith(full);
 		return path.startsWith(full);
 	}
-	const moreActive = $derived(more.some((t) => active(t.href)));
-	let moreOpen = $state(false);
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') moreOpen = false;
-	}
 </script>
-
-<svelte:window onkeydown={onKey} />
 
 <header class="bar">
 	<a class="brand" href="{base}/ranks" aria-label="Retro Receipts — home">
@@ -43,40 +35,9 @@
 	</a>
 
 	<nav class="tabs">
-		{#each primary as t (t.id)}
+		{#each NAV as t (t.id)}
 			<a class="lnk" class:on={active(t.href)} class:soon={!t.live} href="{base}{t.href}">{t.label}</a>
 		{/each}
-		{#if more.length}
-			<div class="moreWrap" class:open={moreOpen}>
-				<button
-					class="lnk more"
-					class:on={moreActive}
-					onclick={() => (moreOpen = !moreOpen)}
-					aria-haspopup="menu"
-					aria-expanded={moreOpen}
-				>⋯ More</button>
-				{#if moreOpen}
-					<button class="scrim" aria-label="Close menu" onclick={() => (moreOpen = false)}></button>
-					<div class="menu" role="menu">
-						{#each more as t (t.id)}
-							<a
-								class="mrow"
-								class:on={active(t.href)}
-								class:soon={!t.live}
-								href="{base}{t.href}"
-								role="menuitem"
-								onclick={() => (moreOpen = false)}
-							>
-								<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"
-									><path d={t.d} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg
-								>
-								<span>{t.label}</span>
-							</a>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		{/if}
 	</nav>
 
 	<div class="authslot">
@@ -130,15 +91,11 @@
 	/* calm nav — plain text; only the active tab earns weight (a single gold tick, the one skew on the bar) */
 	.lnk {
 		position: relative;
-		font: inherit;
 		font-size: 13px;
 		font-weight: 700;
 		color: var(--dim);
 		text-decoration: none;
-		background: none;
-		border: none;
 		padding: 6px 2px;
-		cursor: pointer;
 		white-space: nowrap;
 		transition: color 0.15s;
 	}
@@ -166,58 +123,6 @@
 	}
 	.lnk.soon:hover {
 		color: var(--dim);
-	}
-
-	.moreWrap {
-		position: relative;
-	}
-	.scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 40;
-		border: none;
-		background: transparent;
-		cursor: default;
-	}
-	.menu {
-		position: absolute;
-		top: calc(100% + 8px);
-		left: 0;
-		z-index: 50;
-		min-width: 168px;
-		background: var(--panel);
-		border: 1px solid var(--line);
-		border-radius: 12px;
-		box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
-		padding: 6px;
-		animation: pop 0.13s ease-out;
-	}
-	@keyframes pop {
-		from {
-			opacity: 0;
-			transform: translateY(-4px);
-		}
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 9px 10px;
-		border-radius: 9px;
-		text-decoration: none;
-		color: var(--dim);
-		font-size: 13.5px;
-		font-weight: 700;
-	}
-	.mrow:hover {
-		background: color-mix(in srgb, var(--ink) 6%, transparent);
-		color: var(--ink);
-	}
-	.mrow.on {
-		color: var(--gold);
-	}
-	.mrow.soon {
-		color: var(--faint);
 	}
 
 	.authslot {
