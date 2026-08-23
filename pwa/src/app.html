@@ -2,9 +2,13 @@
 <html lang="en" data-theme="dark">
 	<head>
 		<meta charset="utf-8" />
-		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+		<!-- ?v=2 is a cache-buster, not decoration. Browsers cache favicons in their own store, separate from
+		     the page cache, and a hard refresh does NOT reliably evict it — anyone who visited while the mark
+		     was still the MetaSync "M" keeps seeing the M indefinitely. Changing the URL is the only reliable
+		     way to force a re-fetch for everyone. Bump it whenever the icon art changes. -->
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg?v=2" />
 		<!-- iOS ignores an SVG apple-touch-icon, so this one must be a PNG (built by scripts/build-icons.mjs). -->
-		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png?v=2" />
 		<!-- Linked by hand on purpose: this project never wires up vite-plugin-pwa's pwaInfo helper, so
 		     nothing was injecting it and the browser never saw the manifest at all — which is why an
 		     installed shortcut fell back to a generated tile instead of the app's name and icon. -->
