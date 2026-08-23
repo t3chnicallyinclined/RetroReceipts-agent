@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { hosts, hostStatus } from '$lib/stores/hosts.svelte';
 	import HostCard from '$lib/components/HostCard.svelte';
+	import ArcadeMap from '$lib/components/ArcadeMap.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 
 	// Live FLEET map — the pool of online MvC2 host nodes. onMount starts the 6s poll and pauses it
@@ -24,13 +25,13 @@
 	const inMatch = $derived(list.filter((h) => hostStatus(h) === 'match').length);
 </script>
 
-<svelte:head><title>Fleet · Retro Receipts</title></svelte:head>
+<svelte:head><title>Arcades · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions · /match) -->
 <section class="mast" style="--acc:var(--p2)">
-	<div class="ghost" aria-hidden="true">FLEET</div>
+	<div class="ghost" aria-hidden="true">ARCADES</div>
 	<div class="mrow">
-		<h1 class="mtitle">FLEET</h1>
+		<h1 class="mtitle">ARCADES</h1>
 		{#if hosts.error && list.length}
 			<span class="pill live" title={hosts.error}>RECONNECTING…</span>
 		{:else}
@@ -38,8 +39,10 @@
 		{/if}
 	</div>
 	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">The live host pool — every online node ready to run a match. Jump straight into an open lobby, or watch one that's already fighting.</p>
+	<p class="mdesc">The live arcade network — where the host cabinets are. Money matches &amp; tournaments run on these; the map shows the hosting footprint.</p>
 </section>
+
+<ArcadeMap />
 
 <div class="stats">
 	<StatTile label="Nodes online" value={online} accent="var(--p2)" />
