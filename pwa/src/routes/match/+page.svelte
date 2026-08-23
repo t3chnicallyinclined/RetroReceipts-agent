@@ -11,15 +11,12 @@
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
-	import { hosts } from '$lib/stores/hosts.svelte';
-	import HostCard from '$lib/components/HostCard.svelte';
 
 	// Live match center + 🪙 quarter-match surfaces — all push off the app-wide `matches` SSE channel (a
 	// mode-scoped seed fetch backs Live Results; a seed fetch for the wager rail/marquee). onMount opens the
 	// streams and pauses them while the tab is hidden (CPU discipline — mirrors /ranks).
 	onMount(() => {
 		matchfeed.connect();
-		hosts.start(); // the live cabinet pool (Fleet, folded into Match as "Cabinets") — refcounted 6s poll
 		// wager's live subscription is owned app-wide by AppLive (+layout) now — here we only SEED-fetch the
 		// rail + arcade for this view (freshness); matchfeed stays the /match-scoped live stream we own here.
 		void wager.loadOpen();
@@ -27,10 +24,8 @@
 		const onVis = () => {
 			if (document.hidden) {
 				matchfeed.disconnect();
-				hosts.stop();
 			} else {
 				matchfeed.connect();
-				hosts.start();
 				void wager.loadOpen();
 				if (auth.steamid) void wager.loadMine(auth.steamid);
 			}
@@ -39,7 +34,6 @@
 		return () => {
 			document.removeEventListener('visibilitychange', onVis);
 			matchfeed.disconnect();
-			hosts.stop();
 		};
 	});
 
@@ -54,7 +48,6 @@
 	const results = $derived(matchfeed.results);
 	const mode = $derived(matchfeed.mode);
 	const me = $derived(auth.steamid);
-	const cabinets = $derived(hosts.hosts); // the live cabinet pool (Fleet), shown as the "Cabinets" section
 
 	// ── 🪙 one-tap accept funnel (share link → nobd.net/app/match?mm=<id>) ──────────────────────────────
 	// A first-time visitor opens the share link on the web, signs in with Steam, and is dropped straight onto
@@ -228,20 +221,6 @@
 <!-- 🪙 Money Match: your wager rail + the open-challenge arcade (live off the same `matches` channel) -->
 <WagerRail />
 <Marquee />
-
-<!-- 🕹 Cabinets — the live host pool (Fleet), folded into Match. Upgrades to a pin MAP once host IP-geo lands. -->
-<section class="sec">
-	<h2 class="shead"><span class="ic" aria-hidden="true">🕹</span> Cabinets{#if cabinets.length}<span class="cnt">{cabinets.length}</span>{/if}</h2>
-	{#if cabinets.length === 0}
-		<div class="empty">No cabinets online right now — the arcade floor is quiet.</div>
-	{:else}
-		<div class="fleet" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:12px">
-			{#each cabinets as h (h.steamid + '|' + (h.lobby_id ?? ''))}
-				<HostCard host={h} />
-			{/each}
-		</div>
-	{/if}
-</section>
 
 <!-- 🟢 Now Playing — standardized live banners (same one-row family as Live Results) -->
 <section class="sec">

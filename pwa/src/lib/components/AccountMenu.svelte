@@ -75,6 +75,9 @@
 					<a class="row" href="{base}/skins" role="menuitem" onclick={close}>
 						<span class="ri">🎨</span><span class="rl">My Skins</span><span class="rv dim">›</span>
 					</a>
+					<a class="row" href="{base}/hosts" role="menuitem" onclick={close}>
+						<span class="ri">🕹</span><span class="rl">Arcades map</span><span class="rv dim">›</span>
+					</a>
 					<a class="row" href="{base}/u/{sid}" role="menuitem" onclick={close}>
 						<span class="ri">👤</span><span class="rl">Profile</span><span class="rv dim">›</span>
 					</a>
