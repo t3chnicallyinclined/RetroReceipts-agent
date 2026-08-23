@@ -2,19 +2,20 @@
 // (`enable` / `disable` / `is_enabled`) on every platform; cfg-split bodies pick the OS mechanism:
 //
 //   • Windows: the per-user HKCU Run key (no elevation). Value name = config::AUTOSTART_KEY.
-//       HKCU\Software\Microsoft\Windows\CurrentVersion\Run\MetaSyncAgent = "<full path to this exe>"
+//       HKCU\Software\Microsoft\Windows\CurrentVersion\Run\RetroReceiptsAgent = "<full path to this exe>"
 //   • Linux/Bazzite: an XDG autostart desktop entry read by GNOME/KDE/most DEs at login.
-//       ~/.config/autostart/metasync-agent.desktop  (Exec=<full path to this exe>)
+//       ~/.config/autostart/rr-agent.desktop  (Exec=<full path to this exe>)
 //
-// On any other target the three fns are inert stubs so the crate still type-checks.
+// Both enable() paths also delete the pre-rename entry (MetaSyncAgent / metasync-agent.desktop) so the
+// internal rename leaves no duplicate autostart. On any other target the three fns are inert stubs.
 
-// Only the Windows Run-key impl uses the registry value name; gated so Linux doesn't see an unused import.
+// Only the Windows Run-key impl uses the registry value names; gated so Linux doesn't see an unused import.
 #[cfg(windows)]
-use crate::config::AUTOSTART_KEY;
+use crate::config::{AUTOSTART_KEY, AUTOSTART_KEY_LEGACY};
 
 #[cfg(windows)]
 mod imp {
-    use super::AUTOSTART_KEY;
+    use super::{AUTOSTART_KEY, AUTOSTART_KEY_LEGACY};
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
     use winreg::RegKey;
 
@@ -45,12 +46,15 @@ mod imp {
         }
     }
 
-    /// Create/overwrite the Run value with the current exe path.
+    /// Create/overwrite the Run value with the current exe path, then drop the pre-rename value so the
+    /// internal rename never leaves a stale/duplicate Run entry (ignore not-found).
     pub fn enable() -> std::io::Result<()> {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         // create_subkey opens-or-creates; Run always exists on Windows but be defensive.
         let (run, _) = hkcu.create_subkey_with_flags(RUN_PATH, KEY_WRITE)?;
-        run.set_value(AUTOSTART_KEY, &exe_path()?)
+        run.set_value(AUTOSTART_KEY, &exe_path()?)?;
+        let _ = run.delete_value(AUTOSTART_KEY_LEGACY); // migration: remove the old "MetaSyncAgent" entry
+        Ok(())
     }
 
     /// Remove the Run value (ignore "not found" so calling disable when already off is a no-op).
@@ -73,7 +77,9 @@ mod imp {
     use std::io::Write;
 
     // XDG autostart: GNOME/KDE/XFCE/most DEs launch every *.desktop in ~/.config/autostart at login.
-    const DESKTOP_FILE: &str = "metasync-agent.desktop";
+    const DESKTOP_FILE: &str = "rr-agent.desktop";
+    // Pre-rename filename — deleted on enable() so the internal rename leaves no duplicate autostart entry.
+    const DESKTOP_FILE_LEGACY: &str = "metasync-agent.desktop";
 
     /// ~/.config (honoring XDG_CONFIG_HOME), the standard root for the autostart dir.
     fn config_home() -> std::path::PathBuf {
@@ -133,7 +139,10 @@ mod imp {
              Hidden=false\n"
         );
         let mut f = std::fs::File::create(dir.join(DESKTOP_FILE))?;
-        f.write_all(entry.as_bytes())
+        f.write_all(entry.as_bytes())?;
+        // migration: remove the pre-rename entry so the rename leaves no duplicate autostart (ignore not-found).
+        let _ = std::fs::remove_file(dir.join(DESKTOP_FILE_LEGACY));
+        Ok(())
     }
 
     /// Remove the autostart entry (ignore "not found" so disabling when already off is a no-op).

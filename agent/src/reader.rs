@@ -1,7 +1,7 @@
 // Game-state reader + match reporting — ported VERBATIM from src-tauri/src/sync.rs (frozen v0.2.5).
 //
 // This is T2: the reader that detects MvC2, reads its memory (fighter array + battle globals), scores the
-// set, and reports matches to the skinsync server. The RE is byte-identical to the Tauri app — the offset
+// set, and reports matches to the rr-server. The RE is byte-identical to the Tauri app — the offset
 // table, the scene==5 pointer-follow anchor, the struct field reads, the adaptive cadence, and the frame
 // dedup are all copied without change. ONLY the Tauri glue is different:
 //   • the app published a `Snapshot` (Mutex) for the webview to poll + drove heartbeat / live-match from JS
@@ -23,9 +23,9 @@ use crate::mem;
 #[cfg(windows)]
 use std::ffi::c_void;
 
-// Same base the Tauri app used as `SKINSYNC` (config::SERVER_BASE == "https://nobd.net/skinsync"), so every
+// Same base the Tauri app used as `SKINSYNC` (config::SERVER_BASE == "https://nobd.net/rr"), so every
 // request path below (/result, /heartbeat, /match/live, /register, …) is byte-identical to the shipped app.
-const SKINSYNC: &str = crate::config::SERVER_BASE;
+const RR: &str = crate::config::SERVER_BASE;
 const STEAMID_HI: u32 = 0x0110_0001; // universe=public, type=individual, instance=desktop
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -113,17 +113,17 @@ const HP_FULL: u16 = 144;             // full health
 pub(crate) const MAX_CID: u8 = 0x3A;             // Servbot = highest CPS2 unit id (58)
 
 // ── client registration (B): a per-install token the server mints, bound to the local SteamID. Stored in
-//    %LOCALAPPDATA%\MetaSync\auth.json and attached (Bearer) to every write request. The SteamID is read
+//    %LOCALAPPDATA%\RetroReceipts\auth.json and attached (Bearer) to every write request. The SteamID is read
 //    locally (self_ident → Steam registry) and can't be edited in the UI, so writes can't spoof another id. ──
 static AUTH: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None); // (token, steamid)
 
-fn metasync_dir() -> std::path::PathBuf {
+fn rr_state_dir() -> std::path::PathBuf {
     let base = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("MetaSync");
+    let dir = base.join("RetroReceipts");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
-fn auth_path() -> std::path::PathBuf { metasync_dir().join("auth.json") }
+fn auth_path() -> std::path::PathBuf { rr_state_dir().join("auth.json") }
 
 fn load_auth() {
     if let Some(v) = std::fs::read_to_string(auth_path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) {
@@ -157,7 +157,7 @@ fn auth_get(url: &str) -> ureq::Request {
 pub fn ensure_registered(steamid: String) -> Result<(), String> {
     if steamid.len() != 17 { return Ok(()); } // no valid local id yet → caller retries later
     if auth_token().is_some() && auth_steamid_stored().as_deref() == Some(steamid.as_str()) { return Ok(()); }
-    let resp = ureq::post(&format!("{}/register", SKINSYNC))
+    let resp = ureq::post(&format!("{}/register", RR))
         .timeout(std::time::Duration::from_secs(8))
         .send_json(serde_json::json!({ "steamid": steamid }))
         .map_err(|e| e.to_string())?
@@ -176,7 +176,7 @@ pub fn fetch_loadout() -> Option<Vec<(u8, Vec<u32>)>> {
     if auth_token().is_none() {
         return None;
     }
-    let v: serde_json::Value = auth_get(&format!("{}/loadout", SKINSYNC))
+    let v: serde_json::Value = auth_get(&format!("{}/loadout", RR))
         .timeout(std::time::Duration::from_secs(6))
         .call()
         .ok()?
@@ -217,7 +217,7 @@ pub fn start_cmd_subscribe() {
 /// skin push. Returns on any error / stream close so the caller reconnects. Connect-timeout only (no read
 /// timeout) so the long-lived stream stays open — the gateway's keep-alives keep bytes flowing.
 fn cmd_sse_once(sid: &str) {
-    let url = format!("{}/rt/stream/cmd.{}", SKINSYNC, sid);
+    let url = format!("{}/rt/stream/cmd.{}", RR, sid);
     let agent = ureq::builder().timeout_connect(std::time::Duration::from_secs(10)).build();
     let mut req = agent.get(&url).set("Accept", "text/event-stream");
     if let Some(t) = auth_token() {
@@ -815,7 +815,7 @@ fn read_my_lobby_inner() -> Option<serde_json::Value> {
 }
 
 pub fn sync_heartbeat(id: String, name: String) -> Result<serde_json::Value, String> {
-    auth_post(&format!("{}/heartbeat", SKINSYNC)).send_json(serde_json::json!({ "id": id, "name": name, "ver": env!("CARGO_PKG_VERSION"), "platform": if cfg!(windows) { "windows" } else { "linux" }, "client": "tray", "reader_restarts": READER_RESTARTS.load(std::sync::atomic::Ordering::SeqCst), "reader_degraded": READER_DEGRADED.load(std::sync::atomic::Ordering::SeqCst) }))
+    auth_post(&format!("{}/heartbeat", RR)).send_json(serde_json::json!({ "id": id, "name": name, "ver": env!("CARGO_PKG_VERSION"), "platform": if cfg!(windows) { "windows" } else { "linux" }, "client": "tray", "reader_restarts": READER_RESTARTS.load(std::sync::atomic::Ordering::SeqCst), "reader_degraded": READER_DEGRADED.load(std::sync::atomic::Ordering::SeqCst) }))
         .map_err(|e| e.to_string())?
         .into_json::<serde_json::Value>().map_err(|e| e.to_string())
 }
@@ -984,14 +984,14 @@ static GS_IN_MATCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 fn share_file() -> std::path::PathBuf { crate::runtime_dir().join("share_gameplay.txt") }
 const GS_CAP: usize = 20_000;                       // max unique frames buffered per game (~5.5 min @60fps)
 const GS_SPOOL_CAP: usize = 300;                    // max pending recordings on disk (soft backpressure)
-const SKINSYNC_GAMESTATE: &str = "https://nobd.net/skinsync/gamestate";
+const RR_GAMESTATE: &str = "https://nobd.net/rr/gamestate";
 
 // Per-user spool for finished recordings, drained by the uploader between matches. LOCALAPPDATA so it
 // survives an app restart (a recording captured before a crash still uploads next launch); temp is a fallback.
 fn gs_cache_dir() -> std::path::PathBuf {
     let base = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("MetaSync").join("gs-cache");
+    let dir = base.join("RetroReceipts").join("gs-cache");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -1024,7 +1024,7 @@ fn is_permanent_reject(code: u16) -> bool { matches!(code, 400 | 409 | 413 | 422
 fn result_outbox_dir() -> std::path::PathBuf {
     let base = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("MetaSync").join("result-outbox");
+    let dir = base.join("RetroReceipts").join("result-outbox");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -1066,7 +1066,7 @@ fn drain_result_outbox() {
             trace(&format!("[result] pruning stuck report {:?} (>7d unsent)", path.file_name())); let _ = std::fs::remove_file(&path); continue;
         }
         let body = match env.get("body") { Some(b) => b, None => { let _ = std::fs::remove_file(&path); continue; } };
-        match auth_post(&format!("{}/result", SKINSYNC)).timeout(std::time::Duration::from_secs(10)).send_json(body) {
+        match auth_post(&format!("{}/result", RR)).timeout(std::time::Duration::from_secs(10)).send_json(body) {
             Ok(_) => { trace(&format!("[result] re-delivered {:?}", path.file_name())); let _ = std::fs::remove_file(&path); }
             Err(ureq::Error::Status(code, _)) if is_permanent_reject(code) => {
                 trace(&format!("[result] permanent reject {code} for {:?} — dropping", path.file_name())); let _ = std::fs::remove_file(&path);
@@ -1407,7 +1407,7 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
 // uploading so a match is stored once. A network error returns false → we attempt the upload anyway (the
 // server is idempotent per reporter, so a duplicate is harmless).
 fn gs_exists_on_server(match_key: &str) -> bool {
-    match ureq::get(&format!("{}/gamestate/exists?key={}", SKINSYNC, match_key))
+    match ureq::get(&format!("{}/gamestate/exists?key={}", RR, match_key))
         .timeout(std::time::Duration::from_secs(6)).call() {
         Ok(resp) => resp.into_json::<serde_json::Value>().ok()
             .and_then(|v| v.get("exists").and_then(|b| b.as_bool())).unwrap_or(false),
@@ -1450,7 +1450,7 @@ fn drain_gs_cache() {
         let gz = match std::fs::read(&gz_path) { Ok(b) => b, Err(_) => { cleanup(); continue; } };
         let mut body = meta.clone();
         if let Some(o) = body.as_object_mut() { o.remove("designated"); o.remove("spool_ts"); o.insert("frames_gz".into(), serde_json::Value::from(b64_encode(&gz))); }
-        match auth_post(SKINSYNC_GAMESTATE).timeout(std::time::Duration::from_secs(30)).send_json(body) {
+        match auth_post(RR_GAMESTATE).timeout(std::time::Duration::from_secs(30)).send_json(body) {
             Ok(_) => { trace(&format!("[gamestate] uploaded {base} ({} bytes gz)", gz.len())); cleanup(); }
             Err(e) => { trace(&format!("[gamestate] upload {base} failed ({e}) — retry next cycle")); }
         }
@@ -2078,7 +2078,7 @@ fn report_result_server(reporter: String, winner: String, winner_name: String, l
         let mut posted_ok = false;
         // capture the server-derived match_key from the /result response (single source of truth → both
         // players consense on ONE key, and each tags its own recording with it).
-        let key: Option<String> = match auth_post(&format!("{}/result", SKINSYNC))
+        let key: Option<String> = match auth_post(&format!("{}/result", RR))
             .timeout(std::time::Duration::from_secs(5)).send_json(&body) {
             Ok(resp) => { posted_ok = true; resp.into_json::<serde_json::Value>().ok()
                 .and_then(|v| v.get("key").and_then(|k| k.as_str()).map(|s| s.to_string())) }
@@ -2247,7 +2247,7 @@ pub fn report_live_match(opp: String, my_chars: Vec<i64>, opp_chars: Vec<i64>,
     // caller/opp SteamIDs; it stores players sorted by id, so physical p1/p2 would be ambiguous). "" join_link = ranked.
     let body = serde_json::json!({ "opp": opp, "my_chars": my_chars, "opp_chars": opp_chars,
         "session_id": session_id, "my_wins": my_wins, "opp_wins": opp_wins, "join_link": join_link });
-    let _ = auth_post(&format!("{}/match/live", SKINSYNC))
+    let _ = auth_post(&format!("{}/match/live", RR))
         .timeout(std::time::Duration::from_secs(5))
         .send_json(body); // fire-and-forget: errors intentionally ignored
 }

@@ -1,4 +1,4 @@
-// MetaSync tray agent — headless Windows companion (no window; tray icon only).
+// Retro Receipts tray agent (rr-agent) — headless companion (no window; tray icon only).
 //
 // Replaces the heavy Tauri webview: the UI moves to the web app (nobd.net/app) and this tiny native agent
 // does the local work — read MvC2's memory, apply skins, report matches. T1 is the scaffold: a working tray
@@ -47,15 +47,18 @@ mod tray;
 // returned PATH changes here. On WINDOWS we deliberately do NOT reuse the app's legacy `C:\g` — that path only
 // mattered for the injected D3D-hook DLL (compiled to watch `C:\g\skins.dat`), which the tray never uses (it
 // paints out-of-process via RPM). Instead everything lives under the standard per-user app-data root
-// `%LOCALAPPDATA%\MetaSync\runtime`, next to `auth.json` + `gs-cache` (best practice; no stray top-level dir,
-// no clash with a co-installed Tauri app, clean uninstall).
+// `%LOCALAPPDATA%\RetroReceipts\runtime`, next to `auth.json` + `gs-cache` (best practice; no stray top-level
+// dir, clean uninstall). On Linux: `$XDG_DATA_HOME/retro-receipts` — same dir the host-node runtime lives
+// under, so the whole product shares one data root. Pre-rename builds used MetaSync / mvc-live-skins;
+// migrate_legacy_state_dir() (called once at the top of main()) moves the old dir across so nobody is logged
+// out by the internal rename.
 pub(crate) fn runtime_dir() -> std::path::PathBuf {
     #[cfg(windows)]
     {
         let base = std::env::var_os("LOCALAPPDATA")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
-        let dir = base.join("MetaSync").join("runtime");
+        let dir = base.join("RetroReceipts").join("runtime");
         let _ = std::fs::create_dir_all(&dir);
         dir
     }
@@ -65,7 +68,43 @@ pub(crate) fn runtime_dir() -> std::path::PathBuf {
             .map(std::path::PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share")))
             .unwrap_or_else(std::env::temp_dir);
-        base.join("mvc-live-skins")
+        base.join("retro-receipts")
+    }
+}
+
+/// One-time migration of the pre-rename state dir → the rr-agent location, so the internal rename NEVER logs a
+/// user out or strands the result-outbox. Windows: `%LOCALAPPDATA%\MetaSync` → `\RetroReceipts`.
+/// Linux: `$XDG_DATA_HOME/mvc-live-skins` → `/retro-receipts`. When the new dir is absent it's a whole-dir
+/// atomic rename; when it already exists (e.g. host-node created `retro-receipts` first) each old entry that
+/// isn't already present is moved in. Best-effort — any failure just leaves the old dir and the agent starts
+/// fresh (no crash). MUST run before enforce_single_instance() (the Unix lock lives under runtime_dir()).
+fn migrate_legacy_state_dir() {
+    #[cfg(windows)]
+    let dirs = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from)
+        .map(|b| (b.join("MetaSync"), b.join("RetroReceipts")));
+    #[cfg(not(windows))]
+    let dirs = std::env::var_os("XDG_DATA_HOME").map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share")))
+        .map(|b| (b.join("mvc-live-skins"), b.join("retro-receipts")));
+    let (old, new) = match dirs { Some(d) => d, None => return };
+    if !old.exists() || old == new { return; }
+    if !new.exists() {
+        if let Some(p) = new.parent() { let _ = std::fs::create_dir_all(p); }
+        match std::fs::rename(&old, &new) {
+            Ok(()) => eprintln!("[migrate] state dir {} -> {}", old.display(), new.display()),
+            Err(e) => eprintln!("[migrate] state dir move failed ({e}) — starting fresh at {}", new.display()),
+        }
+        return;
+    }
+    // New dir already exists — fold the old entries in (skip any name that's already there).
+    if let Ok(entries) = std::fs::read_dir(&old) {
+        for e in entries.flatten() {
+            let dst = new.join(e.file_name());
+            if !dst.exists() {
+                let _ = std::fs::rename(e.path(), &dst);
+            }
+        }
+        eprintln!("[migrate] folded {} into existing {}", old.display(), new.display());
     }
 }
 
@@ -75,6 +114,12 @@ fn main() {
     if std::env::args().any(|a| a == "--updated") {
         std::thread::sleep(std::time::Duration::from_millis(1500));
     }
+
+    // Internal-rename migration: move the pre-rename state dir (MetaSync / mvc-live-skins) to the rr-agent
+    // location BEFORE anything reads runtime_dir() — the Unix single-instance lock lives there, and this keeps
+    // the user's auth.json / result-outbox / gs-cache across the rename. Runs after the --updated wait so a
+    // relaunching old process has released the old dir first.
+    migrate_legacy_state_dir();
 
     // FIRST: ensure only ONE agent runs machine-wide. If another instance already holds the lock, this logs
     // and exit(0)s here — before any reader/painter/tray starts — so two agents can't double-report matches.

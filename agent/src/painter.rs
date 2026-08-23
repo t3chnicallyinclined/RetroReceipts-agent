@@ -425,7 +425,7 @@ struct PainterState {
 pub(crate) static SKINS_ENABLED: AtomicBool = AtomicBool::new(true);
 
 // ── Phase 3: WEB-DRIVEN LOADOUT (server is the picker) ─────────────────────────────────────────────────
-// A background thread polls GET /skinsync/loadout (our own, auth-bound) and mirrors it into this in-memory
+// A background thread polls GET /rr/loadout (our own, auth-bound) and mirrors it into this in-memory
 // map — the painter merges it OVER the local skins.json store (a char set on the web wins; chars we didn't
 // set fall back to local). Purely in-memory on the hot path: painter_tick only rebuilds st.skins when the
 // version bumps (a real change), never reads a file per tick. sigs is empty (palette-only ⟹ paint_live path).

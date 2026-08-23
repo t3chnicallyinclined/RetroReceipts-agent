@@ -1286,27 +1286,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metasync-agent"
-version = "0.3.7"
-dependencies = [
- "base64",
- "flate2",
- "libc",
- "minisign-verify",
- "muda",
- "notify-rust",
- "open",
- "self-replace",
- "serde",
- "serde_json",
- "tao",
- "tray-icon",
- "ureq",
- "windows 0.58.0",
- "winreg",
-]
-
-[[package]]
 name = "minisign-verify"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1858,6 +1837,27 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rr-agent"
+version = "0.3.8"
+dependencies = [
+ "base64",
+ "flate2",
+ "libc",
+ "minisign-verify",
+ "muda",
+ "notify-rust",
+ "open",
+ "self-replace",
+ "serde",
+ "serde_json",
+ "tao",
+ "tray-icon",
+ "ureq",
+ "windows 0.58.0",
+ "winreg",
 ]
 
 [[package]]

@@ -25,7 +25,7 @@ pub static PENDING_UPDATE: Mutex<Option<String>> = Mutex::new(None);
 /// for the tray) — this is purely the once-per-version de-dup guard for the balloon.
 static LAST_NOTIFIED: Mutex<Option<String>> = Mutex::new(None);
 
-// TODO(security): this is the SHIPPED MetaSync minisign PUBLIC key (also embedded in tauri.conf.json — it is
+// TODO(security): this is the SHIPPED Retro Receipts minisign PUBLIC key (also embedded in tauri.conf.json — it is
 // public by nature; the matching PRIVATE key lives off-repo at ~/.mvc-updater and is never committed). It is a
 // placeholder in the sense that apply_update() is not yet wired into a live update flow — verify against this
 // before self-replace once T2 enables auto-apply. Format = the raw minisign pubkey line (the `RWR…` string).
@@ -146,11 +146,11 @@ pub fn safe_to_apply() -> bool {
 }
 
 /// The systemd `--user` unit this process runs under, parsed from `/proc/self/cgroup` (cgroup v2). Returns the
-/// leaf `*.service` component (e.g. `"metasync-agent.service"`), NOT the `user@UID.service` ancestor. `None`
+/// leaf `*.service` component (e.g. `"rr-agent.service"`), NOT the `user@UID.service` ancestor. `None`
 /// if we can't resolve it (the caller then falls back to the self-spawn relaunch).
 #[cfg(target_os = "linux")]
 fn systemd_unit_name() -> Option<String> {
-    // cgroup v2 is a single "0::/user.slice/…/app.slice/metasync-agent.service" line. Take the LAST path
+    // cgroup v2 is a single "0::/user.slice/…/app.slice/rr-agent.service" line. Take the LAST path
     // segment ending in ".service" — the leaf app unit — but EXCLUDE the `user@UID.service` manager: a
     // context with no app-level service leaf must resolve to None (→ fall back to self-spawn), never to the
     // user manager, or the restart would bounce the whole user session.
@@ -236,7 +236,7 @@ pub fn apply_update(update: &Update) -> Result<(), UpdateError> {
 
     // Stage to a temp file next to nothing sensitive, then let self-replace atomically swap the live exe.
     let mut tmp = std::env::temp_dir();
-    tmp.push(format!("metasync-agent-{}.new", update.version));
+    tmp.push(format!("rr-agent-{}.new", update.version));
     std::fs::write(&tmp, &bin).map_err(|e| UpdateError::Io(e.to_string()))?;
     self_replace::self_replace(&tmp).map_err(|e| UpdateError::Io(e.to_string()))?;
     let _ = std::fs::remove_file(&tmp); // best-effort cleanup; ignore if the OS still holds it
@@ -325,7 +325,7 @@ pub fn toast(summary: &str, body: &str) {
     if let Err(e) = notify_rust::Notification::new()
         .summary(summary)
         .body(body)
-        .appname("MetaSync")
+        .appname("Retro Receipts")
         .show()
         .map(|_| ())
     {

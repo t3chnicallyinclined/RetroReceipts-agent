@@ -1,4 +1,4 @@
-// Single-instance guard — ensure exactly ONE MetaSync agent runs per machine.
+// Single-instance guard — ensure exactly ONE Retro Receipts (rr-agent) runs per machine.
 //
 // Two agents reading the same MvC2 process would each detect + report the same set, double-counting matches
 // (critical to avoid during the 0.3.0 "side-by-side" migration where an old and a new agent could briefly
@@ -23,7 +23,10 @@ pub fn enforce_single_instance() {
     use windows::Win32::System::Threading::CreateMutexW;
 
     // `Global\` scopes the mutex across ALL sessions (RDP / fast-user-switching), so the guard is truly
-    // machine-wide, not per-login-session.
+    // machine-wide, not per-login-session. NAME DELIBERATELY KEPT as the pre-rename "MetaSyncAgentSingleton"
+    // (invisible kernel-object name): during the fleet self-update, an old (metasync-agent) and a new (rr-agent)
+    // build must share ONE guard so they can't both read MvC2 and double-count — a renamed mutex would let them
+    // coexist. Rename this only in a later release, once the fleet is entirely on rr-agent.
     let name = HSTRING::from("Global\\MetaSyncAgentSingleton");
     unsafe {
         // NULL security attrs, not initially owned. On success `_mutex` is a valid handle whether or not the
@@ -39,7 +42,7 @@ pub fn enforce_single_instance() {
         // Read last-error IMMEDIATELY: the windows-crate wrapper does not touch it on the success path, so it
         // still reflects CreateMutexW's own ERROR_ALREADY_EXISTS when another instance created the mutex first.
         if GetLastError() == ERROR_ALREADY_EXISTS {
-            eprintln!("[single-instance] another MetaSync agent is already running — exiting.");
+            eprintln!("[single-instance] another Retro Receipts agent is already running — exiting.");
             std::process::exit(0);
         }
         // `_mutex` is intentionally never closed: HANDLE is a Copy wrapper with no Drop, so letting it fall out
@@ -72,7 +75,7 @@ pub fn enforce_single_instance() {
     if rc != 0 {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() == Some(libc::EWOULDBLOCK) {
-            eprintln!("[single-instance] another MetaSync agent holds {} — exiting.", path.display());
+            eprintln!("[single-instance] another Retro Receipts agent holds {} — exiting.", path.display());
             std::process::exit(0);
         }
         // Some other flock error (e.g. EINTR/ENOLCK) — fail open rather than block the only instance.

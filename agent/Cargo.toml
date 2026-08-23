@@ -1,13 +1,13 @@
 [package]
-name = "metasync-agent"
-version = "0.3.7"  # LOCKSTEP with the Retro Receipts release train (latest.json / GitHub release). 0.3.7 = systemd-aware self-update relaunch on Linux — under a systemd --user service, relaunch via `systemctl --user restart <unit>` instead of the setsid child that KillMode=control-group reaped on the clean main-exit (fixes "updated but the tray never reopened", found live on the Beelink at 0.3.6) + user-facing MetaSync→Retro Receipts rename (tray menu/tooltip/notifications + installer; internal identifiers unchanged).
-description = "MetaSync tray agent — headless Windows tray companion that reads MvC2 memory, applies skins, and reports matches (replaces the Tauri webview)"
+name = "rr-agent"
+version = "0.3.8"  # LOCKSTEP with the Retro Receipts release train (latest.json / GitHub release). 0.3.8 = INTERNAL RENAME: binary metasync-agent→rr-agent, API base /skinsync→/rr, state dir %LOCALAPPDATA%\MetaSync→\RetroReceipts + autostart key + .desktop (all MIGRATED on first run — no logout/double-launch), updater AUMID→"Retro Receipts", + "The Stub" tray receipt icon. Single-instance mutex name KEPT (shared name = safe old↔new handoff during fleet self-update). Self-replace is name-agnostic so old installs keep the metasync-agent.exe filename but run rr-agent code.
+description = "Retro Receipts tray agent (rr-agent) — headless tray companion that reads MvC2 memory, applies skins, and reports matches"
 authors = ["tristech"]
 edition = "2021"
 rust-version = "1.77"
 
 [[bin]]
-name = "metasync-agent"
+name = "rr-agent"
 path = "src/main.rs"
 
 [dependencies]

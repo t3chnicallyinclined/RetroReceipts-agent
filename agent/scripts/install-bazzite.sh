@@ -8,13 +8,13 @@
 # manifest (minisign-verified, atomic-rename replace) — no reinstall needed.
 #
 # Run it on your Bazzite box (in your desktop session so the tray can appear):
-#   curl -fsSL https://nobd.net/skinsync/update/install-bazzite.sh | bash
+#   curl -fsSL https://nobd.net/rr/update/install-bazzite.sh | bash
 set -euo pipefail
 
 # Always the latest release's Linux binary (GitHub redirects /latest/ to the current release); the agent
 # self-updates from the signed manifest thereafter, so this only needs to land ANY recent build.
-BIN_URL="https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/metasync-agent-linux"
-DEST="$HOME/.local/bin/metasync-agent"
+BIN_URL="https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/rr-agent-linux"
+DEST="$HOME/.local/bin/rr-agent"
 
 echo "▶ Retro Receipts agent — Bazzite install"
 mkdir -p "$HOME/.local/bin"
@@ -46,14 +46,16 @@ fi
 mv -f "$tmp" "$DEST"
 echo "  installed → $DEST"
 
-# Restart cleanly: stop any prior instance, then launch detached (first run registers autostart + tray icon).
+# Restart cleanly: stop any prior instance (both the new name AND the pre-rename one, for a clean reinstall
+# over an old install), then launch detached (first run registers autostart + tray icon + migrates state).
+pkill -x rr-agent 2>/dev/null || true
 pkill -x metasync-agent 2>/dev/null || true
 sleep 0.5
 nohup "$DEST" >/dev/null 2>&1 &
 disown 2>/dev/null || true
 
 sleep 1.5
-if pgrep -x metasync-agent >/dev/null; then
+if pgrep -x rr-agent >/dev/null; then
   echo "✅ Retro Receipts is running — look for its icon in your system tray."
   echo "   It starts automatically at login now. Sign in at https://nobd.net/app to link your account."
 else
