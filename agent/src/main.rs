@@ -197,6 +197,9 @@ fn main() {
 
     // "Start with Windows" is ON by DEFAULT: until the user makes an explicit choice in the tray, every launch
     // re-asserts the Run-key autostart (which also self-heals a stale path after a move/reinstall/auto-update).
+    // ⚠ That self-heal was INERT before 0.3.10: enable() wrote std::env::current_exe(), which after 0.3.8's
+    // %LOCALAPPDATA%\MetaSync -> \RetroReceipts move still named the OLD directory — so every launch dutifully
+    // rewrote the same dead path. It now writes config::live_exe_path(); see the note there.
     // Once they've toggled it, honor that choice forever — an explicit OFF is never re-enabled behind their back.
     match prefs::autostart_choice() {
         None => {

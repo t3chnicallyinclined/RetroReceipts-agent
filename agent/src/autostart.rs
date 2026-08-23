@@ -23,8 +23,12 @@ mod imp {
 
     /// Full, quoted-safe path to the running executable. winreg quotes nothing for us, but Run entries with
     /// spaces are fine unquoted since the value is a single program path (no args).
+    ///
+    /// ⚠ Uses crate::config::live_exe_path(), NOT current_exe() directly — see the note there. Writing a
+    /// stale current_exe() into the Run key is exactly what left 0.3.8 Windows installs pointing at a
+    /// directory that no longer existed, so they wouldn't have started at the next login.
     fn exe_path() -> std::io::Result<String> {
-        let p = std::env::current_exe()?;
+        let p = crate::config::live_exe_path()?;
         Ok(p.to_string_lossy().into_owned())
     }
 

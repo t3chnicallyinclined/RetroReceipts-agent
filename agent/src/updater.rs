@@ -191,7 +191,9 @@ pub fn restart() -> ! {
             }
         }
     }
-    if let Ok(exe) = std::env::current_exe() {
+    // live_exe_path(), not current_exe(): after an install-dir move current_exe() names a path that no longer
+    // exists, so relaunching it fails silently and the user is left with no agent (see config::live_exe_path).
+    if let Ok(exe) = crate::config::live_exe_path() {
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("--updated");
         // The relaunched agent MUST outlive this process. On Windows a plain spawn already survives; on Linux the
@@ -238,7 +240,36 @@ pub fn apply_update(update: &Update) -> Result<(), UpdateError> {
     let mut tmp = std::env::temp_dir();
     tmp.push(format!("rr-agent-{}.new", update.version));
     std::fs::write(&tmp, &bin).map_err(|e| UpdateError::Io(e.to_string()))?;
-    self_replace::self_replace(&tmp).map_err(|e| UpdateError::Io(e.to_string()))?;
+    // `self_replace` locates the running image via current_exe(). If the install directory was moved out from
+    // under this process that path no longer exists and self_replace fails with a bare
+    // "The system cannot find the path specified. (os error 3)" — which is precisely how 0.3.8 Windows
+    // installs got permanently stuck: the state-dir migration renamed the folder while the agent was running,
+    // so every subsequent update attempt aimed at a directory that was gone. See config::live_exe_path().
+    let current_ok = std::env::current_exe().map(|p| p.exists()).unwrap_or(false);
+    if current_ok {
+        self_replace::self_replace(&tmp).map_err(|e| UpdateError::Io(e.to_string()))?;
+    } else {
+        // Do what self_replace would have done, but at the binary's REAL location: a running image can be
+        // renamed but not overwritten, so move it aside and write the new one in its place.
+        let live = crate::config::live_exe_path().map_err(|e| UpdateError::Io(e.to_string()))?;
+        if !live.exists() {
+            return Err(UpdateError::Io(
+                "this agent's install folder was moved or removed, so it can't update itself — \
+                 reinstall from https://nobd.net/app to get the latest version"
+                    .into(),
+            ));
+        }
+        let aside = live.with_extension("old");
+        let _ = std::fs::remove_file(&aside); // clear any leftover from a previous update
+        std::fs::rename(&live, &aside).map_err(|e| UpdateError::Io(e.to_string()))?;
+        if let Err(e) = std::fs::copy(&tmp, &live) {
+            // Put it back rather than leaving the user with no agent at all.
+            let _ = std::fs::rename(&aside, &live);
+            return Err(UpdateError::Io(e.to_string()));
+        }
+        // The old image is still mapped while we run, so this usually fails here and is cleaned next launch.
+        let _ = std::fs::remove_file(&aside);
+    }
     let _ = std::fs::remove_file(&tmp); // best-effort cleanup; ignore if the OS still holds it
     Ok(())
 }
