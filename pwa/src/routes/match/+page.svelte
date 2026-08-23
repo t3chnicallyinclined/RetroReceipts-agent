@@ -17,16 +17,15 @@
 	// streams and pauses them while the tab is hidden (CPU discipline — mirrors /ranks).
 	onMount(() => {
 		matchfeed.connect();
-		wager.connect(auth.steamid);
+		// wager's live subscription is owned app-wide by AppLive (+layout) now — here we only SEED-fetch the
+		// rail + arcade for this view (freshness); matchfeed stays the /match-scoped live stream we own here.
 		void wager.loadOpen();
 		if (auth.steamid) void wager.loadMine(auth.steamid);
 		const onVis = () => {
 			if (document.hidden) {
 				matchfeed.disconnect();
-				wager.disconnect();
 			} else {
 				matchfeed.connect();
-				wager.connect(auth.steamid);
 				void wager.loadOpen();
 				if (auth.steamid) void wager.loadMine(auth.steamid);
 			}
@@ -35,7 +34,6 @@
 		return () => {
 			document.removeEventListener('visibilitychange', onVis);
 			matchfeed.disconnect();
-			wager.disconnect();
 		};
 	});
 
