@@ -111,7 +111,7 @@
 			emphasis={variant === 'result' ? 'lose' : 'live'}
 			onLinkClick={stop}
 		/>
-		{#if verified}<span class="seal" title="Verified (both agree + replay)">✓✓</span>{/if}
+		{#if verified}<span class="seal" title="Both agents reported this result independently">✓✓</span>{/if}
 		{#if modeTag}<span class="mode m-{modeTag}" title="Game mode">{MODE_TAG[modeTag] ?? modeTag}</span>{/if}
 		{#if hasScore}
 			<span class="score" title="Set score (live)">

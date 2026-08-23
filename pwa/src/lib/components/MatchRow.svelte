@@ -14,7 +14,7 @@
 	const combo = $derived(Number(match.combo ?? 0));
 	const elo = $derived(typeof match.elo === 'number' ? match.elo : 0);
 	const when = $derived(timeAgo(match.ts));
-	// confirmed/verified hint: ✓✓ both-agree+replay, ✓ confirmed, · unconfirmed.
+	// trust hint: ✓✓ = both AGENTS independently reported it (rare), ✓ = both players agreed, · = neither.
 	const seal = $derived(match.verified ? '✓✓' : match.confirmed ? '✓' : '');
 	const oppHref = $derived(
 		match.opp_id && String(match.opp_id).length === 17 ? `${base}/u/${match.opp_id}` : null
@@ -49,7 +49,9 @@
 			{:else}
 				<span class="opp">{match.opp || 'Opponent'}</span>
 			{/if}
-			{#if seal}<span class="seal" title={match.verified ? 'Verified (both agree + replay)' : 'Confirmed'}>{seal}</span>{/if}
+			{#if seal}<span class="seal" title={match.verified
+						? 'Both agents reported this result independently'
+						: 'Both players agreed on this result'}>{seal}</span>{/if}
 			{#if mode}<span class="mode m-{mode}" title="Game mode">{MODE_LABEL[mode] ?? mode}</span>{/if}
 		</div>
 		{#if myTeam || oppTeam}

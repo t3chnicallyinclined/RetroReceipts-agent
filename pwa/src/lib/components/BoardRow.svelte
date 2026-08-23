@@ -28,7 +28,10 @@
 	const r = $derived(rankOf(player.rating, gamesOf(player)));
 	const w = $derived(winrateOf(player));
 	const val = $derived(statValue(player, tab));
-	// verified-wins badge on the Wins board — confirmed by both-agree / replay
+	// CONFIRMED-wins badge on the Wins board. Deliberately says "confirmed", not "verified": the number
+	// IS confirmed_wins (both participants agreed, or an admin settled it). `verified` is a much stricter,
+	// much rarer flag — both players' AGENTS independently reporting the same match — so it sits near zero for
+	// anyone whose opponents don't run the agent. Labelling this count "verified" overstated it.
 	const cw = $derived(player.confirmed_wins == null ? null : Number(player.confirmed_wins));
 	const showVerified = $derived(tab === 'wins' && cw != null && cw < val);
 </script>
@@ -56,7 +59,7 @@
 		</div>
 	{/if}
 	<div class="bd-num">
-		{val}{#if showVerified}<span class="verified" title="{cw} of {val} wins verified">✓{cw}</span>{/if}
+		{val}{#if showVerified}<span class="verified" title="{cw} of {val} wins confirmed by both players">✓{cw}</span>{/if}
 	</div>
 	<div class="bd-num dim col-wl">{player.wins ?? 0} – {player.losses ?? 0}</div>
 	<div class="bd-num col-wr" style="color:{winrateColor(w)}">{w}%</div>
