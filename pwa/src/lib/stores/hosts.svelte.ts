@@ -9,6 +9,38 @@ import { api } from '$lib/config';
 //   • data: GET /rr/arcade/hosts → { ok, hosts:[ … ] }
 //   • the server already filters to ONLINE hosts (a 45s liveness window); the list may be empty.
 
+/** A person on a cabinet's assigned match (server sends {steamid,name}). */
+interface AssignedPerson {
+	name?: string;
+	steamid?: string;
+}
+/** Raw server enrichment (server host-bundle): discriminated + nested under `assigned`. The client card
+ *  historically reads flat `wager`/`tourney`, so we normalize the wire shape into those below (see
+ *  normalizeAssignment). Keeping the server's discriminated shape as the wire format is deliberate. */
+type Assigned =
+	| {
+			kind: 'wager';
+			wager_id: string;
+			status?: string; // open | locked
+			stake?: number;
+			pot?: number;
+			ft?: number;
+			challenger?: AssignedPerson;
+			acceptor?: AssignedPerson | null;
+			cw?: number;
+			aw?: number;
+	  }
+	| {
+			kind: 'tourney';
+			tid?: string;
+			match_id?: string;
+			name?: string;
+			a?: AssignedPerson;
+			b?: AssignedPerson;
+			best_of?: number;
+			status?: string;
+	  };
+
 export interface Host {
 	steamid: string;
 	name: string;
@@ -54,6 +86,8 @@ export interface Host {
 	//     server ships the enrichment these stay undefined and the banner falls back to the lobby status. ---
 	/** raw assignment slot: "mm:<id>" | "t:<tid>#<mid>" | "" — the mode discriminator. */
 	assigned_match?: string;
+	/** raw server enrichment (discriminated); normalized into `wager`/`tourney` on load. null/absent = idle. */
+	assigned?: Assigned | null;
 	/** money-match assignment (cabinet bound to a wager). */
 	wager?: {
 		id: string;
@@ -102,6 +136,38 @@ export function hostStatus(h: Host): HostStatus {
 	return 'available';
 }
 
+// Normalize the server's discriminated `assigned` enrichment into the flat `wager`/`tourney` the card reads.
+// Server wire: {kind:'wager', wager_id, …} / {kind:'tourney', a, b, …}. Card: host.wager{id,…} / host.tourney
+// {A,B,…}. Without this the banner silently falls back to lobby status (wager/tourney stay undefined).
+function normalizeAssignment(h: Host): Host {
+	const a = h.assigned;
+	if (!a) return h;
+	if (a.kind === 'wager') {
+		h.wager = {
+			id: a.wager_id,
+			status: a.status,
+			stake: a.stake,
+			pot: a.pot,
+			ft: a.ft,
+			challenger: a.challenger,
+			acceptor: a.acceptor ?? null,
+			cw: a.cw,
+			aw: a.aw
+		};
+	} else if (a.kind === 'tourney') {
+		h.tourney = {
+			tid: a.tid,
+			name: a.name,
+			match_id: a.match_id,
+			A: a.a,
+			B: a.b,
+			best_of: a.best_of,
+			status: a.status
+		};
+	}
+	return h;
+}
+
 const POLL_MS = 6000;
 
 // In-match first, then lobbies with players, then empty-available, then not-yet-hosting; ties broken
@@ -142,7 +208,7 @@ export class HostsStore {
 			if (!res.ok) throw new Error(`hosts ${res.status}`);
 			const json = (await res.json()) as HostsResponse;
 			if (myReq !== this.#reqId) return;
-			this.hosts = sortHosts(json.hosts ?? []);
+			this.hosts = sortHosts((json.hosts ?? []).map(normalizeAssignment));
 			this.error = null;
 			this.lastLoaded = Date.now();
 		} catch (e) {
