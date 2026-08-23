@@ -5,6 +5,7 @@
 	import TopBar from '$lib/components/TopBar.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
 	import AppLive from '$lib/components/AppLive.svelte';
+	import ChallengeStrip from '$lib/components/ChallengeStrip.svelte';
 	import DownloadAgent from '$lib/components/DownloadAgent.svelte';
 	import RankInfoModal from '$lib/components/RankInfoModal.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
@@ -35,6 +36,7 @@
 <div class="app">
 	<div class="wrap">
 		<TopBar />
+		<ChallengeStrip />
 		<DownloadAgent />
 		<main>
 			{@render children()}
