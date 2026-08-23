@@ -98,7 +98,8 @@ The leaderboard's win/loss has been wrong repeatedly; two DISTINCT bugs, one fix
   (2nd pass: the ISteamMatchmaking lobby object). ⚠ a clean stride-0x20 array w/ pings+ready = the
   lobby-BROWSER list. **PARTIALLY RETRACTED 2026-08-23:** right about its ORIGIN, wrong to close the door —
   this is the **SteamQos RTT table** and entries are keyed by **SteamID**, so if the opponent appears in it,
-  `entry+0x18` is a genuine measured round-trip to them. See the connection-quality section at the bottom.
+  `entry+0x18` is a genuine measured round-trip to them. ✅ **CONFIRMED + SUPERSEDED 2026-08-23** — the real
+  table is the MEMBER PING TABLE at `mesh+0x19348` (milliseconds); see the connection-quality section below.
 - **Host-picked settings (specials-allowed / stage / version / timer): NOT in game memory** — Steam lobby metadata
   via `SetLobbyData` on the un-pinned lobby object (2nd pass). (`app_name`/`app_version` strings = Coyote telemetry,
   a red herring.)
@@ -198,7 +199,56 @@ Investigated for the money-match receipt. **Nothing is shippable yet; do not dis
   persisted ⟹ unreadable. We can't call it ourselves either: the P2P session belongs to the game process.
 - ❌ **No rollback-frame, packet-loss, late-packet or dropped-frame counter found.** `FUN_140118290` is a
   savestate REGION REGISTRY (base/size/count), not a counter. MED confidence (rollback-core coverage is partial).
-- ⭐ **The one real RTT — the SteamQos probe.** `qos = *(u64*)(exe+0x2ebb9d0)`, peer count `*(u32*)(qos+0x8810)`,
+- ⭐⭐ **THE MEMBER PING TABLE — real, per-opponent, in MILLISECONDS. Read LIVE 2026-08-23.**
+  ```
+  mesh  = *(u64*)( *(u64*)( *(u64*)(exe+0x2ebccb8) + 0x250 ) + 0x180 )
+  count =  *(u32*)(mesh + 0x14138)
+  rec_i =           mesh + 0x19348 + i*0x20
+     +0x00 u64 member CSteamID   +0x08 u64 PING (ms, 0xFFFF = not measured)
+     +0x10 u8  ready/latched     +0x18 u64 lobby CSteamID
+  ```
+  Live read on the owner's session: 4 members, **34 / 84 / 117 / 99 ms**, all ready=1. Units confirmed ms
+  (`QosGetRTT` returns a 16-bit `0xFFFF` sentinel).
+  ✅ **REVERSES the old dismissal** ("stride-0x20 pings+ready = lobby BROWSER, not your match") — it is the
+  **room's member list, keyed by SteamID**, so the opponent's entry is findable.
+  ⚠ **LATCHED AT JOIN, never updates.** `imm 0x19348` over the whole code section hits ONLY in
+  `FUN_14013c280` (+ the count read in `FUN_140139710`) — no HUD, no match code reads it. Honest label:
+  **"ping at match start: N ms"**. NOT live, NOT min/avg/max, and NOT what changes colour.
+  QoS API: `FUN_14015bfa0` GetRTT / `bfd0` IsReady / `c030` AddPeer / `bdf0` RemovePeer; entry 0x20 bytes
+  `{sid,state,t_send,rtt}`. ⚠ mid-match `qos_count == 0` — peers are torn down after the lobby phase.
+
+- ❌ **QoS state is NEVER re-armed** (hypothesis tested and disproven two ways): every caller of all five QoS
+  functions was enumerated — none writes `state = 1` — and the consumer LATCHES (`rec[0x10]=1` gates the
+  read). Live: the table is empty mid-match. So the join ping cannot become a rolling ping.
+
+- 🔴 **`game_state+0x2cc/0x2d0` is EMPIRICALLY DEAD as a delay signal.** In a live ONLINE RANKED match both
+  read `127` (n=10) with the source record `p0_f1e8/f1ec = 10` — i.e. the online branch ran and still produced
+  the offline default. Combined with "offline fallback is the MAXIMUM", stop treating it as delay frames.
+
+- 🔬 **NEW LEAD — session-NEGOTIATED params.** `ns = *(u64*)(session+0xd04b8)` (verify `*(u32*)ns == 0x20240517`):
+  in a live ranked match `+0x30=6, +0x34=3, +0x38=6` — **not** the init defaults (10,10,10), so these are
+  negotiated per session, small, and frame-shaped. Plausibly delay/rollback frames. Test: LAN vs laggy match.
+  (Softens the earlier "+0x38..0x5c is all config" wording.)
+
+- 🎨 **THE COLOUR-CHANGING INDICATOR IS STILL NOT LOCATED** — but the owner observes it changing MID-MATCH, so
+  a live driver exists. Bounded during a confirmed-live 45s fight (129 samples): **zero** changing dwords in
+  the QoS table, session block `+0xd0300..0xd0500`, mesh header, or netstate header + first 4 player records.
+  Only `game_state` (`+0x210..0x22c` input-mask-shaped, `+0x548`, `+0x578/57c`, `+0x598/59c`, `+0x7ac/7b0`)
+  and the battle-globals moved. ⚠ a later "netstate has no live counters" sweep was **INVALID** (the fight
+  wasn't simulating — fighters frozen) and must be redone during a real fight.
+  **To find it:** `python mvc2_hunt_quality.py --seconds 180 --interval 0.3`, press ENTER the instant the icon
+  changes; anything `near_mark=True` is the driver. Fallback = `mvc2_snapdiff.py` A1/A2/B subtraction protocol.
+
+- 🧩 **UI class recipe** (for finding any `uUi*` renderer): name string → `FUN_14011edf0(DTI, name, parentDTI,
+  size)` → `abs <DTI>` → factory → vtable. Worked example: `uUiGameUser` DTI `0x140bd41f8`, size `0x5a0`,
+  vtable `0x1408e67d0`, method `FUN_1400823a0` → reads `game_state+0x4f4/0x4f8` = the **player plates**, NOT a
+  connection meter (cleanly eliminated).
+
+- 📦 **Packing blocker is GONE:** an unpacked, verified image dump lives at
+  `C:/Users/trist/ghidra_scripts/mvc2_netqual/mvc2_dump.bin` (68 MB; `"SteamQosReq"` at exactly `140922a80`,
+  `FUN_140037370` instruction-identical to the corpus). All future static RE can be done offline from it.
+
+- ⭐ **(SUPERSEDED by the member ping table above) The SteamQos probe.** `qos = *(u64*)(exe+0x2ebb9d0)`, peer count `*(u32*)(qos+0x8810)`,
   entries from `qos+8`: `+0x00` SteamID, `+0x08` state (1→2→3), `+0x10` t_send, **`+0x18` = RTT**, computed
   literally as `now() - t_send` on receiving `"SteamQosAns"` (payloads @ `140922a80/90`).
   ⚠ **One-shot per peer** — the loop only probes `state==1` and never re-measures, so sampling during a match
