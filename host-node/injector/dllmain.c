@@ -2800,54 +2800,6 @@ static void do_set_slots(const char *arg)
     result_ok_simple("slots_set");
 }
 
-/* EXPERIMENT: poke_s0 <hexoff> <hexval> -- write a u32 at session0 + <off>.
- * session0 = *(manager+0x250). Validates the pure-memory seat-count path: on the
- * Create-Lobby screen, `poke_s0 170 3` (leave the menu at 2), then press Create --
- * if the header reads 1/3, the create READS session0+0x170 (memory path works);
- * if it stays 1/2, session0+0x170 is a menu-widget mirror and the menu nav is required. */
-static void do_poke_s0(const char *arg)
-{
-    uint64_t manager = get_manager();
-    if (!manager) { result_fail("poke_s0", "manager_not_found"); return; }
-    uint64_t s0 = 0;
-    if (!rd_u64(manager + 0x250, &s0) || !s0) { result_fail("poke_s0", "session0_null (manager+0x250)"); return; }
-    if (!arg || !*arg) { result_fail("poke_s0", "need <hexoff> <hexval>"); return; }
-    char *e = NULL;
-    uint64_t off = strtoull(arg, &e, 16);
-    while (*e == ' ' || *e == '\t') e++;
-    if (!*e) { result_fail("poke_s0", "need <hexoff> <hexval>"); return; }
-    uint32_t val = (uint32_t)strtoul(e, NULL, 16);
-    uint64_t addr = s0 + off;
-    uint32_t old = 0; rd_u32(addr, &old);
-    if (!poke32(addr, val)) { result_fail("poke_s0", "vprotect_failed"); return; }
-    logmsg("[s0] POKE session0(0x%llx)+0x%llx: 0x%x -> 0x%x",
-           (unsigned long long)s0, (unsigned long long)off, old, val);
-    char msg[80];
-    snprintf(msg, sizeof(msg), "poke s0(0x%llx)+0x%llx=0x%x (was 0x%x)",
-             (unsigned long long)s0, (unsigned long long)off, val, old);
-    result_ok_simple(msg);
-}
-
-/* EXPERIMENT: poke_abs <hexaddr> <hexval> -- raw u32 write at an absolute address.
- * Fallback for the memory-path test if the live session0 isn't *(manager+0x250):
- * find session0's address via probe_req's "[req] BASELINE ... session0=0x..." line, then
- * `poke_abs <session0+0x170> 3`. Explicit/manual; arbitrary write -- diagnostic only. */
-static void do_poke_abs(const char *arg)
-{
-    if (!arg || !*arg) { result_fail("poke_abs", "need <hexaddr> <hexval>"); return; }
-    char *e = NULL;
-    uint64_t addr = strtoull(arg, &e, 16);
-    while (*e == ' ' || *e == '\t') e++;
-    if (!*e || !addr) { result_fail("poke_abs", "need <hexaddr> <hexval>"); return; }
-    uint32_t val = (uint32_t)strtoul(e, NULL, 16);
-    uint32_t old = 0; rd_u32(addr, &old);
-    if (!poke32(addr, val)) { result_fail("poke_abs", "vprotect_failed"); return; }
-    logmsg("[abs] POKE 0x%llx: 0x%x -> 0x%x", (unsigned long long)addr, old, val);
-    char msg[80];
-    snprintf(msg, sizeof(msg), "poke 0x%llx=0x%x (was 0x%x)", (unsigned long long)addr, val, old);
-    result_ok_simple(msg);
-}
-
 /* Steam vtable calls MUST run on the game main thread (steamclient bridge is
  * main/callback-thread bound; off-thread returns 0). So these commands MARSHAL:
  * queue the task + arm the FUN_140054100 main-thread hook; the result file is
@@ -3838,8 +3790,6 @@ static DWORD WINAPI helper(LPVOID arg)
             else if (_stricmp(cmd, "register_lc")   == 0) do_register_lc();
             else if (_stricmp(cmd, "read_created")  == 0) do_read_created();
             else if (_stricmp(cmd, "set_slots")     == 0) do_set_slots(arg);
-            else if (_stricmp(cmd, "poke_s0")       == 0) do_poke_s0(arg);    /* EXPERIMENT: session0+off memory poke */
-            else if (_stricmp(cmd, "poke_abs")      == 0) do_poke_abs(arg);   /* EXPERIMENT: raw-address memory poke */
             else if (_stricmp(cmd, "getsteamid")    == 0) do_getsteamid();
             else if (_stricmp(cmd, "capture_created")==0) do_capture_created();
             else if (_stricmp(cmd, "probe_req")     == 0) do_probe_req();
