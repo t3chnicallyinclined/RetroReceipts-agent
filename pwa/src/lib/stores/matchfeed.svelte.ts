@@ -1,5 +1,6 @@
 import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
+import { invalidate } from '$lib/net.svelte';
 import { getChannel, type SseChannel } from '$lib/rt.svelte';
 import type { SseFrame } from '$lib/types';
 
@@ -353,6 +354,11 @@ export class MatchFeedStore {
 		// after sign-in, so a whole session of ranked games would still display the rating you had when
 		// the page was opened. Deliberately fires on the RESULT event rather than polling, and only when
 		// the game actually involved me.
+		// A result changes ratings, the boards and the H2H tallies. Push that freshness OUT rather than making
+		// every surface poll: drop the cached bodies it invalidated, then refresh my own profile.
+		invalidate('/rr/profile');
+		invalidate('/rr/leaderboard');
+		invalidate('/rr/matchup');
 		const mine = auth.steamid;
 		if (mine && (row.winner === mine || row.loser === mine)) {
 			void auth.loadMe();

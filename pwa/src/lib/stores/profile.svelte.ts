@@ -1,4 +1,4 @@
-import { api } from '$lib/config';
+import { apiGet } from '$lib/net.svelte';
 import { getChannel } from '$lib/rt.svelte';
 import { auth } from '$lib/stores/auth.svelte';
 import type { SseFrame } from '$lib/types';
@@ -136,11 +136,11 @@ export class ProfileStore {
 		try {
 			// Attach the bearer (empty when signed out): the token only unlocks the OWNER view of the
 			// caller's OWN id server-side (e.g. the private lobby record) — it grants nothing on others'.
-			const res = await fetch(api(`/rr/profile?steamid=${encodeURIComponent(sid)}`), {
-				headers: { accept: 'application/json', ...auth.headers() }
+			// Shared GET: dedups against every other profile reader in the same tick (the live match card and
+			// this store routinely want the same player) — see $lib/net.svelte.
+			const json = await apiGet<Profile>(`/rr/profile?steamid=${encodeURIComponent(sid)}`, {
+				token: auth.token
 			});
-			if (!res.ok) throw new Error(`profile ${res.status}`);
-			const json = (await res.json()) as Profile;
 			if (myReq !== this.#reqId) return; // a newer load superseded this one
 			this.data = json;
 			this.error = null;

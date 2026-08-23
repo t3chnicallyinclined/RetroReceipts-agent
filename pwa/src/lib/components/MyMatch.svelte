@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth.svelte';
 	import { matchfeed } from '$lib/stores/matchfeed.svelte';
-	import { api } from '$lib/config';
+	import { apiGet } from '$lib/net.svelte';
 	import { base } from '$app/paths';
 	import type { Profile } from '$lib/stores/profile.svelte';
 	import { rankOf } from '$lib/ranks';
@@ -62,17 +62,13 @@
 		const stamp = `${opp}|${Object.values(mine?.wins ?? {}).reduce((a, b) => a + b, 0)}`;
 		if (stamp === fetchedFor) return;
 		const rq = ++reqId;
+		// Both go through the shared GET so they dedup against the profile store and any other surface asking
+		// for the same player this tick — these refetch after every game now, so that matters.
 		Promise.all([
-			fetch(api(`/rr/profile?steamid=${encodeURIComponent(opp)}`), {
-				headers: { accept: 'application/json' }
-			})
-				.then((r) => (r.ok ? (r.json() as Promise<Profile>) : null))
-				.catch(() => null),
-			fetch(api(`/rr/matchup?me=${encodeURIComponent(my)}&opp=${encodeURIComponent(opp)}`), {
-				headers: { accept: 'application/json' }
-			})
-				.then((r) => (r.ok ? (r.json() as Promise<Matchup>) : null))
-				.catch(() => null)
+			apiGet<Profile>(`/rr/profile?steamid=${encodeURIComponent(opp)}`).catch(() => null),
+			apiGet<Matchup>(`/rr/matchup?me=${encodeURIComponent(my)}&opp=${encodeURIComponent(opp)}`).catch(
+				() => null
+			)
 		]).then(([op, m]) => {
 			if (rq !== reqId) return; // superseded by a newer opponent
 			oppProfile = op;
