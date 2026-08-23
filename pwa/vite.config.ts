@@ -31,7 +31,14 @@ export default defineConfig({
 				display: 'standalone',
 				orientation: 'portrait',
 				categories: ['games', 'sports'],
+				// PNG FIRST, deliberately: Chrome will not use an SVG for an INSTALLED app/shortcut icon and
+				// falls back to a generated letter tile, which is why an installed shortcut showed a letter
+				// instead of the receipt. The SVGs stay last as the scalable option. Regenerate the PNGs with
+				// `node scripts/build-icons.mjs` after editing the SVGs in static/.
 				icons: [
+					{ src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+					{ src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+					{ src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
 					{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
 					{ src: 'icon-maskable.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' }
 				]
