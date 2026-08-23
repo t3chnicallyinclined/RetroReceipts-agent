@@ -106,9 +106,11 @@ console.log(`▶ serving build at ${url}`);
 // ── 3) render-check GATE (signed-out shell + signed-in idle — both must pass) ────────────────────────
 // Signed-out exercises the empty/marketing states; signed-in exercises the live branches (MyMatch on
 // /match, profile on /u/…, settings) — that's where runtime bugs actually hide, so it gets full coverage.
-const outURLs = ['', 'match', 'ranks', 'hosts', 'tournament'].map((p) => url + p);
+// 🧾 receipts are PUBLIC + read-only (a shared link must work signed-out), so they belong in BOTH passes.
+// 'r/nope' exercises the not-found path — the receipt route must degrade to a message, never a crash.
+const outURLs = ['', 'match', 'ranks', 'hosts', 'tournament', 'r/nope', 'r/session/76561197960287930'].map((p) => url + p);
 // NB: no standalone 'regions' route — the region ladder is a tab inside /ranks (regionView), covered by 'ranks'.
-const inURLs = ['', 'match', 'ranks', 'hosts', 'settings', 'tournament', 'tournament/create', 'tournament/0/manage', 'u/76561197960287930'].map((p) => url + p);
+const inURLs = ['', 'match', 'ranks', 'hosts', 'settings', 'tournament', 'tournament/create', 'tournament/0/manage', 'u/76561197960287930', 'r/nope', 'r/session/76561197960287930'].map((p) => url + p);
 const codeOut = await run('node', ['scripts/render-check.mjs', ...outURLs]);
 const codeIn = await run('node', ['scripts/render-check.mjs', ...inURLs], { SIGNED_IN: '1' });
 server.close();
