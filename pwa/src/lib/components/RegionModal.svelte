@@ -4,6 +4,7 @@
 	import { api } from '$lib/config';
 	import Flag from '$lib/components/Flag.svelte';
 	import { rankOf } from '$lib/ranks';
+	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import Avatar from './Avatar.svelte';
 	import RankBadge from './RankBadge.svelte';
 	import type { Region, RegionLevel } from '$lib/stores/regions.svelte';
@@ -148,7 +149,7 @@
 						</span>
 						<span class="rk">
 							<RankBadge rating={p.rating ?? 0} games={g || null} size={15} />
-							<span class="rk-t rk-{tier.s}">{tier.n}</span>
+							<span class="rk-t rk-{tier.s}" use:rankTitle={tier.s}>{tier.n}</span>
 						</span>
 						<span class="rt">{p.rating ?? '—'}</span>
 						<span class="wl"><b class="w">{p.wins ?? 0}</b><span class="d">–</span><b class="l">{p.losses ?? 0}</b></span>

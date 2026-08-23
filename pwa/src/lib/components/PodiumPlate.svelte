@@ -3,6 +3,7 @@
 	import RankBadge from './RankBadge.svelte';
 	import Avatar from './Avatar.svelte';
 	import { rankOf, gamesOf, winrateOf, RK_PLATE } from '$lib/ranks';
+	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import { statValue, MAST } from '$lib/boards';
 	import Flag from '$lib/components/Flag.svelte';
 	import type { Player, LeaderboardTab } from '$lib/types';
@@ -38,7 +39,7 @@
 	{#if !scoped}
 		<span class="ptier bd-tier">
 			<RankBadge rating={player.rating} games={gamesOf(player)} size={crown ? 20 : 16} />
-			<span class="rk-{r.s}">{r.n}</span>
+			<span class="rk-{r.s}" use:rankTitle={r.s}>{r.n}</span>
 		</span>
 	{/if}
 	<b class="prt">{statValue(player, tab)}</b>

@@ -13,6 +13,7 @@
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import SuggestModal from '$lib/components/SuggestModal.svelte';
 	import { rankOf, gamesOf } from '$lib/ranks';
+	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import { timeAgo } from '$lib/format';
 	import Flag from '$lib/components/Flag.svelte';
 
@@ -111,7 +112,7 @@
 				<Avatar url={me?.avatar} size={44} alt={me?.name ?? 'You'} />
 				<div class="whotext">
 					<b class="nm">{#if me?.cc}<Flag cc={me.cc} w={16} /> {/if}{me?.name || 'You'}</b>
-					{#if r}<span class="sub"><RankBadge rating={me?.rating ?? 0} games={gp} size={14} /> <span class="rk-{r.s}">{r.n}</span> · {me?.rating ?? '—'}</span>{/if}
+					{#if r}<span class="sub"><RankBadge rating={me?.rating ?? 0} games={gp} size={14} /> <span class="rk-{r.s}" use:rankTitle={r.s}>{r.n}</span> · {me?.rating ?? '—'}</span>{/if}
 				</div>
 			</a>
 			<button class="btn ghost" onclick={() => auth.logout()}>Sign out</button>

@@ -5,6 +5,7 @@
 	import { base } from '$app/paths';
 	import type { Profile } from '$lib/stores/profile.svelte';
 	import { rankOf } from '$lib/ranks';
+	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import { charName } from '$lib/chars';
 	import Flag from '$lib/components/Flag.svelte';
 	import RankBadge from './RankBadge.svelte';
@@ -151,7 +152,7 @@
 				<div class="nm">{#if auth.me?.cc}<span class="fl"><Flag cc={auth.me?.cc} w={16} /></span> {/if}{myName}</div>
 				<div class="rk">
 					<RankBadge rating={myRating} games={myGames || null} size={15} />
-					<span class="rk-t rk-{myTier.s}">{myTier.n}</span>
+					<span class="rk-t rk-{myTier.s}" use:rankTitle={myTier.s}>{myTier.n}</span>
 					<span class="elo">· {myRating}</span>
 				</div>
 			</div>
@@ -180,7 +181,7 @@
 					<div class="nm">{oppName}{#if oppProfile?.cc} <span class="fl"><Flag cc={oppProfile?.cc} w={16} /></span>{/if}</div>
 					<div class="rk">
 						<RankBadge rating={oppRating} games={oppGames || null} size={15} />
-						<span class="rk-t rk-{oppTier.s}">{oppTier.n}</span>
+						<span class="rk-t rk-{oppTier.s}" use:rankTitle={oppTier.s}>{oppTier.n}</span>
 						<span class="elo">· {oppRating}</span>
 					</div>
 					{#if h2hW || h2hL}

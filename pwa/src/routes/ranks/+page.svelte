@@ -9,9 +9,9 @@
 	import PodiumPlate from '$lib/components/PodiumPlate.svelte';
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import TierLadder from '$lib/components/TierLadder.svelte';
-	import RankInfoModal from '$lib/components/RankInfoModal.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import { rankOf } from '$lib/ranks';
+	import { rankInfo, rankTitle } from '$lib/stores/rankinfo.svelte';
 	import Flag from '$lib/components/Flag.svelte';
 	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
@@ -110,7 +110,6 @@
 		return [...map.values()].sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0));
 	});
 	let openRegion = $state<Region | null>(null); // region drill-in (players + stats) modal
-	let openTier = $state<string | null>(null); // rank-info modal — the focused tier slug (null = closed)
 	// Masthead adapts to the active mode (green REGIONS/REPRESENT vs the stat masthead).
 	const heroTitle = $derived(regionView ? 'REGIONS' : mast[0]);
 	const heroGhost = $derived(regionView ? 'REPRESENT' : ghost);
@@ -254,7 +253,7 @@
 			{#if myTier}
 				<span class="you-tier bd-tier">
 					<RankBadge rating={auth.me?.rating ?? 0} games={myGames} size={16} />
-					<span class="rk-{myTier.s}">{myTier.n}</span>
+					<span class="rk-{myTier.s}" use:rankTitle={myTier.s}>{myTier.n}</span>
 				</span>
 			{/if}
 			<span class="you-rt">{auth.me?.rating ?? '—'}</span>
@@ -274,14 +273,11 @@
 
 <!-- The Marvel Ladder legend — ranked scope only (Lobby/Tournament are pure records; Regions is its own board). -->
 {#if !regionView && !scoped}
-	<TierLadder mySlug={myTier?.s ?? null} onOpen={(s) => (openTier = s)} />
+	<TierLadder mySlug={myTier?.s ?? null} onOpen={(s) => rankInfo.open(s)} />
 {/if}
 
 {#if openRegion}
 	<RegionModal region={openRegion} onClose={() => (openRegion = null)} />
-{/if}
-{#if openTier}
-	<RankInfoModal slug={openTier} mySlug={myTier?.s ?? null} onClose={() => (openTier = null)} />
 {/if}
 
 <style>

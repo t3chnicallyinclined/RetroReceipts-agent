@@ -187,6 +187,23 @@ button {
 	color: var(--dim);
 }
 
+/* Rank titles open the tier legend wherever they appear (added by the `rankTitle` action, see
+   $lib/stores/rankinfo). Global on purpose: the action decorates elements that live inside many
+   different components, and a scoped rule would not reach them. Affordance only — the title keeps
+   its own color, size and weight. */
+.rk-click {
+	cursor: pointer;
+}
+.rk-click:hover {
+	text-decoration: underline dotted currentColor;
+	text-underline-offset: 3px;
+}
+.rk-click:focus-visible {
+	outline: 2px solid var(--gold);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
 /* ── Shared vocabulary utilities ── */
 .rail {
 	font-size: 10px;

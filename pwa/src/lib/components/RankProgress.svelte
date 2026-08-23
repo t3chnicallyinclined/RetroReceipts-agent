@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { rankOf, RANK_TIERS, RANK_MIN_GAMES, RK_PLATE } from '$lib/ranks';
+	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 
 	// Rank-progress line under the profile hero — mirrors the old app's rkProgressHtml(). Three states:
 	//   • Civilian   → placements countdown, fill = games / RANK_MIN_GAMES
@@ -52,7 +53,7 @@
 		</div>
 	{:else}
 		<div class="line">
-			<span class="lbl"><b class="num">{bar.toNext}</b> ELO to <b class="rk-{bar.nextSlug}">{bar.next}</b></span>
+			<span class="lbl"><b class="num">{bar.toNext}</b> ELO to <b class="rk-{bar.nextSlug}" use:rankTitle={bar.nextSlug}>{bar.next}</b></span>
 			<span class="track"><i style="width:{bar.pct}%"></i></span>
 		</div>
 	{/if}

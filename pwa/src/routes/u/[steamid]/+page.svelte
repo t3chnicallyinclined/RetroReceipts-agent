@@ -17,6 +17,7 @@
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
+	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import Flag from '$lib/components/Flag.svelte';
 
 	const store = new ProfileStore();
@@ -158,7 +159,7 @@
 		<div class="rank">
 			<RankBadge rating={rating} games={gp} size={34} />
 			<div class="rcol">
-				<b class="rk-{r.s} tier">{r.n}</b>
+				<b class="rk-{r.s} tier" use:rankTitle={r.s}>{r.n}</b>
 				<span class="elo">{rating}<i>ELO</i></span>
 				{#if showPeak}<span class="peak" title="All-time peak rating">peak {p.peak_rating}</span>{/if}
 			</div>
