@@ -24,7 +24,7 @@ GD="${GD:-$(_detect_gd)}"
 PID=$(pgrep -xo plasmashell)
 while IFS= read -r -d '' line; do case "$line" in DISPLAY=*|WAYLAND_DISPLAY=*|XDG_RUNTIME_DIR=*|DBUS_SESSION_BUS_ADDRESS=*|XAUTHORITY=*) export "$line";; esac; done < /proc/$PID/environ 2>/dev/null
 export YDOTOOL_SOCKET=/tmp/.ydotool_socket
-UP=103; DOWN=108; LEFT=105; RIGHT=106; ENTER=28; BACK=14; SPEC=29
+UP=103; DOWN=108; LEFT=105; RIGHT=106; ENTER=28; BACK=14; SPEC=29; ESC=1
 focus(){ wmctrl -a "MARVEL vs. CAPCOM" 2>/dev/null; sleep 0.35; }
 tap(){ focus; ydotool key "$1:1" >/dev/null 2>&1; sleep 0.03; ydotool key "$1:0" >/dev/null 2>&1; sleep 0.30; }
 tapN(){ local k=$1 n=$2 i; for ((i=0;i<n;i++)); do tap "$k"; done; }
@@ -92,8 +92,17 @@ do_boot(){ local ft=${1:-3}
     id=$(echo "$r"|grep -oE '"lobby_id":"[0-9]+"'|grep -oE '[0-9]+'|head -1)
     [ -n "$id" ] && [ "$id" != "0" ] && { echo "$r"; return 0; }; done; echo "$(rl)"; return 1; }
 do_spectate(){ tap $SPEC; sleep 0.8; }
-do_leave(){ local cur; cur=$(lobid); { [ -z "$cur" ] || [ "$cur" = "0" ]; } && return 0
-  tap $BACK; sleep 0.6; tap $UP; sleep 0.2; tap $ENTER; sleep 5; }
+# Leave the lobby back to the Online-Play / Custom-Match anchor. Uses ESC (KEY_ESC=1) — the actual lobby-exit
+# key — NOT the old BACK=14 (KEY_BACKSPACE), which never exited and was the likely cause of the flaky leave.
+# Then confirms the "Leave lobby?" prompt with ENTER (owner: "escape then enter to confirm"), and POLLS
+# read_lobby until the lobby id clears so `cycle` is deterministic (vs the old blind `sleep 5`). Returns
+# nonzero if still in a lobby after ~6s so the daemon can fall back to a cold boot recover.
+# ⚠ box-validate the exact confirm sequence: ESC alone vs ESC→ENTER vs ESC→ESC→ENTER — tune here.
+do_leave(){ local cur i; cur=$(lobid); { [ -z "$cur" ] || [ "$cur" = "0" ]; } && return 0
+  tap $ESC;   sleep 0.8                          # ESC → raises the "Leave lobby?" confirm
+  tap $ENTER; sleep 0.8                          # ENTER → confirm Yes
+  for i in $(seq 12); do cur=$(lobid); { [ -z "$cur" ] || [ "$cur" = "0" ]; } && return 0; sleep 0.5; done
+  return 1; }
 emit(){ local j="$2" id owner join
   id=$(echo "$j"|grep -oE '"lobby_id":"[0-9]+"'|grep -oE '[0-9]+'|head -1)
   owner=$(echo "$j"|grep -oE '"owner":"[0-9]+"'|grep -oE '[0-9]+'|head -1)
