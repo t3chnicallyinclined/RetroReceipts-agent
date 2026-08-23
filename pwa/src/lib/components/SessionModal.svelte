@@ -266,6 +266,11 @@
 					<span class="pill live"><span class="dot" aria-hidden="true"></span>LIVE</span>
 				{/if}
 			</div>
+			<!-- 🧾 the shareable slip for this set. Only once the set has an id AND games — a receipt for an
+			     empty/unloaded set would be a dead link. -->
+			{#if sessionId && games.length}
+				<a class="rcpt" href="{base}/r/set/{sessionId}" title="Open this set's receipt">🧾 Receipt</a>
+			{/if}
 			<button class="x" bind:this={closeBtn} onclick={onClose} aria-label="Close">✕</button>
 		</header>
 
@@ -334,6 +339,24 @@
 </div>
 
 <style>
+	.rcpt {
+		margin-left: auto;
+		margin-right: 8px;
+		font-size: 11.5px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: var(--dim);
+		text-decoration: none;
+		padding: 4px 9px;
+		border: 1px solid var(--line);
+		border-radius: 7px;
+		white-space: nowrap;
+	}
+	.rcpt:hover {
+		color: var(--gold);
+		border-color: var(--gold);
+	}
+
 	.ovl {
 		position: fixed;
 		inset: 0;
