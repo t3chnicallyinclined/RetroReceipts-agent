@@ -9,7 +9,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
 	import MatchRow from '$lib/components/MatchRow.svelte';
-	import QuarterUpForm from '$lib/components/QuarterUpForm.svelte';
+	import ChallengeButton from '$lib/components/ChallengeButton.svelte';
 	import RankProgress from '$lib/components/RankProgress.svelte';
 	import TeamBars from '$lib/components/TeamBars.svelte';
 	import H2HGrid from '$lib/components/H2HGrid.svelte';
@@ -85,11 +85,7 @@
 	let ownerBusy = $state(false);
 	let ownerMsg = $state<string | null>(null);
 
-	// ── 🪙 quarter-up: challenge THIS player (signed-in, not your own profile, a real 17-digit id) ──
-	const canChallenge = $derived(
-		auth.authed && !!auth.steamid && auth.steamid !== sid && found && /^\d{17}$/.test(sid)
-	);
-	let showChallenge = $state(false);
+	// 🪙 challenge THIS player — the reusable ChallengeButton self-guards (signed in, not you, real 17-digit id).
 
 	async function toggleLobby() {
 		if (ownerBusy) return;
@@ -178,21 +174,9 @@
 	<!-- 🎛 Cabinet status — shows only when this player runs an online host node (self-hides otherwise). -->
 	<HostBanner steamid={sid} self={auth.authed && auth.steamid === sid} />
 
-	{#if canChallenge}
-		<div class="challenge">
-			{#if !showChallenge}
-				<button type="button" class="ch-open" onclick={() => (showChallenge = true)}>
-					🪙 Challenge {p.name || 'this player'} for quarters ▸
-				</button>
-			{:else}
-				<div class="ch-hd">
-					<span class="ch-title">🪙 Challenge {p.name || 'this player'}</span>
-					<button type="button" class="ch-x" aria-label="Close" onclick={() => (showChallenge = false)}>×</button>
-				</div>
-				<QuarterUpForm opp={sid} oppName={p.name || 'them'} />
-			{/if}
-		</div>
-	{/if}
+	<div class="challenge">
+		<ChallengeButton steamid={sid} name={p.name || 'this player'} />
+	</div>
 
 	<!-- Stat tiles -->
 	<div class="tiles">
