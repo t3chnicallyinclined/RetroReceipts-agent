@@ -28,7 +28,7 @@ The main per-match battle/game state. `game_state` itself is an exe-fixed global
 | `+0x7b4/7b8/7bc/7c8/7f8` | netplay mode flags (spectator? / player-count branches) | `FUN_140037370` |
 | `+0x82c` | **SIDE-SWAP flag** — routes each player to even(P1)/odd(P2) slots | `FUN_140037370` |
 | `+0x850..0x8d0` | per-player netplay data (delay, rollback params, ports) | `FUN_140037370` |
-| `+0x2cc/0x2d0` | input delays (`= n*0xc+7`) | `FUN_140037370` |
+| `+0x2cc/0x2d0` | ⚠ **DISPUTED — probably NOT input delay** (`= n*0xc+7`). Re-RE 2026-08-23 argues it's a 0..10 SETTING: the OFFLINE fallback is `0x7f` = the MAXIMUM (n=10), absurd for delay frames but exactly right for a level; `n*12+7` maps 0..10 onto 7..127 (7-bit full-scale, volume-shaped); siblings in the same block are demonstrably settings (`+0x44` → `(float)v * const`, `+0x40` → bool). Both are indexed by localPlayerNum ⇒ **same player's two fields, NOT P1-vs-P2**. Confidence NOT-delay = MED-HIGH; true meaning = LOW. Decode exact: `n=(v-7)/12`. Settle with a `disp 0x2cc` xref scan. | `FUN_140037370` |
 
 ### `session` / netplay — `DAT_140acd3a8` (@ exe+0xacd3a8)
 The netplay/GGPO session struct (sits right after `game_state`). Confirmed fields:
@@ -39,7 +39,7 @@ The netplay/GGPO session struct (sits right after `game_state`). Confirmed field
 | `+0x1b8` | **local-vs-netplay flag** (`< 0` = offline/local) | `FUN_140037370` |
 | `+0xd0320/0328/037c` | match/mode config (values 1/3/4 branch spectator & player-count) | `FUN_140037370` |
 | `+0xd04b0` | input/rollback source object (passed to all the `FUN_14003f…` accessors) | `FUN_140037370` |
-| `+0xd04b8` | netplay-state object (ports @ +0x174/178, timing @ +0x38/50/54/58/5c) | `FUN_140037370` |
+| `+0xd04b8` | netplay session buffer, `0x12a350` bytes, **magic `0x20240517` @ +0** (liveness check). Per-player records stride **`0x9ac`** from `+0x1d8`. ⚠ **TWO CORRECTIONS (2026-08-23):** `+0x174/+0x178` are **NOT ports** — written from `param_1+0x7c/0x80` = **localPlayerNum + paired slot index**. `+0x38/50/54/58/5c` are **NOT timing** — session CONFIG copied to `game_state+0x8c0..0x8d0`. **Nothing here is RTT-, jitter- or frame-counter-shaped.** | `FUN_140037370`, `FUN_140040140` |
 | `+0xd034b` | ready/gate byte | `FUN_140037370` |
 
 `localPlayerNum @ exe+0xac7230` and `kcode @ exe+0xac6f58` are separate flat globals mirrored from these.
@@ -95,8 +95,10 @@ The leaderboard's win/loss has been wrong repeatedly; two DISTINCT bugs, one fix
 - **Host/players/spectators — SteamIDs:** heap `MemberInfo` record (volatile per launch → SCAN for the SteamID
   pair): our SID `rec+0x3c` name `+0x70`; opp SID `rec+0x184` name `+0x1c0`; slot ints (1/2) `+0x260`; local IP
   `+0x294`. Host currently INFERRED (session identity + first-in-record) — no explicit lobby-owner byte pinned
-  (2nd pass: the ISteamMatchmaking lobby object). ⚠ a clean stride-0x20 4-member array w/ pings+ready = the
-  lobby-BROWSER / friends-in-lobbies list, NOT your match.
+  (2nd pass: the ISteamMatchmaking lobby object). ⚠ a clean stride-0x20 array w/ pings+ready = the
+  lobby-BROWSER list. **PARTIALLY RETRACTED 2026-08-23:** right about its ORIGIN, wrong to close the door —
+  this is the **SteamQos RTT table** and entries are keyed by **SteamID**, so if the opponent appears in it,
+  `entry+0x18` is a genuine measured round-trip to them. See the connection-quality section at the bottom.
 - **Host-picked settings (specials-allowed / stage / version / timer): NOT in game memory** — Steam lobby metadata
   via `SetLobbyData` on the un-pinned lobby object (2nd pass). (`app_name`/`app_version` strings = Coyote telemetry,
   a red herring.)
@@ -181,3 +183,36 @@ Fight traffic runs member↔member over ISteamNetworking005 keyed on each player
 
 ### Tournament-coordination status
 ✅ Buildable now (game running): app reads own lobby id + members (fingerprint) → Share-lobby (link + room code) → server pairs players + distributes join links → bracket via the set-score tally (`*(exe+0x2edf628)+0xbc/0xbd`). ⏳ OPEN experiments: (1) headless lobby CREATOR = a Steamworks program as appid 2634890 calling CreateLobby+SetLobbyJoinable, no game — can a real client join it? (2) owner-migration (host leaves → match survives?) = fully-headless. (3) auto game-START = find the ready-flags + match-start trigger in memory and write them (skip the manual lobby/ready flow).
+
+
+## Connection quality — what exists (RE 2026-08-23)
+
+Investigated for the money-match receipt. **Nothing is shippable yet; do not display a connection line.**
+
+- ❌ **No `ISteamNetworkingSockets`.** The only networking interface string in the image is `SteamNetworking005`
+  (legacy P2P). Interface-version strings must exist as literals for `SteamInternal_FindOrCreateUserInterface`,
+  so absence is proof: **`SteamNetConnectionRealTimeStatus_t` (ping ms, quality, packets/sec, pending bytes)
+  is not in this process.** HIGH confidence.
+- ❌ **`GetP2PSessionState` is called but discarded.** `FUN_14015c0f0` fills a `P2PSessionState_t` on a stack
+  buffer (which carries `m_bUsingRelay` + send-queue backlog) and reads only `m_bConnectionActive`. Not
+  persisted ⟹ unreadable. We can't call it ourselves either: the P2P session belongs to the game process.
+- ❌ **No rollback-frame, packet-loss, late-packet or dropped-frame counter found.** `FUN_140118290` is a
+  savestate REGION REGISTRY (base/size/count), not a counter. MED confidence (rollback-core coverage is partial).
+- ⭐ **The one real RTT — the SteamQos probe.** `qos = *(u64*)(exe+0x2ebb9d0)`, peer count `*(u32*)(qos+0x8810)`,
+  entries from `qos+8`: `+0x00` SteamID, `+0x08` state (1→2→3), `+0x10` t_send, **`+0x18` = RTT**, computed
+  literally as `now() - t_send` on receiving `"SteamQosAns"` (payloads @ `140922a80/90`).
+  ⚠ **One-shot per peer** — the loop only probes `state==1` and never re-measures, so sampling during a match
+  returns a CONSTANT; min/avg/max is meaningless. Honest label = "handshake ping", never "ping".
+  ⚠ **Units unknown** (clock `FUN_1401281c0` undecompiled) and it is **unconfirmed whether the match opponent
+  is even in the table** vs only lobby-browser peers.
+- 💡 **Best honest alternative: agent-measured realized frame rate.** What a bad connection FEELS like in a
+  rollback game is the engine stalling. Find a monotonic per-frame counter in the match block (diff snapshots
+  ~1s apart, look for a u32 whose delta ≈60), then `Δframes / Δwall` is a number **we** measure and can defend:
+  "ran 58.3 of 60 fps, 4 stalls >100 ms". Never label it ping. Gate on `scene==5` + fighters loaded.
+
+**Ship gate for any connection line:** (a) writer identified in code, (b) it moved in the predicted direction
+under injected latency, (c) units calibrated against a known injected RTT, (d) **both players' agents produce
+the same number**. A "ping" the two sides disagree on is not provable and must not be printed.
+
+⚠ Also confirmed: PE `DllCharacteristics = 0x8020`, **DYNAMIC_BASE OFF, no `.reloc`** ⟹ the image ALWAYS loads
+at `0x140000000`. Every `exe+0x…` global in this file is a fixed VA across launches and machines for this build.
