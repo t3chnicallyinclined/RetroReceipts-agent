@@ -44,36 +44,47 @@ enum UserEvent {
     UpdateResult(String),
 }
 
-/// Draw a 32×32 gold square with a dark border and the "RR" (Retro Receipts) monogram — an in-code RGBA icon
-/// so the agent needs no external asset file. Not art; just a recognizable tray mark.
+/// Draw the Retro Receipts mark — a small torn receipt (perforated edges, dark print + barcode) — as an
+/// in-code 32×32 RGBA tray icon on a transparent ground, so the agent needs no external asset file.
 fn build_icon() -> Option<Icon> {
     const N: usize = 32;
-    let gold = [212u8, 175, 55, 255];
-    let ink = [40u8, 30, 10, 255];
-    let mut rgba = vec![0u8; N * N * 4];
+    let gold = [255u8, 176, 32, 255]; // #ffb020
+    let ink = [10u8, 12, 18, 255]; // #0a0c12 (dark print)
+    let mut rgba = vec![0u8; N * N * 4]; // transparent ground — the receipt IS the icon (no tile)
     let put = |rgba: &mut [u8], x: usize, y: usize, c: [u8; 4]| {
         let i = (y * N + x) * 4;
         rgba[i..i + 4].copy_from_slice(&c);
     };
-    for y in 0..N {
-        for x in 0..N {
-            // 2px dark border, gold fill inside.
-            let border = !(2..N - 2).contains(&x) || !(2..N - 2).contains(&y);
-            put(&mut rgba, x, y, if border { ink } else { gold });
-        }
-    }
-    // A blocky "RR" (Retro Receipts) monogram, in ink over the gold. Two 8×11 R glyphs side by side.
-    const R_GLYPH: [&str; 11] = [
-        "11111100", "11000110", "11000110", "11000110", "11001100", "11111000", "11011000",
-        "11001100", "11000110", "11000011", "11000011",
+    // "The Stub" — a torn receipt: perforated top/bottom, a dark header block + itemized lines + a barcode.
+    // G = gold paper, K = ink (dark print), '.' = transparent. Stamped centered (14×18 at offset 9,6).
+    const RECEIPT: [&str; 18] = [
+        "G.G.G.G.G.G.G.",
+        "GGGGGGGGGGGGGG",
+        "GKKKKKKKKKKKKG",
+        "GKKKKKKKKKKKKG",
+        "GGGGGGGGGGGGGG",
+        "GGKKKKKKKKKKGG",
+        "GGGGGGGGGGGGGG",
+        "GGKKKKKKKKKKGG",
+        "GGGGGGGGGGGGGG",
+        "GGKKKKKKGGGGGG",
+        "GGGGGGGGGGGGGG",
+        "GGGGGGGGGGGGGG",
+        "GKGKKGKGKKGKKG",
+        "GKGKKGKGKKGKKG",
+        "GKGKKGKGKKGKKG",
+        "GKGKKGKGKKGKKG",
+        "GGGGGGGGGGGGGG",
+        "G.G.G.G.G.G.G.",
     ];
-    for &ox in &[7usize, 17] {
-        for (dy, row) in R_GLYPH.iter().enumerate() {
-            for (dx, ch) in row.bytes().enumerate() {
-                if ch == b'1' {
-                    put(&mut rgba, ox + dx, 10 + dy, ink);
-                }
-            }
+    for (dy, row) in RECEIPT.iter().enumerate() {
+        for (dx, ch) in row.bytes().enumerate() {
+            let c = match ch {
+                b'G' => gold,
+                b'K' => ink,
+                _ => continue,
+            };
+            put(&mut rgba, 9 + dx, 6 + dy, c);
         }
     }
     Icon::from_rgba(rgba, N as u32, N as u32).ok()

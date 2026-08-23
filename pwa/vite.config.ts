@@ -22,7 +22,7 @@ export default defineConfig({
 			manifest: {
 				name: 'Retro Receipts',
 				short_name: 'RR',
-				description: 'Marvel vs Capcom 2 — live ranks, tournaments & stats.',
+				description: 'Marvel vs Capcom 2 — ranks, head-to-head, money matches & tournaments. Get that receipt!',
 				theme_color: '#0a0c12',
 				id: SCOPE,
 					start_url: SCOPE,

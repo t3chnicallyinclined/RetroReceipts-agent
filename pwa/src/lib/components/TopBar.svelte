@@ -19,7 +19,16 @@
 
 <header class="bar">
 	<a class="brand" href="{base}/ranks">
-		<span class="cab">RR</span>
+		<span class="cab" aria-hidden="true">
+			<svg viewBox="0 0 100 100">
+				<defs><linearGradient id="rrcab" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb020"/><stop offset="1" stop-color="#ff5c2c"/></linearGradient></defs>
+				<path d="M26 18 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 L74 82 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 Z" fill="url(#rrcab)"/>
+				<rect x="34" y="34" width="32" height="4" rx="2" fill="#0a0c12"/>
+				<rect x="34" y="44" width="32" height="4" rx="2" fill="#0a0c12"/>
+				<rect x="34" y="54" width="20" height="4" rx="2" fill="#0a0c12"/>
+				<g fill="#0a0c12"><rect x="34" y="64" width="3" height="11"/><rect x="39" y="64" width="1.6" height="11"/><rect x="43" y="64" width="3.2" height="11"/><rect x="48.5" y="64" width="2" height="11"/><rect x="53" y="64" width="3" height="11"/><rect x="59" y="64" width="2" height="11"/></g>
+			</svg>
+		</span>
 		<span class="wordmark">Retro <span class="g">Receipts</span></span>
 	</a>
 	<span class="seam" aria-hidden="true"></span>
@@ -69,17 +78,16 @@
 		color: var(--ink);
 	}
 	.cab {
-		width: 32px;
-		height: 32px;
-		border-radius: 9px;
+		width: 30px;
+		height: 30px;
+		flex: none;
 		display: grid;
 		place-items: center;
-		background: linear-gradient(160deg, var(--gold), color-mix(in srgb, var(--gold) 55%, #ff5c2c));
-		color: var(--gold-ink);
-		font-weight: 900;
-		font-style: italic;
-		font-size: 13px;
-		letter-spacing: -0.04em;
+	}
+	.cab svg {
+		width: 30px;
+		height: 30px;
+		filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
 	}
 	.wordmark {
 		font-size: 15.5px;
