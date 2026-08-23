@@ -44,50 +44,119 @@ enum UserEvent {
     UpdateResult(String),
 }
 
-/// Draw the Retro Receipts mark — a small torn receipt (perforated edges, dark print + barcode) — as an
-/// in-code 32×32 RGBA tray icon on a transparent ground, so the agent needs no external asset file.
-fn build_icon() -> Option<Icon> {
-    const N: usize = 32;
+/// Draw the Retro Receipts mark — a torn receipt (perforated edges, dark print + barcode) — as an in-code
+/// RGBA tray icon on a transparent ground, so the agent needs no external asset file.
+///
+/// FULL-BLEED by design: the paper spans the entire canvas and the tear teeth are cut OUT of the top and
+/// bottom edges, rather than the mark being stamped inside padding. The previous art was a fixed 14×18
+/// glyph at offset (9,6) on a 32×32 canvas — 44% of the width — which Windows then scaled down to the
+/// tray's 16px, leaving a receipt roughly 7px wide that read as a tiny thing inside an invisible box.
+///
+/// Every feature is proportional to N so the mark fills the canvas at whatever size it is rendered, and
+/// the print is deliberately coarse: at 16px thin bars merge into a dark mass and fine barcode stripes
+/// blur into a grey band, so there are exactly three print elements over a chunky barcode.
+fn icon_rgba(n: usize) -> Vec<u8> {
     let gold = [255u8, 176, 32, 255]; // #ffb020
     let ink = [10u8, 12, 18, 255]; // #0a0c12 (dark print)
-    let mut rgba = vec![0u8; N * N * 4]; // transparent ground — the receipt IS the icon (no tile)
-    let put = |rgba: &mut [u8], x: usize, y: usize, c: [u8; 4]| {
-        let i = (y * N + x) * 4;
-        rgba[i..i + 4].copy_from_slice(&c);
+    let clear = [0u8, 0, 0, 0];
+    let mut rgba = vec![0u8; n * n * 4]; // transparent ground — the receipt IS the icon (no tile)
+
+    let nf = n as f32;
+    let scale = |f: f32| -> usize { ((nf * f).round() as usize).min(n) };
+    let mut rect = |rgba: &mut [u8], x0: usize, y0: usize, x1: usize, y1: usize, c: [u8; 4]| {
+        for y in y0..y1.min(n) {
+            for x in x0..x1.min(n) {
+                let i = (y * n + x) * 4;
+                rgba[i..i + 4].copy_from_slice(&c);
+            }
+        }
     };
-    // "The Stub" — a torn receipt: perforated top/bottom, a dark header block + itemized lines + a barcode.
-    // G = gold paper, K = ink (dark print), '.' = transparent. Stamped centered (14×18 at offset 9,6).
-    const RECEIPT: [&str; 18] = [
-        "G.G.G.G.G.G.G.",
-        "GGGGGGGGGGGGGG",
-        "GKKKKKKKKKKKKG",
-        "GKKKKKKKKKKKKG",
-        "GGGGGGGGGGGGGG",
-        "GGKKKKKKKKKKGG",
-        "GGGGGGGGGGGGGG",
-        "GGKKKKKKKKKKGG",
-        "GGGGGGGGGGGGGG",
-        "GGKKKKKKGGGGGG",
-        "GGGGGGGGGGGGGG",
-        "GGGGGGGGGGGGGG",
-        "GKGKKGKGKKGKKG",
-        "GKGKKGKGKKGKKG",
-        "GKGKKGKGKKGKKG",
-        "GKGKKGKGKKGKKG",
-        "GGGGGGGGGGGGGG",
-        "G.G.G.G.G.G.G.",
-    ];
-    for (dy, row) in RECEIPT.iter().enumerate() {
-        for (dx, ch) in row.bytes().enumerate() {
-            let c = match ch {
-                b'G' => gold,
-                b'K' => ink,
-                _ => continue,
-            };
-            put(&mut rgba, 9 + dx, 6 + dy, c);
+
+    // gold paper, edge to edge
+    rect(&mut rgba, 0, 0, n, n, gold);
+
+    // tear the top and bottom: alternating notches punched back out to transparent
+    let tooth = (n / 16).max(1);
+    for x in 0..n {
+        if (x / tooth) % 2 == 0 {
+            rect(&mut rgba, x, 0, x + 1, tooth, clear);
+        } else {
+            rect(&mut rgba, x, n - tooth, x + 1, n, clear);
         }
     }
-    Icon::from_rgba(rgba, N as u32, N as u32).ok()
+
+    // ink print in explicit proportional bands (not an accumulator) so spacing holds at any n
+    let pad = scale(0.09).max(1); // inset for PRINT only — the paper itself still bleeds to the edge
+    let band = |rgba: &mut [u8],
+                a: f32,
+                b: f32,
+                right: f32,
+                rect: &mut dyn FnMut(&mut [u8], usize, usize, usize, usize, [u8; 4])| {
+        let (y0, mut y1) = (scale(a), scale(b));
+        if y1 <= y0 {
+            y1 = y0 + 1;
+        }
+        let x1 = if right >= 1.0 { n - pad } else { scale(right) };
+        rect(rgba, pad, y0, x1, y1, ink);
+    };
+    band(&mut rgba, 0.10, 0.28, 1.0, &mut rect); // header block — the boldest mass, reads first at 16px
+    band(&mut rgba, 0.35, 0.44, 1.0, &mut rect); // itemized line
+    band(&mut rgba, 0.50, 0.59, 0.62, &mut rect); // second line, short: a receipt's ragged right edge
+
+    // barcode — the signature element; few, thick stripes so it stays stripes when scaled to 16px
+    let (bc_top, bc_bot) = (scale(0.66), scale(0.88));
+    let stripe = (n / 10).max(1);
+    let widths = [1usize, 1, 2, 1, 1, 2, 1];
+    let (mut x, mut i) = (pad, 0usize);
+    while x < n - pad {
+        let w = widths[i % widths.len()] * stripe;
+        if i % 2 == 0 {
+            rect(&mut rgba, x, bc_top, (x + w).min(n - pad), bc_bot, ink);
+        }
+        x += w;
+        i += 1;
+    }
+    rgba
+}
+
+fn build_icon() -> Option<Icon> {
+    const N: u32 = 32;
+    Icon::from_rgba(icon_rgba(N as usize), N, N).ok()
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::icon_rgba;
+
+    /// The mark must FILL its canvas. This is a real regression guard, not a formality: the art it
+    /// replaced was a fixed 14×18 glyph stamped at (9,6) on a 32×32 canvas, so it covered 44% of the
+    /// width and rendered as a small receipt inside an invisible box once Windows scaled it to 16px.
+    /// Checked at several n because every feature is proportional and rounding could strand an edge.
+    #[test]
+    fn icon_is_full_bleed_at_every_size() {
+        for n in [16usize, 20, 24, 32, 64] {
+            let px = icon_rgba(n);
+            let opaque = |x: usize, y: usize| px[(y * n + x) * 4 + 3] != 0;
+            let cols = (0..n).filter(|&x| (0..n).any(|y| opaque(x, y))).count();
+            let rows = (0..n).filter(|&y| (0..n).any(|x| opaque(x, y))).count();
+            assert_eq!(cols, n, "n={n}: {cols}/{n} columns painted — mark is inset horizontally");
+            assert_eq!(rows, n, "n={n}: {rows}/{n} rows painted — mark is inset vertically");
+        }
+    }
+
+    /// The print has to survive being scaled down to a 16px tray slot, which means it must actually be
+    /// present and reasonably weighted — neither invisible nor a solid dark block.
+    #[test]
+    fn print_is_legible_weight() {
+        let n = 32usize;
+        let px = icon_rgba(n);
+        let ink = (0..n * n).filter(|i| px[i * 4] < 60 && px[i * 4 + 3] != 0).count();
+        let frac = ink as f32 / (n * n) as f32;
+        assert!(
+            (0.15..0.55).contains(&frac),
+            "ink coverage {frac:.2} outside 0.15..0.55 — print is either invisible or a dark blob"
+        );
+    }
 }
 
 /// Handles to the menu items whose IDs we react to / whose state we mutate.

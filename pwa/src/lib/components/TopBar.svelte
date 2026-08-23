@@ -22,11 +22,13 @@
 		<span class="cab" aria-hidden="true">
 			<svg viewBox="0 0 100 100">
 				<defs><linearGradient id="rrcab" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb020"/><stop offset="1" stop-color="#ff5c2c"/></linearGradient></defs>
-				<path d="M26 18 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 L74 82 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 Z" fill="url(#rrcab)"/>
-				<rect x="34" y="34" width="32" height="4" rx="2" fill="#0a0c12"/>
-				<rect x="34" y="44" width="32" height="4" rx="2" fill="#0a0c12"/>
-				<rect x="34" y="54" width="20" height="4" rx="2" fill="#0a0c12"/>
-				<g fill="#0a0c12"><rect x="34" y="64" width="3" height="11"/><rect x="39" y="64" width="1.6" height="11"/><rect x="43" y="64" width="3.2" height="11"/><rect x="48.5" y="64" width="2" height="11"/><rect x="53" y="64" width="3" height="11"/><rect x="59" y="64" width="2" height="11"/></g>
+				<!-- full-bleed: the paper spans 96 of 100 units with the tear teeth cut out of the edges, so
+				     the mark fills its 30px slot instead of floating at half size inside it -->
+				<path d="M2 10 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 L98 90 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 Z" fill="url(#rrcab)"/>
+				<rect x="12" y="20" width="76" height="8" rx="4" fill="#0a0c12"/>
+				<rect x="12" y="34" width="76" height="8" rx="4" fill="#0a0c12"/>
+				<rect x="12" y="48" width="48" height="8" rx="4" fill="#0a0c12"/>
+				<g fill="#0a0c12"><rect x="12" y="62" width="7" height="23"/><rect x="25" y="62" width="5" height="23"/><rect x="36" y="62" width="9" height="23"/><rect x="51" y="62" width="5" height="23"/><rect x="62" y="62" width="9" height="23"/><rect x="77" y="62" width="7" height="23"/></g>
 			</svg>
 		</span>
 		<span class="wordmark">Retro <span class="g">Receipts</span></span>

@@ -5,16 +5,22 @@
       <stop offset="1" stop-color="#ff5c2c"/>
     </linearGradient>
   </defs>
-  <!-- The Stub: the whole icon is a torn receipt (perforated top + bottom), RR merchant header, lines, barcode -->
-  <path d="M26 18 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 L74 82 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 Z" fill="url(#rr)"/>
-  <text x="50" y="31" text-anchor="middle" dominant-baseline="central" font-family="'Arial Black','Helvetica Neue',system-ui,sans-serif" font-weight="900" font-style="italic" font-size="16" letter-spacing="-2" fill="#0a0c12">RR</text>
-  <rect x="34" y="41" width="32" height="3.2" rx="1.6" fill="#0a0c12"/>
-  <rect x="34" y="48" width="32" height="3.2" rx="1.6" fill="#0a0c12"/>
-  <rect x="34" y="55" width="20" height="3.2" rx="1.6" fill="#0a0c12"/>
+  <!-- The Stub: the whole icon IS a torn receipt — perforated top + bottom, RR merchant header, itemized
+       lines, barcode. Drawn FULL-BLEED: the paper spans 96 of 100 units, with the tear teeth cut out of the
+       edges instead of floating inside padding. Used for apple-touch-icon and the PWA "any" purpose, where
+       the platform supplies its own container, so the mark should not build one of its own. -->
+  <path d="M2 10 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 L98 90 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 Z" fill="url(#rr)"/>
+  <text x="50" y="28" text-anchor="middle" dominant-baseline="central" font-family="'Arial Black','Helvetica Neue',system-ui,sans-serif" font-weight="900" font-style="italic" font-size="32" letter-spacing="-3" fill="#0a0c12">RR</text>
+  <rect x="12" y="47" width="76" height="7" rx="3.5" fill="#0a0c12"/>
+  <rect x="12" y="59" width="52" height="7" rx="3.5" fill="#0a0c12"/>
   <g fill="#0a0c12">
-    <rect x="34" y="64" width="2.6" height="11"/><rect x="38.6" y="64" width="1.2" height="11"/>
-    <rect x="41.6" y="64" width="3" height="11"/><rect x="46.6" y="64" width="1.5" height="11"/>
-    <rect x="50" y="64" width="2.6" height="11"/><rect x="54.6" y="64" width="1.5" height="11"/>
-    <rect x="58" y="64" width="3" height="11"/><rect x="63" y="64" width="1.5" height="11"/>
+    <rect x="12" y="72" width="5" height="15"/>
+    <rect x="21" y="72" width="4" height="15"/>
+    <rect x="29" y="72" width="7" height="15"/>
+    <rect x="41" y="72" width="4" height="15"/>
+    <rect x="50" y="72" width="5" height="15"/>
+    <rect x="60" y="72" width="4" height="15"/>
+    <rect x="68" y="72" width="7" height="15"/>
+    <rect x="79" y="72" width="5" height="15"/>
   </g>
 </svg>

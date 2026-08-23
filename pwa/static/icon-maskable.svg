@@ -5,19 +5,26 @@
       <stop offset="1" stop-color="#ff5c2c"/>
     </linearGradient>
   </defs>
-  <!-- maskable: full-bleed dark Arena ground (OS masks its own shape); the receipt sits in the safe zone -->
+  <!-- maskable: full-bleed dark Arena ground (the OS masks its own shape out of it) with the receipt filling
+       the SAFE ZONE. This is the one icon that must keep padding — a maskable icon is cropped to a circle or
+       squircle, so anything outside the central ~80% can be cut off. The receipt is therefore scaled to fill
+       that 80% box exactly (spanning 12..88 of 100) rather than being shrunk well inside it: as big as the
+       spec allows, no bigger. Every other RR mark is full-bleed. -->
   <rect x="0" y="0" width="100" height="100" fill="#0a0c12"/>
-  <g transform="translate(9,9) scale(0.82)">
-    <path d="M26 18 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 L74 82 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 Z" fill="url(#mk)"/>
-    <text x="50" y="31" text-anchor="middle" dominant-baseline="central" font-family="'Arial Black','Helvetica Neue',system-ui,sans-serif" font-weight="900" font-style="italic" font-size="16" letter-spacing="-2" fill="#0a0c12">RR</text>
-    <rect x="34" y="41" width="32" height="3.2" rx="1.6" fill="#0a0c12"/>
-    <rect x="34" y="48" width="32" height="3.2" rx="1.6" fill="#0a0c12"/>
-    <rect x="34" y="55" width="20" height="3.2" rx="1.6" fill="#0a0c12"/>
+  <g transform="translate(10,10) scale(0.8)">
+    <path d="M2 10 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 l6 -6 6 6 L98 90 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 l-6 6 -6 -6 Z" fill="url(#mk)"/>
+    <text x="50" y="28" text-anchor="middle" dominant-baseline="central" font-family="'Arial Black','Helvetica Neue',system-ui,sans-serif" font-weight="900" font-style="italic" font-size="32" letter-spacing="-3" fill="#0a0c12">RR</text>
+    <rect x="12" y="47" width="76" height="7" rx="3.5" fill="#0a0c12"/>
+    <rect x="12" y="59" width="52" height="7" rx="3.5" fill="#0a0c12"/>
     <g fill="#0a0c12">
-      <rect x="34" y="64" width="2.6" height="11"/><rect x="38.6" y="64" width="1.2" height="11"/>
-      <rect x="41.6" y="64" width="3" height="11"/><rect x="46.6" y="64" width="1.5" height="11"/>
-      <rect x="50" y="64" width="2.6" height="11"/><rect x="54.6" y="64" width="1.5" height="11"/>
-      <rect x="58" y="64" width="3" height="11"/><rect x="63" y="64" width="1.5" height="11"/>
+      <rect x="12" y="72" width="5" height="15"/>
+      <rect x="21" y="72" width="4" height="15"/>
+      <rect x="29" y="72" width="7" height="15"/>
+      <rect x="41" y="72" width="4" height="15"/>
+      <rect x="50" y="72" width="5" height="15"/>
+      <rect x="60" y="72" width="4" height="15"/>
+      <rect x="68" y="72" width="7" height="15"/>
+      <rect x="79" y="72" width="5" height="15"/>
     </g>
   </g>
 </svg>
