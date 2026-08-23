@@ -1,0 +1,10 @@
+# Line-ending policy. These files are executed on Linux — the Bazzite host-node (bash scripts, systemd/XDG
+# units), the release/asset pipeline (python, mjs), and the agent's include_str!-bundled host scripts. A CRLF
+# checkout on a Windows dev box breaks `bash -n` (fail-looped arcade-hostd once) and poisons the bundled
+# scripts. Force LF regardless of core.autocrlf so every checkout — Windows or Linux — and every scp/bundle is LF.
+*.sh       text eol=lf
+*.py       text eol=lf
+*.mjs      text eol=lf
+*.service  text eol=lf
+*.desktop  text eol=lf
+*.surql    text eol=lf
