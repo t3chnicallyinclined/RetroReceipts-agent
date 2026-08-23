@@ -2,7 +2,7 @@
 // own-asset requestfailed, so a runtime crash the build can't see (Svelte hydration, undefined access) is
 // caught BEFORE deploy. Usage: node scripts/render-check.mjs <url> [more urls...]
 //
-// HERMETIC: it ABORTS every request to the live backend (/rt/ SSE + /skinsync/ API) so (a) the check never
+// HERMETIC: it ABORTS every request to the live backend (/rt/ SSE + /rr/ API) so (a) the check never
 // depends on prod being up, (b) the never-idle SSE stream can't keep Chrome alive and hang browser.close(),
 // and (c) the app renders its empty/idle states — exactly where the risky branches live. A hard watchdog
 // force-exits so a stuck launch can never stall the release pipeline.
@@ -30,7 +30,9 @@ const urls = process.argv.slice(2);
 if (urls.length === 0) urls.push('http://localhost:4173/');
 
 const isOwnAsset = (u) => u.startsWith('http://localhost') || u.startsWith('http://127.0.0.1');
-const isBackend = (u) => u.includes('/rt/') || u.includes('/skinsync/');
+// Both API prefixes stay listed: the app calls /rr/ post-rename, but /skinsync/ must keep matching so this
+// gate still works when checking an older build or a rollback (the server accepts both during the drain).
+const isBackend = (u) => u.includes('/rt/') || u.includes('/rr/') || u.includes('/skinsync/');
 
 const browser = await puppeteer.launch({
 	executablePath: exe,
@@ -45,6 +47,11 @@ try {
 		if (process.env.SIGNED_IN) {
 			await page.evaluateOnNewDocument(() => {
 				try {
+					// rr_* is what the app reads post-rename; metasync_* is kept so this gate also exercises
+					// the signed-in branches of an older build / rollback. Drop the metasync_* pair when
+					// the rename's Stage 4 removes the legacy-key fallback from the client.
+					localStorage.setItem('rr_token', 'render-check-fake-token');
+					localStorage.setItem('rr_steamid', '76561197960287930');
 					localStorage.setItem('metasync_token', 'render-check-fake-token');
 					localStorage.setItem('metasync_steamid', '76561197960287930');
 				} catch (e) {}
@@ -66,7 +73,7 @@ try {
 			if (m.type() !== 'error') return;
 			const t = m.text();
 			// the browser logs a generic "Failed to load resource" for every request we intentionally aborted
-			// (the app uses relative /skinsync API URLs); that's expected hermetic noise, not an app bug.
+			// (the app uses relative /rr API URLs); that's expected hermetic noise, not an app bug.
 			if (/Failed to load resource/i.test(t)) return;
 			errors.push('[console.error] ' + t);
 		});
