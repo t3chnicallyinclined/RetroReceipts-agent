@@ -15,6 +15,10 @@
 
 	const status = $derived(hostStatus(host));
 	const members = $derived(host.members ?? 0);
+	// The host runs the game and sits in its OWN lobby as the referee/spectator, so a hosted cabinet is never
+	// "0 in lobby" — the host occupies one seat. `members` is the joined-PLAYER count (excludes the host), so
+	// the occupancy we show is host(1) + players, but only once it's actually hosting (idle = no lobby yet → 0).
+	const inLobby = $derived(status === 'idle' ? members : Math.min(members + 1, CAP));
 	const ago = $derived(timeAgo(host.last_seen_ms));
 
 	// Per-node telemetry (all optional; a node with no report yet degrades to nothing shown).
@@ -64,8 +68,8 @@
 	</div>
 
 	<div class="meta">
-		<span class="fill" title="Players in lobby">
-			<b>{members}</b><i aria-hidden="true">/</i><span class="cap">{CAP}</span>
+		<span class="fill" title="In this cabinet's lobby — the host referee + any players">
+			<b>{inLobby}</b><i aria-hidden="true">/</i><span class="cap">{CAP}</span>
 			<span class="lbl">in lobby</span>
 		</span>
 		{#if ago}<span class="seen" title="Last heartbeat">{ago} ago</span>{/if}
