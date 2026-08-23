@@ -2,15 +2,34 @@
 	import { browser } from '$app/environment';
 	import { agent } from '$lib/stores/agent.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { api } from '$lib/config';
 
 	// 📥 "Get the desktop agent" prompt. The web app only fills up once the tray agent is running (it reads
 	// the game and reports matches/ranks/money), so nudge anyone who doesn't have one. AUTO-HIDES the moment
 	// an agent is detected reporting for the signed-in user — that's `agent.reporting` (false when signed-out
 	// OR when no agent has reported a build; true only once one has). The AgentChip owns the load lifecycle
 	// app-wide, so this just reads the same signal.
-	const WIN_URL =
+	// The Windows link resolves from the SAME manifest the tray's self-updater reads, so a renamed or moved
+	// release asset needs no edit here (the agent binary is being renamed metasync-agent -> rr-agent). This
+	// URL is only the fallback for when that fetch can't happen — offline, blocked, or a malformed manifest.
+	// Linux needs no equivalent: it installs through install-bazzite.sh, which resolves the binary itself.
+	const WIN_URL_FALLBACK =
 		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/metasync-agent.exe';
 	const LINUX_CMD = 'curl -fsSL https://nobd.net/rr/update/install-bazzite.sh | bash';
+
+	let winUrl = $state(WIN_URL_FALLBACK);
+
+	async function resolveWinUrl() {
+		try {
+			const res = await fetch(api('/rr/update/agent-latest.json'), { cache: 'no-store' });
+			if (!res.ok) return; // keep the fallback
+			const url = (await res.json())?.url;
+			// Only trust an absolute https URL — never let a bad manifest point the button somewhere odd.
+			if (typeof url === 'string' && url.startsWith('https://')) winUrl = url;
+		} catch {
+			/* offline / blocked / unparseable — the fallback URL already works */
+		}
+	}
 
 	// Lead with the visitor's platform (both are always reachable once expanded).
 	const isLinux = browser && /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent);
@@ -46,6 +65,16 @@
 	}
 
 	const show = $derived(browser && !agent.reporting && !dismissed);
+
+	// Resolve once, as soon as the prompt is actually shown — not on every page load, and early enough that
+	// the href is correct well before anyone expands the options and clicks.
+	let resolving = false;
+	$effect(() => {
+		if (show && !resolving) {
+			resolving = true;
+			resolveWinUrl();
+		}
+	});
 </script>
 
 {#if show}
@@ -61,7 +90,7 @@
 
 		{#if expanded}
 			<div class="opts">
-				<a class="plat win" class:lead={!isLinux} href={WIN_URL}>
+				<a class="plat win" class:lead={!isLinux} href={winUrl}>
 					<span class="pi" aria-hidden="true">🪟</span> Download for Windows
 				</a>
 				<div class="plat lin" class:lead={isLinux}>
