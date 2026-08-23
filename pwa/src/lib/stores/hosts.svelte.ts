@@ -123,16 +123,17 @@ interface HostsResponse {
 export type HostStatus = 'match' | 'standby' | 'available' | 'idle';
 
 /**
- * Classify a host from the raw fields:
+ * Classify a host from the raw fields. NOTE: `members` INCLUDES the host referee (the server floors the
+ * owner in), so joined PLAYERS = members - 1.
  *   • match     — a match is being fought right now (active === 1)
  *   • idle      — online but not hosting a lobby yet (no join link)
- *   • standby   — a hostable lobby with players waiting in it (members > 0)
- *   • available — an empty, joinable lobby (members === 0, join present)
+ *   • standby   — a player has joined and is waiting for a match (players ≥ 1, i.e. members > 1)
+ *   • available — the host is refereeing an empty lobby, open for a money match (players === 0)
  */
 export function hostStatus(h: Host): HostStatus {
 	if (h.active === 1) return 'match';
 	if (!h.join) return 'idle';
-	if ((h.members ?? 0) > 0) return 'standby';
+	if ((h.members ?? 0) - 1 > 0) return 'standby'; // players (members minus the host) waiting
 	return 'available';
 }
 

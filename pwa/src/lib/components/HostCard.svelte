@@ -19,6 +19,12 @@
 	// (the scan failing to detect the host's OWN lobby, e.g. the Proton heap-region-cap class), NOT a reason
 	// to +1 here — that would double-count the host once the reader is fixed.
 	const members = $derived(host.members ?? 0);
+	// The host runs the cabinet as the referee (spectator) and occupies one seat, so what matters to a
+	// challenger is the PLAYER seats: players = members − the host; seats = capacity − the host.
+	const players = $derived(Math.max(0, members - 1));
+	const playerSeats = $derived(Math.max(1, CAP - 1));
+	// can a challenger put a quarter up here? — the cabinet is hosting with a free player seat, not mid-match.
+	const canPlay = $derived((status === 'available' || status === 'standby') && players < playerSeats);
 	const ago = $derived(timeAgo(host.last_seen_ms));
 
 	// Per-node telemetry (all optional; a node with no report yet degrades to nothing shown).
@@ -27,16 +33,14 @@
 	const showPing = $derived(ping != null && ping >= 0);
 	const pingCls = $derived(ping == null ? '' : ping < 60 ? 'good' : ping < 150 ? 'warn' : 'bad');
 	const hasTele = $derived(!!host.os || showPing || host.matches_hosted != null);
-	// Only a real steam://joinlobby link is actionable; an empty/other join is not offered.
-	const canJoin = $derived(!!host.join && host.join.startsWith('steam://joinlobby/'));
 	// 17-digit steamid → deep-link the node's owner to their profile (mirrors PlayerTag).
 	const is17 = $derived(/^\d{17}$/.test(host.steamid));
 
 	// status → { label, pill-class, accent var } — one source for the pill + the accent edge + the dot.
 	const META: Record<HostStatus, { label: string; cls: string; accent: string }> = {
-		match: { label: 'In Match', cls: 'live', accent: 'var(--live)' },
-		standby: { label: 'In Lobby', cls: 'gold', accent: 'var(--gold)' },
-		available: { label: 'Available', cls: 'good', accent: 'var(--good)' },
+		match: { label: 'Match live', cls: 'live', accent: 'var(--live)' },
+		standby: { label: 'Challenger in', cls: 'gold', accent: 'var(--gold)' },
+		available: { label: 'Open', cls: 'good', accent: 'var(--good)' },
 		idle: { label: 'Starting', cls: 'idle', accent: 'var(--faint)' }
 	};
 	const meta = $derived(META[status]);
@@ -53,12 +57,12 @@
 		<Avatar url={host.avatar} size={34} alt={host.name} />
 		<div class="id">
 			{#if is17}
-				<a class="nm" href="{base}/u/{host.steamid}" title={host.name}>{host.name}</a>
+				<a class="nm" href="{base}/u/{host.steamid}" title="{host.name} — the cabinet operator (opens their profile)">{host.name}</a>
 			{:else}
 				<span class="nm" title={host.name}>{host.name}</span>
 			{/if}
-			<span class="rg" title="Region">
-				{#if host.region}{host.region}{:else}<i class="muted">Unknown region</i>{/if}
+			<span class="role" title="The operator hosts this cabinet as the referee — they sit in the lobby spectating, not playing.">
+				<span class="hd">HOST</span> · spectating{#if host.region} · {host.region}{/if}
 			</span>
 		</div>
 		<span class="pill {meta.cls}">
@@ -68,9 +72,9 @@
 	</div>
 
 	<div class="meta">
-		<span class="fill" title="In this cabinet's lobby — the host referee + any players">
-			<b>{members}</b><i aria-hidden="true">/</i><span class="cap">{CAP}</span>
-			<span class="lbl">in lobby</span>
+		<span class="fill" title="Player seats — the host referees; {players} of {playerSeats} player seats filled">
+			<b>{players}</b><i aria-hidden="true">/</i><span class="cap">{playerSeats}</span>
+			<span class="lbl">player seats</span>
 		</span>
 		{#if ago}<span class="seen" title="Last heartbeat">{ago} ago</span>{/if}
 	</div>
@@ -97,13 +101,13 @@
 		</div>
 	{/if}
 
-	{#if canJoin}
-		<a class="join" href={host.join} title="Join this lobby in-game (opens Steam)" aria-label="Join {host.name}">
-			<span class="tri" aria-hidden="true">▶</span><span>Join</span>
+	{#if canPlay}
+		<a class="join" href="{base}/match" title="Put a quarter up — start a money match on this cabinet">
+			<span class="coin" aria-hidden="true">🪙</span><span>Put a quarter up</span>
 		</a>
 	{:else}
 		<span class="join off" aria-hidden="true">
-			<span class="tri">▶</span><span>{status === 'match' ? 'No open seat' : 'Not hosting'}</span>
+			{status === 'match' ? '⚔ Match in progress' : status === 'idle' ? 'Cabinet starting up…' : 'Cabinet full'}
 		</span>
 	{/if}
 </article>
@@ -146,7 +150,10 @@
 	a.nm:hover {
 		color: var(--gold);
 	}
-	.rg {
+	.role {
+		display: flex;
+		align-items: center;
+		gap: 5px;
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--dim);
@@ -154,9 +161,15 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.rg .muted {
-		color: var(--faint);
-		font-style: italic;
+	.role .hd {
+		flex: none;
+		font-size: 9px;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		color: var(--gold-ink);
+		background: var(--gold);
+		border-radius: 4px;
+		padding: 1px 5px;
 	}
 	.pill {
 		flex: none;
@@ -314,8 +327,8 @@
 		border-radius: 999px;
 		padding: 8px 14px;
 	}
-	.join .tri {
-		font-size: 8px;
+	.join .coin {
+		font-size: 12px;
 	}
 	.join:hover {
 		filter: brightness(1.05);
@@ -330,8 +343,5 @@
 		background: var(--panel-2);
 		border-color: var(--line);
 		cursor: default;
-	}
-	.join.off .tri {
-		color: var(--faint);
 	}
 </style>
