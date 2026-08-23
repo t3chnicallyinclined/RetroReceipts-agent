@@ -99,7 +99,14 @@ Release steps (execute when the Beelink is free — needs the distrobox for the 
 
 ## Progress
 - [x] Stage 1 server shim + nginx (LIVE)
-- [x] Stage 2 PWA (me — LIVE on prod)  ·  (tray is mine now, see 0.3.8 checklist)
+- [x] Stage 2 PWA (me — LIVE on prod)
 - [x] Stage 3 server Tier A rename (LIVE + verified)
-- [~] Tray rename: code DONE + reviewed (GO); 0.3.8 release pending (checklist above)
-- [ ] Stage 4 drain + drop old (once /skinsync/* traffic ~0)
+- [x] **Tray rename 0.3.8 SHIPPED** — GH release v0.3.8 (rr-agent.exe/.sig + rr-agent-linux/.sig, pubkey
+      verified against updater), manifests flipped 0.3.8 at both /skinsync/update + /rr/update, server
+      LATEST_AGENT_VER→0.3.8. Canaried on the Beelink: 0.3.8 runs, [migrate] folded mvc-live-skins→retro-receipts,
+      hosting intact. DownloadAgent is manifest-driven (auto-follows). Fleet auto-updates on next game-close.
+- [x] 3-seat money-host fix (arcade_host.sh create-menu Number-of-Players=3) — verified live 1/3 on the box.
+- [ ] Stage 4 drain + drop old — LONG TAIL: once access logs show no /skinsync/* traffic (fleet fully on
+      0.3.8 → polling /rr), remove the server shim + nginx /skinsync/ + the client legacy fallbacks. Not urgent
+      (both prefixes coexist harmlessly). Also a later low-pri pass: rename the SKINSYNC_* env vars + OS user +
+      single-instance mutex (deliberately kept — invisible + transition-critical).
