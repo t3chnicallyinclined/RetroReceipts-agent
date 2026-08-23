@@ -37,13 +37,17 @@ lobid(){ rl | grep -oE '"lobby_id":"[0-9]+"' | grep -oE '[0-9]+' | head -1; }
 # pickers WRAP with no clamp. So we can't blind-set — we track {VER,OB,FT} in a state file and
 # press the exact (wrap-aware) delta. do_boot re-seeds the factory baseline after each cold launch.
 STATE="${ARCADE_STATE_FILE:-$HOME/.local/share/retro-receipts/arcade-host/lobby_state}"
-_load_state(){ VER=jp; OB=on; FT=1; [ -f "$STATE" ] && . "$STATE"; }         # default = factory
-_save_state(){ mkdir -p "$(dirname "$STATE")"; printf 'VER=%s\nOB=%s\nFT=%s\n' "$VER" "$OB" "$FT" > "$STATE"; }
-_seed_factory(){ VER=jp; OB=on; FT=1; _save_state; }                         # after a cold boot
+_load_state(){ VER=jp; OB=on; FT=1; PLAYERS=2; [ -f "$STATE" ] && . "$STATE"; }   # default = factory
+_save_state(){ mkdir -p "$(dirname "$STATE")"; printf 'VER=%s\nOB=%s\nFT=%s\nPLAYERS=%s\n' "$VER" "$OB" "$FT" "$PLAYERS" > "$STATE"; }
+_seed_factory(){ VER=jp; OB=on; FT=1; PLAYERS=2; _save_state; }              # after a cold boot
 
 # set_options <target_ft> — from the Create-Lobby settings screen (cursor on Game/top):
-#   Game Version -> English, One-button -> None(off), Victory Condition -> First-to-<ft>.
-# Field order (from Game=0): Game(0) GameVersion(1) Crossregion(2) Comment(3) EventMode(4) One-button(5) Victory(6).
+#   Game Version -> English, One-button -> None(off), Victory Condition -> First-to-<ft>, Number of Players -> 3.
+# Field order (from Game=0): Game(0) GameVersion(1) Crossregion(2) Comment(3) EventMode(4) One-button(5)
+# Victory(6) NumberOfPlayers(7). ⚠ NumberOfPlayers(7) is THE field the game reads for the lobby header seat
+# count (1/N) — proven on the Beelink: the injector route (cMaxMembers / SlotPublicMax / CM-obj+0xb0 / Steam
+# CreateLobby arg) does NOT move the header; only this menu field does. Default 3 = host + 2 players so a
+# hosted 1v1 money match can fill.
 set_options(){ local tgt=${1:-3}; _load_state
   tap $DOWN                                    # Game(0) -> Game Version(1)
   [ "$VER" != "en" ] && { tap $RIGHT; VER=en; }   # Japanese <-> English is a 2-state toggle
@@ -53,28 +57,22 @@ set_options(){ local tgt=${1:-3}; _load_state
   local cur=$FT fwd back                       # First-to ring is 1..10, wraps both ways
   fwd=$(( ( tgt - cur + 10 ) % 10 )); back=$(( ( cur - tgt + 10 ) % 10 ))
   if [ "$fwd" -le "$back" ]; then tapN $RIGHT "$fwd"; else tapN $LEFT "$back"; fi
-  FT=$tgt; _save_state
-}
-
-# Arm the injector for a 3-SEAT money-host lobby (host-as-spectator + 2 players) BEFORE CreateLobby fires.
-# Without this the game's native create yields a dormant 2-seat lobby ("1 of 2 players") and a hosted 1v1
-# wager can never fill. probe_cl arms the CreateLobby hook (cMaxMembers 2->3 rewrite); register_lc arms the
-# LobbyCreated listener (SlotPublicMax=3 / SlotPublicOpen=2 mirror); set_lobby_max 3 sets the value. The host
-# takes a PUBLIC seat (verified on the Beelink: eLobbyType=2, SlotPrivateMax=0 -> 3 public = host + 2 open).
-# Out-of-band via the injector cmd channel — does NOT move the menu cursor, so it's safe between set_options
-# and the CREATE tap. Requires the armed injector dll (862f44f+) on the box.
-arm_3seat(){
-  printf 'probe_cl'        > "$GD/nobd_arcade.cmd"; sleep 0.2
-  printf 'register_lc'     > "$GD/nobd_arcade.cmd"; sleep 0.2
-  printf 'set_lobby_max 3' > "$GD/nobd_arcade.cmd"; sleep 0.2
+  FT=$tgt
+  # Number of Players(7) — one row below Victory. Bounded range (min 2). Deterministic delta off tracked
+  # PLAYERS (cold boot seeds factory=2); override the target with LOBBY_PLAYERS, default 3.
+  tap $DOWN                                    # Victory(6) -> Number of Players(7)
+  local ptgt=${LOBBY_PLAYERS:-3}
+  if   [ "$ptgt" -gt "$PLAYERS" ]; then tapN $RIGHT $(( ptgt - PLAYERS ))
+  elif [ "$ptgt" -lt "$PLAYERS" ]; then tapN $LEFT  $(( PLAYERS - ptgt )); fi
+  PLAYERS=$ptgt
+  _save_state
 }
 
 # create from the ANCHOR (Online Play w/ Custom Match selected): -> popup -> settings -> set -> CREATE.
 do_create(){ local ft=${1:-3}
   tap $ENTER; sleep 0.7                        # anchor(Custom Match) -> popup (Create Lobby top)
   tap $ENTER; sleep 0.7                        # popup -> Create Lobby settings (Game top)
-  set_options "$ft"                            # English + one-button OFF + Victory=First-to-ft
-  arm_3seat                                    # host + 2 players (money-match 1v1 needs a 3rd seat)
+  set_options "$ft"                            # English + one-button OFF + Victory=FT + Players=3
   tap $ENTER                                   # CREATE (Enter from any field confirms)
   local r id; for i in $(seq 15); do sleep 1; r=$(rl)
     id=$(echo "$r"|grep -oE '"lobby_id":"[0-9]+"'|grep -oE '[0-9]+'|head -1)
@@ -88,8 +86,7 @@ do_boot(){ local ft=${1:-3}
   tap $DOWN; tap $DOWN; tap $ENTER; sleep 0.9  # -> Custom Match, Enter -> popup (Create Lobby top)
   tap $ENTER; sleep 0.9                        # popup -> Create Lobby settings (Game top) = FACTORY
   _seed_factory                               # cold boot resets settings to factory (jp/on/FT1)
-  set_options "$ft"                            # English + one-button OFF + Victory=First-to-ft
-  arm_3seat                                    # host + 2 players (money-match 1v1 needs a 3rd seat)
+  set_options "$ft"                            # English + one-button OFF + Victory=FT + Players=3
   tap $ENTER                                   # CREATE
   local r id; for i in $(seq 18); do sleep 1; r=$(rl)
     id=$(echo "$r"|grep -oE '"lobby_id":"[0-9]+"'|grep -oE '[0-9]+'|head -1)
