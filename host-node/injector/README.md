@@ -1224,11 +1224,6 @@ writer of `.result`/`.ready`/`.log`, MetaSync is the only writer of `.cmd`.
   (if the state-6 poke races the object's own writes).
 - `read_lobby` / `status` → report the current hosted **lobby id + owner** and a ready-made
   `steam://joinlobby/2634890/<lobby>/<owner>` link.
-- **`set_lobby_max <N>`** → set the member cap the **CreateLobby hook rewrites** into every create
-  (`2`..`9`; `N=0` = observe/passthrough the game's native value). Applies to the next create and is
-  mirrored into `SlotPublicMax`/`SlotPublicOpen`. Global default is `2` (no behavior change); a host
-  that needs a 3-seat room (e.g. host-as-spectator + 2 players for a money match) issues
-  `set_lobby_max 3` before it creates. The game's lobby holds up to 9.
 - `menu_snap <label>` → append a stability-flagged dump of the state-globals + CM object +
   input area to `nobd_arcade.snap`, tagged `<label>` (see §5.7).
 - `watch_sm` / `unwatch_sm` → **in-process state-watch of the steamSM wrapper**
@@ -1390,13 +1385,17 @@ once per machine before `create` will replay.
 2. **Top-menu allocator returns 0.** `FUN_14006cf10` from the top-menu state yields
    `matchId=0` (a sentinel), which is why the pure-static path was abandoned in favor of
    capture-and-replay. `create_static` is retained to probe deeper menu states.
-3. **Room size is now a create-hook lever** — `set_lobby_max <N>` rewrites `cMaxMembers` at the
-   `CreateLobby` hook and mirrors `SlotPublicMax`/`SlotPublicOpen` (see the command reference above).
-   **FT / passcode / side** are still driven by the game's *own* `SetLobbyData` path, not here;
-   forcing those deterministically is a separate lever (config feeders
-   `FUN_14006a280`/`FUN_14006a450`, or decoding the 128-byte `BinaryData` match-settings blob — not
-   wired yet). Visibility (`eLobbyType`) is a natural next create-hook override (unlisted room →
-   join-by-link only), currently unimplemented.
+3. **Room size = the game's own create-menu "Number of Players" field** (proven on the box
+   2026-08-23). It is NOT the Steam `CreateLobby(cMaxMembers)` arg and NOT the `SlotPublicMax`
+   lobby-data key — rewriting/poking those leaves the lobby header at "1/2" while only the menu field
+   flips it to "1/3"+. The live count sits at **`session0+0x170`** (and the producer's request object
+   `s0+0x178[00] + 0xb0`), driven by the create-menu field at **position 7, one row below Victory**
+   (range 2..5+). Set it either via the menu (ydotool, exactly like FT/language/one-button in
+   `arcade_host.sh set_options`) or by poking `session0+0x170` before the Create press. (An earlier
+   injector `set_lobby_max`/CreateLobby-arg/`CM-obj+0xb0` approach was tried and REVERTED — it poked a
+   sibling object the create doesn't read.) **FT / passcode / side** are likewise the game's own
+   menu / `SetLobbyData` fields (config feeders `FUN_14006a280`/`FUN_14006a450`, or the 128-byte
+   `BinaryData` match-settings blob).
 4. **Crash-guard `longjmp`** abandons the faulting frames; if the game held a lock, that
    lock leaks (possible deadlock). Process survives + logs; restart if create stops working.
 

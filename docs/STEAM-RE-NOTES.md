@@ -104,11 +104,14 @@ in-game browser or reachable only by an explicit join. The engine's lobby holds 
 members**, so `cMaxMembers=2` is just the default for a 1v1, not a ceiling.
 
 The create runs **producer/worker**: the menu posts a request that a worker later consumes and turns
-into the `CreateLobby` call. Because it's a plain vtable call, a tool can hook
-`ISteamMatchmaking::CreateLobby` and observe (or rewrite) `eLobbyType`/`cMaxMembers` at the moment
-of creation — which is a clean way to configure a room *deterministically* (fixed size, chosen
-visibility) without scripting the create-screen menu. Mirror any change into the lobby-data keys
-below so the game's own parser agrees with the Steam-level cap.
+into the `CreateLobby` call. A tool can hook `ISteamMatchmaking::CreateLobby` to observe (or rewrite)
+`eLobbyType`/`cMaxMembers`, which is useful for **visibility** (public vs unlisted). But note an
+empirically-confirmed caveat about **room size**: the game's displayed/enforced player count does
+**not** follow the Steam `cMaxMembers` arg (nor the `SlotPublicMax` lobby-data key). Rewriting either
+leaves the in-game "1 / 2 players" header unchanged. The count is driven by the create screen's own
+**"Number of Players" menu field**, held in a game-side object during the create; setting that field
+(via the menu, or by writing the game's own count object) is what actually produces a 3+-seat room.
+Treat `cMaxMembers`/`SlotPublicMax` as advisory mirrors, not the source of truth for capacity.
 
 ### Lobby metadata (`SetLobbyData` keys)
 
