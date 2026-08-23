@@ -2921,7 +2921,15 @@ fn reader_loop() {
             // slots split by the authoritative side (side_for_stats). Spawned so the POST never stalls the cycle.
             // Gated by "Pause reporting" (tray): while PAUSED we broadcast no live match (live_rep_* left un-updated
             // so an unpause reports the current match immediately).
-            if !PAUSED.load(Ordering::Relaxed) && state == "match" {
+            //
+            // `|| in_session` fires this from the LOBBY/PAIRING window too, not just once fighters load. The
+            // netplay pairing (and therefore `opp`) is known well before teams lock, but at that point `state` is
+            // "select" (see the state ladder above: only n>=6 stable fighters gives "match"), so the old
+            // state=="match" gate couldn't fire there. Safe because the payload already degrades correctly: the
+            // char split below matches on `&game` and yields empty my_chars/opp_chars when no fighters are loaded,
+            // and the score is 0-0. Net effect: /match shows the live VS card + ratings/H2H the moment you're
+            // paired, and the character tiles fill in when teams lock.
+            if !PAUSED.load(Ordering::Relaxed) && (state == "match" || in_session) {
                 if let Some((oid, _)) = opp.as_ref() {
                     let new_opp = oid.as_str() != live_rep_opp.as_str();
                     if oid.len() == 17 && oid.bytes().all(|b| b.is_ascii_digit())

@@ -1,6 +1,6 @@
 [package]
 name = "rr-agent"
-version = "0.3.8"  # LOCKSTEP with the Retro Receipts release train (latest.json / GitHub release). 0.3.8 = INTERNAL RENAME: binary metasync-agent→rr-agent, API base /skinsync→/rr, state dir %LOCALAPPDATA%\MetaSync→\RetroReceipts + autostart key + .desktop (all MIGRATED on first run — no logout/double-launch), updater AUMID→"Retro Receipts", + "The Stub" tray receipt icon. Single-instance mutex name KEPT (shared name = safe old↔new handoff during fleet self-update). Self-replace is name-agnostic so old installs keep the metasync-agent.exe filename but run rr-agent code.
+version = "0.3.9"  # 0.3.9 = /match/live fires from the LOBBY (in_session), not only once fighters load → peers see the live VS card + ratings/H2H the moment you are paired; full-bleed tray icon (was drawn at 44% of canvas). PREVIOUS:  # LOCKSTEP with the Retro Receipts release train (latest.json / GitHub release). 0.3.8 = INTERNAL RENAME: binary metasync-agent→rr-agent, API base /skinsync→/rr, state dir %LOCALAPPDATA%\MetaSync→\RetroReceipts + autostart key + .desktop (all MIGRATED on first run — no logout/double-launch), updater AUMID→"Retro Receipts", + "The Stub" tray receipt icon. Single-instance mutex name KEPT (shared name = safe old↔new handoff during fleet self-update). Self-replace is name-agnostic so old installs keep the metasync-agent.exe filename but run rr-agent code.
 description = "Retro Receipts tray agent (rr-agent) — headless tray companion that reads MvC2 memory, applies skins, and reports matches"
 authors = ["tristech"]
 edition = "2021"
