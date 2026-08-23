@@ -14,11 +14,11 @@
 	const CAP = $derived(host.players && host.players > 0 ? host.players : 2);
 
 	const status = $derived(hostStatus(host));
+	// `members` is the TRUE lobby occupancy INCLUDING the host (read_my_lobby pushes the owner — the host is
+	// always a member), so render it directly. A "0/N while a host is present" reading is a reader-side bug
+	// (the scan failing to detect the host's OWN lobby, e.g. the Proton heap-region-cap class), NOT a reason
+	// to +1 here — that would double-count the host once the reader is fixed.
 	const members = $derived(host.members ?? 0);
-	// The host runs the game and sits in its OWN lobby as the referee/spectator, so a hosted cabinet is never
-	// "0 in lobby" — the host occupies one seat. `members` is the joined-PLAYER count (excludes the host), so
-	// the occupancy we show is host(1) + players, but only once it's actually hosting (idle = no lobby yet → 0).
-	const inLobby = $derived(status === 'idle' ? members : Math.min(members + 1, CAP));
 	const ago = $derived(timeAgo(host.last_seen_ms));
 
 	// Per-node telemetry (all optional; a node with no report yet degrades to nothing shown).
@@ -69,7 +69,7 @@
 
 	<div class="meta">
 		<span class="fill" title="In this cabinet's lobby — the host referee + any players">
-			<b>{inLobby}</b><i aria-hidden="true">/</i><span class="cap">{CAP}</span>
+			<b>{members}</b><i aria-hidden="true">/</i><span class="cap">{CAP}</span>
 			<span class="lbl">in lobby</span>
 		</span>
 		{#if ago}<span class="seen" title="Last heartbeat">{ago} ago</span>{/if}
