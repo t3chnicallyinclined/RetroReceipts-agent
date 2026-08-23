@@ -6,7 +6,7 @@ import { statusRank, type TournamentSummary } from '$lib/tourney';
 // error, and a live subscription to the shared `tourney_index` SSE channel — on any delta
 // (tourney_created / tourney_updated / tourney_deleted) we DEBOUNCED-REFETCH the whole list, exactly
 // like the leaderboard reacts to its channel (the list is small; a refetch is the simplest correct move).
-//   • data: GET /skinsync/tourney/list  → { ok, tournaments:[…summary…] }
+//   • data: GET /rr/tourney/list  → { ok, tournaments:[…summary…] }
 //   • live: SSE channel "tourney_index" → debounced refetch.
 
 interface ListResponse {
@@ -28,7 +28,7 @@ export class TournamentsStore {
 		const myReq = ++this.#reqId;
 		this.loading = true;
 		try {
-			const res = await fetch(api('/skinsync/tourney/list'), {
+			const res = await fetch(api('/rr/tourney/list'), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) throw new Error(`tourney list ${res.status}`);

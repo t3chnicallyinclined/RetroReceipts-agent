@@ -2,7 +2,7 @@ import { api } from '$lib/config';
 import type { Profile } from './profile.svelte';
 
 // Auth store — "Sign in through Steam" for the PWA. The server already runs the hardened OpenID 2.0 flow
-// (skinsync openid.rs): GET /skinsync/auth/steam/login → Steam → /auth/steam/return mints the SAME
+// (skinsync openid.rs): GET /rr/auth/steam/login → Steam → /auth/steam/return mints the SAME
 // SteamID-bound bearer token the desktop app uses, and 302s back to SKINSYNC_OPENID_SUCCESS (= /app/auth)
 // with `#token=…&steamid=…` in the URL FRAGMENT. We capture that on the /auth route, persist it, and use
 // the token as `Authorization: Bearer` for owner-scoped calls (profile private view now; skin control later).
@@ -11,9 +11,20 @@ import type { Profile } from './profile.svelte';
 // is a credential — we clear the fragment immediately (history.replaceState) so it never lingers in the URL,
 // browser history, or a Referer header.
 
-const TOKEN_KEY = 'metasync_token';
-const SID_KEY = 'metasync_steamid';
-const RETURN_KEY = 'metasync_return';
+const TOKEN_KEY = 'rr_token';
+const SID_KEY = 'rr_steamid';
+const RETURN_KEY = 'rr_return';
+
+// One-time migration off the pre-rename `metasync_*` keys → `rr_*`, so the internal rename never logs an
+// existing user out. Copies old→new only when the new key is absent, then drops the old. Safe in private
+// mode / storage-blocked (whole body is guarded by the caller's try). See docs/RENAME-RR-RUNBOOK.md.
+function migrateKey(oldKey: string, newKey: string): void {
+	if (localStorage.getItem(newKey) === null) {
+		const v = localStorage.getItem(oldKey);
+		if (v !== null) localStorage.setItem(newKey, v);
+	}
+	if (localStorage.getItem(oldKey) !== null) localStorage.removeItem(oldKey);
+}
 
 class AuthStore {
 	token = $state<string | null>(null);
@@ -26,6 +37,8 @@ class AuthStore {
 		// Client-only app (ssr=false) → the constructor runs in the browser; still guard for safety.
 		if (typeof localStorage === 'undefined') return;
 		try {
+			migrateKey('metasync_token', TOKEN_KEY);
+			migrateKey('metasync_steamid', SID_KEY);
 			this.token = localStorage.getItem(TOKEN_KEY);
 			this.steamid = localStorage.getItem(SID_KEY);
 		} catch {
@@ -48,7 +61,7 @@ class AuthStore {
 		} catch {
 			/* ignore */
 		}
-		window.location.href = api('/skinsync/auth/steam/login');
+		window.location.href = api('/rr/auth/steam/login');
 	}
 
 	/**
@@ -141,7 +154,7 @@ class AuthStore {
 	async loadMe(): Promise<void> {
 		if (!this.steamid) return;
 		try {
-			const res = await fetch(api(`/skinsync/profile?steamid=${encodeURIComponent(this.steamid)}`), {
+			const res = await fetch(api(`/rr/profile?steamid=${encodeURIComponent(this.steamid)}`), {
 				headers: { accept: 'application/json', ...this.headers() }
 			});
 			if (!res.ok) {

@@ -94,7 +94,7 @@
 		if (ownerBusy) return;
 		ownerBusy = true;
 		ownerMsg = null;
-		const res = await auth.post('/skinsync/lobby_visibility', { public: !lobbyPublic });
+		const res = await auth.post('/rr/lobby_visibility', { public: !lobbyPublic });
 		ownerBusy = false;
 		if (res.ok) await store.load(sid); // refetch so the toggle + lobby record reflect the new state
 		else ownerMsg = res.error ?? 'Could not update visibility.';

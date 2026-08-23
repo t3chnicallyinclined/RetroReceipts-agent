@@ -1,11 +1,11 @@
 import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
 
-// Desktop-agent status store — the signed-in user's OWN tray/Tauri agent (GET /skinsync/agent, token-auth →
+// Desktop-agent status store — the signed-in user's OWN tray/Tauri agent (GET /rr/agent, token-auth →
 // you only ever see your own). One cheap authed GET, keep last-good on a blip. This is the single home of the
 // agent figures: the top-bar AgentChip owns the load lifecycle app-wide (mirrors WalletChip) and the Settings
 // "Desktop companion" card reads the same fields. `ver` is empty until the agent first reports on heartbeat.
-// Types are local (types.ts is off-limits) and mirror the live handler (metasync-srv/skinsync/src/routes.rs).
+// Types are local (types.ts is off-limits) and mirror the live handler (RetroReceipts-server/skinsync/src/routes.rs).
 
 export interface AgentStatus {
 	ver?: string;
@@ -40,7 +40,7 @@ export class AgentStore {
 		if (!sid || !auth.token) return;
 		const myReq = ++this.#reqId;
 		try {
-			const res = await fetch(api('/skinsync/agent'), {
+			const res = await fetch(api('/rr/agent'), {
 				headers: { accept: 'application/json', ...auth.headers() }
 			});
 			if (!res.ok) return; // keep last-good (a 401 is handled app-wide by the auth store)

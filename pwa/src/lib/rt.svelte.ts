@@ -2,7 +2,7 @@ import { api } from './config';
 import type { SseFrame } from './types';
 
 // ── Real-time bus (native EventSource, one connection per channel) ─────────────────────────────
-// Mirrors the shipped bus: the gateway serves GET /skinsync/rt/stream/{channel} — first an
+// Mirrors the shipped bus: the gateway serves GET /rr/rt/stream/{channel} — first an
 // `event: connected`, then `event: delta` frames. The browser's built-in reconnect replays the
 // `Last-Event-ID` header from the `id:` line, so gap-fill is free (TOURNAMENT-REALTIME-ARCH §2.1).
 //
@@ -27,7 +27,7 @@ export class SseChannel {
 	}
 
 	get url(): string {
-		return api(`/skinsync/rt/stream/${this.channel}`);
+		return api(`/rr/rt/stream/${this.channel}`);
 	}
 
 	#open() {

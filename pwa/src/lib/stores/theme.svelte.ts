@@ -3,14 +3,15 @@
 // this store just persists the choice and re-applies it live when the user flips it on the Settings page.
 
 export type ThemeChoice = 'dark' | 'light' | 'auto';
-const KEY = 'metasync_theme';
+const KEY = 'rr_theme';
+const LEGACY_KEY = 'metasync_theme'; // pre-rename; read as fallback so the saved theme survives the rename
 
 class ThemeStore {
 	choice = $state<ThemeChoice>('dark');
 
 	init(): void {
 		if (typeof localStorage === 'undefined') return;
-		const saved = localStorage.getItem(KEY);
+		const saved = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
 		this.choice = saved === 'light' || saved === 'auto' ? saved : 'dark';
 	}
 

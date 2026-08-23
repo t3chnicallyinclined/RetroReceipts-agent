@@ -47,7 +47,7 @@
 		if (cc) qs.set('country', cc);
 		if (city) qs.set('city', city);
 		try {
-			const res = await fetch(api(`/skinsync/leaderboard?${qs}`), { headers: { accept: 'application/json' } });
+			const res = await fetch(api(`/rr/leaderboard?${qs}`), { headers: { accept: 'application/json' } });
 			if (!res.ok) return [];
 			const j = (await res.json()) as { players?: PlayerRow[] };
 			return Array.isArray(j.players) ? j.players : [];

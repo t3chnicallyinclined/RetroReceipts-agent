@@ -2,7 +2,7 @@ import { api } from '$lib/config';
 
 // "Represent" location data + the real-cities typeahead. Mirrors the Tauri COUNTRIES / US_REGIONS lists
 // (web/index.html) — keep in sync if either changes. The city lookup is an OPEN read (no auth), matching
-// the server's /skinsync/cities handler (prefix match, ≥2 chars, pop-ordered).
+// the server's /rr/cities handler (prefix match, ≥2 chars, pop-ordered).
 
 export interface CityHit {
 	name: string;
@@ -55,7 +55,7 @@ export const US_REGIONS: string[] = [
 export const CC_NAME: Record<string, string> = Object.fromEntries(COUNTRIES);
 
 /**
- * Real-cities typeahead against GET /skinsync/cities (open read). Returns [] for <2 chars or any error —
+ * Real-cities typeahead against GET /rr/cities (open read). Returns [] for <2 chars or any error —
  * the caller renders "no match". `country` (may be '') filters by cc server-side; prefix match, pop-ordered.
  */
 export async function searchCities(country: string, q: string, limit = 8): Promise<CityHit[]> {
@@ -64,7 +64,7 @@ export async function searchCities(country: string, q: string, limit = 8): Promi
 	const params = new URLSearchParams({ q: query, limit: String(limit) });
 	if (country) params.set('country', country);
 	try {
-		const res = await fetch(api(`/skinsync/cities?${params.toString()}`), {
+		const res = await fetch(api(`/rr/cities?${params.toString()}`), {
 			headers: { accept: 'application/json' }
 		});
 		if (!res.ok) return [];

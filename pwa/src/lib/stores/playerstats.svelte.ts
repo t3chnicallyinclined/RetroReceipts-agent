@@ -1,7 +1,7 @@
 import { api } from '$lib/config';
 
 // Companion store for a profile's RIVALRIES + recent FORM, off the public read endpoint:
-//   GET /skinsync/playerstats?steamid=…
+//   GET /rr/playerstats?steamid=…
 //     → { found, form:[1,1,0,…] (W=1/L=0, NEWEST FIRST), nemesis, victim, vs[] }
 // nemesis = the opponent this player LOSES to most; victim = the one they BEAT most. Both wins/losses
 // are counted from THIS player's perspective and may be null when there aren't enough games. Modelled on
@@ -47,7 +47,7 @@ export class PlayerStatsStore {
 		const myReq = ++this.#reqId;
 		this.loading = true;
 		try {
-			const res = await fetch(api(`/skinsync/playerstats?steamid=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(`/rr/playerstats?steamid=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) throw new Error(`playerstats ${res.status}`);

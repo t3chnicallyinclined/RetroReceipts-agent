@@ -173,7 +173,7 @@
 		const picked = team.filter((v) => v !== '').map((v) => Number(v));
 		const body: { id: string; team?: number[] } = { id };
 		if (picked.length) body.team = picked;
-		const res = await auth.post('/skinsync/tourney/register', body);
+		const res = await auth.post('/rr/tourney/register', body);
 		busy = false;
 		if (res.ok) {
 			notice = { kind: 'ok', text: 'You’re registered!' };
@@ -187,7 +187,7 @@
 		if (busy) return;
 		busy = true;
 		notice = null;
-		const res = await auth.post('/skinsync/tourney/checkin', { id });
+		const res = await auth.post('/rr/tourney/checkin', { id });
 		busy = false;
 		if (res.ok) {
 			notice = { kind: 'ok', text: 'Checked in — good luck!' };
@@ -201,7 +201,7 @@
 		if (busy) return;
 		busy = true;
 		notice = null;
-		const res = await auth.post('/skinsync/tourney/unregister', { id });
+		const res = await auth.post('/rr/tourney/unregister', { id });
 		busy = false;
 		if (res.ok) {
 			notice = { kind: 'ok', text: 'You’ve dropped from this event.' };

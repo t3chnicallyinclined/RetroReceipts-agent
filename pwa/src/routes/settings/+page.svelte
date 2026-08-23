@@ -43,7 +43,7 @@
 	async function loadSeason(): Promise<void> {
 		if (!auth.steamid) return;
 		try {
-			const res = await fetch(api(`/skinsync/season/status?steamid=${encodeURIComponent(auth.steamid)}`), {
+			const res = await fetch(api(`/rr/season/status?steamid=${encodeURIComponent(auth.steamid)}`), {
 				headers: { accept: 'application/json', ...auth.headers() }
 			});
 			if (res.ok) season = (await res.json()) as SeasonStatus;
@@ -55,7 +55,7 @@
 	async function joinSeason(): Promise<void> {
 		seasonBusy = true;
 		seasonMsg = '';
-		const r = await auth.post('/skinsync/season/register', {});
+		const r = await auth.post('/rr/season/register', {});
 		seasonBusy = false;
 		if (r.ok) {
 			seasonMsg = 'You’re in. See you on the ladder.';
@@ -66,7 +66,7 @@
 	}
 
 	// Desktop agent — the signed-in user's OWN tray/Tauri agent status, from the shared store the top-bar
-	// AgentChip owns (GET /skinsync/agent, token-auth). `ver` is empty until the agent reports on heartbeat.
+	// AgentChip owns (GET /rr/agent, token-auth). `ver` is empty until the agent reports on heartbeat.
 	const ag = $derived(agent.status);
 	const agentOn = $derived(agent.reporting);
 

@@ -1,6 +1,6 @@
-// Shapes mirror the live skinsync API (GET /skinsync/leaderboard) + the SSE bus.
+// Shapes mirror the live skinsync API (GET /rr/leaderboard) + the SSE bus.
 
-/** One row from GET /skinsync/leaderboard?tab=…&period=…  */
+/** One row from GET /rr/leaderboard?tab=…&period=…  */
 export interface Player {
 	steamid: string;
 	name: string;

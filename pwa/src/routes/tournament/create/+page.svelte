@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Tournament CREATE / EDIT — the TO create flow (Phase 1). One route, two modes:
-	//   • create  (no query)  → POST /skinsync/tourney/create → { id } → open the new event
-	//   • edit    (?id=<slug>) → prefill from /tourney/get, POST /skinsync/tourney/update
+	//   • create  (no query)  → POST /rr/tourney/create → { id } → open the new event
+	//   • edit    (?id=<slug>) → prefill from /tourney/get, POST /rr/tourney/update
 	// Create is allowed for ANY signed-in user (a TO is a user who owns an event); edit is gated to the
 	// organizer (to_steamid / co_tos). The acting SteamID is the bearer token server-side; we mirror identity
 	// only to pick the right gate. Structural fields lock once the bracket is live — the server enforces it.
@@ -94,7 +94,7 @@
 		loading = true;
 		notice = null;
 		try {
-			const res = await fetch(api(`/skinsync/tourney/get?id=${encodeURIComponent(id)}`), {
+			const res = await fetch(api(`/rr/tourney/get?id=${encodeURIComponent(id)}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (res.ok) {
@@ -303,7 +303,7 @@
 
 		if (isEdit) {
 			body.id = editId;
-			const res = await auth.post('/skinsync/tourney/update', body);
+			const res = await auth.post('/rr/tourney/update', body);
 			busy = false;
 			if (res.ok) {
 				notice = { kind: 'ok', text: 'Saved.' };
@@ -312,7 +312,7 @@
 				notice = { kind: 'err', text: res.error ?? 'Could not save the event.' };
 			}
 		} else {
-			const res = await auth.post<{ id?: string }>('/skinsync/tourney/create', body);
+			const res = await auth.post<{ id?: string }>('/rr/tourney/create', body);
 			busy = false;
 			if (res.ok && res.data?.id) {
 				void goto(`${base}/tournament/${res.data.id}`);

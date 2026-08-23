@@ -3,7 +3,7 @@ import { api } from '$lib/config';
 // Regions ("represent") store. rune-$state, modelled on LeaderboardStore: one fetch, keep-last-good on
 // error. The list is small (one row per city/country ladder) so no virtualization / live channel is
 // needed — a plain fetch snapshot is the right call. Types declared locally (types.ts off-limits).
-//   • data: GET /skinsync/regions?level=city|country&sort=wins|players|winrate&limit=40
+//   • data: GET /rr/regions?level=city|country&sort=wins|players|winrate&limit=40
 //            → { ok, level, sort, min_games, regions:[…] }
 
 export type RegionLevel = 'city' | 'country';
@@ -57,7 +57,7 @@ export class RegionsStore {
 		this.loading = true;
 		try {
 			const qs = new URLSearchParams({ level, sort, limit: '40' });
-			const res = await fetch(api(`/skinsync/regions?${qs}`), { headers: { accept: 'application/json' } });
+			const res = await fetch(api(`/rr/regions?${qs}`), { headers: { accept: 'application/json' } });
 			if (!res.ok) throw new Error(`regions ${res.status}`);
 			const json = (await res.json()) as RegionsResponse;
 			if (myReq !== this.#reqId) return; // a newer level/sort request superseded this one

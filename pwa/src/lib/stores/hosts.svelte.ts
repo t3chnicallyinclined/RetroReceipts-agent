@@ -6,7 +6,7 @@ import { api } from '$lib/config';
 // host) so a plain snapshot + polling is the right call — no virtualization, and the arcade/hosts
 // endpoint isn't on the SSE bus. Types are declared here (types.ts is off-limits) as an extension of
 // the shipped /arcade/hosts shape.
-//   • data: GET /skinsync/arcade/hosts → { ok, hosts:[ … ] }
+//   • data: GET /rr/arcade/hosts → { ok, hosts:[ … ] }
 //   • the server already filters to ONLINE hosts (a 45s liveness window); the list may be empty.
 
 export interface Host {
@@ -136,7 +136,7 @@ export class HostsStore {
 		const myReq = ++this.#reqId;
 		this.loading = true;
 		try {
-			const res = await fetch(api('/skinsync/arcade/hosts'), {
+			const res = await fetch(api('/rr/arcade/hosts'), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) throw new Error(`hosts ${res.status}`);

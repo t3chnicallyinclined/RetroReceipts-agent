@@ -62,7 +62,7 @@
 	async function loadStats(): Promise<void> {
 		if (!auth.me?.admin) return; // never hit the admin endpoint for a non-admin
 		try {
-			const res = await fetch(api('/skinsync/admin/stats'), {
+			const res = await fetch(api('/rr/admin/stats'), {
 				headers: { accept: 'application/json', ...auth.headers() }
 			});
 			if (res.status === 403) {
@@ -86,7 +86,7 @@
 			qs.set('stale_days', String(staleDays || 30));
 			const mv = minVer.trim();
 			if (mv) qs.set('min', mv);
-			const res = await fetch(api(`/skinsync/admin/versions?${qs.toString()}`), {
+			const res = await fetch(api(`/rr/admin/versions?${qs.toString()}`), {
 				headers: { accept: 'application/json', ...auth.headers() }
 			});
 			if (res.status === 403) {

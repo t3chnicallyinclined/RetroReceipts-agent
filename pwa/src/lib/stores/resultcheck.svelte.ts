@@ -2,11 +2,11 @@ import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
 
 // 🔔 Result Check store — the contest/confirm system for reported match results. Poll-based (the server has
-// NO SSE channel for this): GET /skinsync/notifications?steamid=<me> (authed; steamid must equal the token)
+// NO SSE channel for this): GET /rr/notifications?steamid=<me> (authed; steamid must equal the token)
 // returns the contests the USER filed (`mine`, pending vs resolved + final winner once attested), an optional
 // heads-up when an opponent contested one of the user's matches (`headsUp`), and `unread` (the bell badge).
-// Writes go through auth.post (the single authed path — handles 401→logout + {ok:false}): POST /skinsync/contest
-// {match_key} and POST /skinsync/confirm {match_key}. Owns its lifecycle app-wide like WalletStore: load on
+// Writes go through auth.post (the single authed path — handles 401→logout + {ok:false}): POST /rr/contest
+// {match_key} and POST /rr/confirm {match_key}. Owns its lifecycle app-wide like WalletStore: load on
 // sign-in, poll while visible, pause while hidden. Keep-last-good on a transient blip. Types are local.
 
 export interface RcMine {
@@ -83,7 +83,7 @@ class ResultCheckStore {
 		}
 		const myReq = ++this.#reqId;
 		try {
-			const res = await fetch(api(`/skinsync/notifications?steamid=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(`/rr/notifications?steamid=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json', ...auth.headers() }
 			});
 			if (!res.ok) return; // keep last-good (a later poll retries)
@@ -124,7 +124,7 @@ class ResultCheckStore {
 		if (!key || this.inflight.has(key)) return { ok: false, error: 'busy' };
 		this.#setInflight(key, true);
 		try {
-			const res = await auth.post('/skinsync/contest', { match_key: key });
+			const res = await auth.post('/rr/contest', { match_key: key });
 			if (res.ok) await this.load(this.#sid);
 			return { ok: res.ok, error: res.error };
 		} finally {
@@ -140,7 +140,7 @@ class ResultCheckStore {
 		if (!key || this.inflight.has(key)) return { ok: false, error: 'busy' };
 		this.#setInflight(key, true);
 		try {
-			const res = await auth.post<{ confirmed?: boolean; need?: string | null }>('/skinsync/confirm', {
+			const res = await auth.post<{ confirmed?: boolean; need?: string | null }>('/rr/confirm', {
 				match_key: key
 			});
 			if (res.ok) {

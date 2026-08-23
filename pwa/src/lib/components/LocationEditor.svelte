@@ -7,7 +7,7 @@
 
 	// Owner-only "Represent" editor: set your country / city / region so a flag shows by your name and your
 	// city/country lands on the Regions board. Signed-in only (render behind auth.authed). Writes ride the
-	// shared owner-write path (auth.post → POST /skinsync/location), then refresh auth.me app-wide. `onsaved`
+	// shared owner-write path (auth.post → POST /rr/location), then refresh auth.me app-wide. `onsaved`
 	// lets a host (e.g. the profile page) refetch its own view after a change.
 	let { onsaved }: { onsaved?: () => void } = $props();
 
@@ -94,7 +94,7 @@
 		if (busy || !dirty) return;
 		busy = true;
 		notice = null;
-		const res = await auth.post('/skinsync/location', {
+		const res = await auth.post('/rr/location', {
 			steamid: auth.steamid,
 			cc,
 			country,
@@ -121,7 +121,7 @@
 		cityOpen = false;
 		busy = true;
 		notice = null;
-		const res = await auth.post('/skinsync/location', {
+		const res = await auth.post('/rr/location', {
 			steamid: auth.steamid,
 			cc: '',
 			country: '',

@@ -6,7 +6,7 @@ import type { SseFrame } from '$lib/types';
 // Public player profile store. rune-$state, modelled on LeaderboardStore: fetch on demand, keep the
 // last-good card on a transient error (never blank a card that's already showing), and — as a bonus —
 // patch the "🟢 in a match now" banner live off the app-wide `matches` SSE channel (push-only, no poll).
-//   • data:  GET /skinsync/profile?steamid=…
+//   • data:  GET /rr/profile?steamid=…
 //   • live:  SSE channel "matches" → match_start/match_end/match_result involving THIS steamid.
 // Types are declared locally (types.ts is off-limits) and mirror the live /profile payload.
 
@@ -136,7 +136,7 @@ export class ProfileStore {
 		try {
 			// Attach the bearer (empty when signed out): the token only unlocks the OWNER view of the
 			// caller's OWN id server-side (e.g. the private lobby record) — it grants nothing on others'.
-			const res = await fetch(api(`/skinsync/profile?steamid=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(`/rr/profile?steamid=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json', ...auth.headers() }
 			});
 			if (!res.ok) throw new Error(`profile ${res.status}`);

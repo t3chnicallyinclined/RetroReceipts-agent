@@ -32,7 +32,7 @@
 			return;
 		}
 		try {
-			const res = await fetch(api('/skinsync/loadout'), {
+			const res = await fetch(api('/rr/loadout'), {
 				headers: { accept: 'application/json', ...auth.headers() }
 			});
 			if (res.ok) {
@@ -66,7 +66,7 @@
 		saving = true;
 		const cid = selected;
 		try {
-			const res = await fetch(api('/skinsync/loadout'), {
+			const res = await fetch(api('/rr/loadout'), {
 				method: 'POST',
 				headers: { 'content-type': 'application/json', ...auth.headers() },
 				body: JSON.stringify({ cid, colors: edit.map(toInt) })
@@ -82,7 +82,7 @@
 		saving = true;
 		const cid = selected;
 		try {
-			const res = await fetch(api(`/skinsync/loadout?cid=${cid}`), {
+			const res = await fetch(api(`/rr/loadout?cid=${cid}`), {
 				method: 'DELETE',
 				headers: { ...auth.headers() }
 			});

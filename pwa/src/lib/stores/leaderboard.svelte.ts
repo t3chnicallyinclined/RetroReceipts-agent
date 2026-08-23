@@ -5,7 +5,7 @@ import type { LeaderboardScope } from '$lib/boards';
 
 // The live board store. rune-$state so consumers re-render only on the fields that change (no
 // full-DOM rebuild — the exact CPU tax the rewrite exists to kill). Wired to the shipped bus:
-//   • data:  GET /skinsync/leaderboard?tab=…&period=…&limit=50
+//   • data:  GET /rr/leaderboard?tab=…&period=…&limit=50
 //   • live:  SSE channel "leaderboard" → on `delta`, debounced refetch (~500ms), matching the old app.
 // Keep-last-good on fetch error: a transient blip (server restart / a live-refresh racing one) must
 // never blank a board that's already showing (the bug we fixed in the old app).

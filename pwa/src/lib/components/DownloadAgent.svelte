@@ -10,7 +10,7 @@
 	// app-wide, so this just reads the same signal.
 	const WIN_URL =
 		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/metasync-agent.exe';
-	const LINUX_CMD = 'curl -fsSL https://nobd.net/skinsync/update/install-bazzite.sh | bash';
+	const LINUX_CMD = 'curl -fsSL https://nobd.net/rr/update/install-bazzite.sh | bash';
 
 	// Lead with the visitor's platform (both are always reachable once expanded).
 	const isLinux = browser && /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent);

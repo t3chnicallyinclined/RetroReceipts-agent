@@ -3,7 +3,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 
 	// Suggest-a-stat — ports the Tauri "💡 Suggest a leaderboard stat" modal. Writes via the shared authed POST
-	// to the EXISTING endpoint POST /skinsync/suggest (token-bound SteamID server-side; body = {text, name?}).
+	// to the EXISTING endpoint POST /rr/suggest (token-bound SteamID server-side; body = {text, name?}).
 	// Signed-in only (the endpoint 401s otherwise). Fetch-on-submit only → tick-safe.
 	let { onClose }: { onClose: () => void } = $props();
 
@@ -21,7 +21,7 @@
 		if (busy || tooShort) return;
 		busy = true;
 		notice = null;
-		const res = await auth.post('/skinsync/suggest', {
+		const res = await auth.post('/rr/suggest', {
 			text: text.trim(),
 			name: auth.me?.name ?? ''
 		});

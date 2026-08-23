@@ -8,7 +8,7 @@
 	import Avatar from './Avatar.svelte';
 
 	// The SET modal — a game-by-game view of one match session. Opened with a session_id from a result OR
-	// a Now Playing card. Fetches GET /skinsync/session?id=<id> and renders the two players + running set
+	// a Now Playing card. Fetches GET /rr/session?id=<id> and renders the two players + running set
 	// score (counted across games) + a Game 1..N list in the SAME arena language as the result cards.
 	// When `live` (the set belongs to an in-progress match), it SILENTLY re-polls the endpoint every few
 	// seconds so new games appear as they finish — the 🔴 LIVE badge is on and driven. Types are local.
@@ -152,7 +152,7 @@
 			data = null;
 		}
 		try {
-			const res = await fetch(api(`/skinsync/session?id=${encodeURIComponent(id)}`), {
+			const res = await fetch(api(`/rr/session?id=${encodeURIComponent(id)}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) throw new Error(`session ${res.status}`);

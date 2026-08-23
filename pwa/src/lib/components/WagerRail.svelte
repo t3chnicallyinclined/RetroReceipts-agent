@@ -61,7 +61,7 @@
 	}
 	async function copyLink() {
 		if (!w) return;
-		const link = `https://nobd.net/skinsync/mm?id=${w.id}`;
+		const link = `https://nobd.net/rr/mm?id=${w.id}`;
 		try {
 			await navigator.clipboard.writeText(link);
 			notice = { kind: 'ok', text: 'Challenge link copied — share it anywhere.' };

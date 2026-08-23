@@ -5,10 +5,10 @@ import type { SseFrame } from '$lib/types';
 // 🪙 QUARTERS wallet store. rune-$state, modelled on LeaderboardStore: one cheap public GET, keep the
 // last-good balance on a transient blip (never blank a chip that's already showing), and refetch live
 // whenever a wager or a match result could have moved the balance.
-//   • data: GET /skinsync/coins?steamid=  → { ok, balance, genesis, recent[] }  (public read; play money)
+//   • data: GET /rr/coins?steamid=  → { ok, balance, genesis, recent[] }  (public read; play money)
 //   • live: SSE channel "matches" → on any `wager_*` / `match_result` delta, debounced refetch (~600ms).
 // The balance is the single global home of the quarters figure (DESIGN §5). Types are local (types.ts
-// is off-limits) and mirror the live skinsync ledger payload (metasync-srv/skinsync/src/ledger.rs).
+// is off-limits) and mirror the live skinsync ledger payload (RetroReceipts-server/skinsync/src/ledger.rs).
 
 /** One ledger line from `recent[]`. `kind` is the flow name; `delta` is signed for THIS account. */
 export interface CoinTx {
@@ -51,7 +51,7 @@ export class WalletStore {
 		if (!sid) return;
 		const myReq = ++this.#reqId;
 		try {
-			const res = await fetch(api(`/skinsync/coins?steamid=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(`/rr/coins?steamid=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) return; // keep last-good

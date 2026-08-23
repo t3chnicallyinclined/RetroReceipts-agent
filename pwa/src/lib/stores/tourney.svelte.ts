@@ -3,11 +3,11 @@ import type { Registration, TournamentDoc } from '$lib/tourney';
 
 // Tournament DETAIL store. Two live inputs, mirroring the discipline of SseChannel but with its OWN
 // EventSource because the URL + verbs differ from the generic channel bus:
-//   1. data:   GET /skinsync/tourney/get?id=<id>            → { ok, tournament } (fast initial paint)
-//   2. live:   SSE GET /skinsync/rt/tourney/<id>/stream     → `event: snapshot` (authoritative full doc)
+//   1. data:   GET /rr/tourney/get?id=<id>            → { ok, tournament } (fast initial paint)
+//   2. live:   SSE GET /rr/rt/tourney/<id>/stream     → `event: snapshot` (authoritative full doc)
 //              then `event: delta` frames patched by `type`.
 //
-// Delta handling (server shapes verified against metasync-srv/skinsync/src/tourney.rs):
+// Delta handling (server shapes verified against RetroReceipts-server/skinsync/src/tourney.rs):
 //   • snapshot            → REPLACE doc with data.tournament (may arrive more than once; always authoritative)
 //   • status              → patch doc.status inline (instant; single authoritative field)
 //   • deleted             → mark `gone` (the tournament was removed)
@@ -92,7 +92,7 @@ export class TourneyStore {
 		const myReq = ++this.#reqId;
 		this.loading = true;
 		try {
-			const res = await fetch(api(`/skinsync/tourney/get?id=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(`/rr/tourney/get?id=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (res.status === 404) {
@@ -130,7 +130,7 @@ export class TourneyStore {
 		if (this.#es) return;
 		if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
 		if (!this.id) return;
-		const url = api(`/skinsync/rt/tourney/${encodeURIComponent(this.id)}/stream`);
+		const url = api(`/rr/rt/tourney/${encodeURIComponent(this.id)}/stream`);
 		const es = new EventSource(url);
 		this.#es = es;
 		// `snapshot` — the authoritative full doc; always REPLACE (may resend on reconnect gap-fill).
@@ -244,7 +244,7 @@ export class TourneyStore {
 		for (const sid of sids) {
 			if (!sid || this.players[sid] || this.#resolving.has(sid)) continue;
 			this.#resolving.add(sid);
-			fetch(api(`/skinsync/profile?steamid=${encodeURIComponent(sid)}`), {
+			fetch(api(`/rr/profile?steamid=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json' }
 			})
 				.then((r) => (r.ok ? (r.json() as Promise<ProfileLite>) : null))

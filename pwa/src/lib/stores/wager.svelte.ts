@@ -10,7 +10,7 @@ import type { SseFrame } from '$lib/types';
 // Every `wager_*` delta on `matches` carries the FULL wager row, so we patch both lists directly (no
 // refetch needed) and keep-last-good on fetch errors. Writes go through auth.post (the single authed path;
 // it handles 401→logout + {ok:false}). Types are local (types.ts off-limits) and mirror the live skinsync
-// payload (metasync-srv/skinsync/src/wager.rs row()).
+// payload (RetroReceipts-server/skinsync/src/wager.rs row()).
 
 export interface Wager {
 	id: string;
@@ -62,7 +62,7 @@ export class WagerStore {
 	/** THE MARQUEE — every open quarter (public, works signed-out). */
 	async loadOpen(): Promise<void> {
 		try {
-			const res = await fetch(api('/skinsync/wager/open'), { headers: { accept: 'application/json' } });
+			const res = await fetch(api('/rr/wager/open'), { headers: { accept: 'application/json' } });
 			if (!res.ok) return; // keep last-good
 			const j = (await res.json()) as { ok?: boolean; wagers?: Wager[] };
 			if (j?.ok) this.open = Array.isArray(j.wagers) ? j.wagers : [];
@@ -80,7 +80,7 @@ export class WagerStore {
 			return;
 		}
 		try {
-			const res = await fetch(api(`/skinsync/wager/state?steamid=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(`/rr/wager/state?steamid=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) return; // keep last-good
@@ -128,7 +128,7 @@ export class WagerStore {
 	// ── writes (all via auth.post — the single authed path) ────────────────────────────────────────
 	/** Put a quarter up: `opp` omitted = an OPEN marquee challenge; `opp` set = a directed challenge. */
 	async offer(body: { stake: number; ft?: number; opp?: string }): Promise<{ ok: boolean; error?: string }> {
-		const res = await auth.post<OfferResult>('/skinsync/wager/offer', body);
+		const res = await auth.post<OfferResult>('/rr/wager/offer', body);
 		if (res.ok && res.data?.wager) {
 			this.mine = res.data.wager;
 			void this.loadOpen();
@@ -139,7 +139,7 @@ export class WagerStore {
 
 	/** Accept (match) or decline an offer by id. */
 	async respond(id: string, accept: boolean): Promise<{ ok: boolean; error?: string }> {
-		const res = await auth.post<OfferResult>('/skinsync/wager/respond', { id, accept });
+		const res = await auth.post<OfferResult>('/rr/wager/respond', { id, accept });
 		if (res.ok && res.data?.wager) this.mine = res.data.wager;
 		if (res.ok) {
 			void this.loadOpen();
@@ -150,7 +150,7 @@ export class WagerStore {
 
 	/** Pull an OPEN quarter back off the marquee (challenger-only, server-enforced). */
 	async cancel(id: string): Promise<{ ok: boolean; error?: string }> {
-		const res = await auth.post('/skinsync/wager/cancel', { id });
+		const res = await auth.post('/rr/wager/cancel', { id });
 		if (res.ok) {
 			if (this.mine?.id === id) this.mine = null;
 			void this.loadOpen();

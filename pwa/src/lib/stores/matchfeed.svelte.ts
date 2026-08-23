@@ -3,7 +3,7 @@ import { getChannel, type SseChannel } from '$lib/rt.svelte';
 import type { SseFrame } from '$lib/types';
 
 // Live "match center" store. rune-$state off the app-wide `matches` SSE channel. On connect (and on a
-// mode switch) it SEEDS from GET /skinsync/matches/feed?mode=<mode>&limit=20 (a snapshot of in-progress
+// mode switch) it SEEDS from GET /rr/matches/feed?mode=<mode>&limit=20 (a snapshot of in-progress
 // games + recent results for the selected mode) so the tab is never empty before the first live delta,
 // then stays live. Two capped lists, both newest-first:
 //   • results     — finished match_result deltas for the ACTIVE mode (cap 20 → 4 pages of 5)
@@ -211,7 +211,7 @@ export class MatchFeedStore {
 		const mode = this.mode;
 		this.loading = true;
 		try {
-			const res = await fetch(api(`/skinsync/matches/feed?mode=${mode}&limit=${RESULTS_CAP}`), {
+			const res = await fetch(api(`/rr/matches/feed?mode=${mode}&limit=${RESULTS_CAP}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) return; // keep-last-good; a later connect/switch retries

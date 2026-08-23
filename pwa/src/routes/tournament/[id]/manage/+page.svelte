@@ -141,14 +141,14 @@
 			notice = { kind: 'err', text: 'Enter a 17-digit SteamID64.' };
 			return;
 		}
-		const res = await act('/skinsync/tourney/host_add', { steamid: sid, name: newHostName.trim() }, 'Host registered.');
+		const res = await act('/rr/tourney/host_add', { steamid: sid, name: newHostName.trim() }, 'Host registered.');
 		if (res?.ok) {
 			newHostSid = '';
 			newHostName = '';
 		}
 	}
 	function removeHost(sid: string): void {
-		void act('/skinsync/tourney/host_remove', { steamid: sid }, 'Host removed.');
+		void act('/rr/tourney/host_remove', { steamid: sid }, 'Host removed.');
 	}
 
 	// optional: prefill a SteamID from the GLOBAL online arcade fleet (NOT tourney-specific volunteers).
@@ -169,7 +169,7 @@
 	async function loadFleet(): Promise<void> {
 		fleetLoading = true;
 		try {
-			const r = await fetch(api('/skinsync/arcade/hosts'), { headers: { accept: 'application/json' } });
+			const r = await fetch(api('/rr/arcade/hosts'), { headers: { accept: 'application/json' } });
 			const j = (await r.json()) as { hosts?: FleetHost[] };
 			fleet = j.hosts ?? [];
 		} catch {
@@ -191,32 +191,32 @@
 			notice = { kind: 'err', text: 'Enter a 17-digit SteamID64.' };
 			return;
 		}
-		const res = await act('/skinsync/tourney/add_entrant', { steamid: sid }, 'Entrant added.');
+		const res = await act('/rr/tourney/add_entrant', { steamid: sid }, 'Entrant added.');
 		if (res?.ok) addSid = '';
 	}
 	function setSeed(sid: string, raw: string): void {
 		const n = Math.max(0, Math.floor(Number(raw) || 0));
-		void act('/skinsync/tourney/entrant_update', { steamid: sid, seed: n });
+		void act('/rr/tourney/entrant_update', { steamid: sid, seed: n });
 	}
 	function setStatus(sid: string, s: string, msg?: string): void {
-		void act('/skinsync/tourney/entrant_update', { steamid: sid, status: s }, msg);
+		void act('/rr/tourney/entrant_update', { steamid: sid, status: s }, msg);
 	}
 	function toggleCheckin(sid: string, ci: boolean): void {
-		void act('/skinsync/tourney/entrant_update', { steamid: sid, checked_in: ci });
+		void act('/rr/tourney/entrant_update', { steamid: sid, checked_in: ci });
 	}
 	function dq(sid: string): void {
-		void act('/skinsync/tourney/entrant_dq', { steamid: sid }, 'Entrant disqualified.');
+		void act('/rr/tourney/entrant_dq', { steamid: sid }, 'Entrant disqualified.');
 	}
 
 	// ── SEEDING + CHECK-IN + START ─────────────────────────────────────────────────────────────────
 	function seedBy(method: string): void {
-		void act('/skinsync/tourney/seed', { method }, `Seeded by ${method === 'elo' ? 'ELO' : method}.`);
+		void act('/rr/tourney/seed', { method }, `Seeded by ${method === 'elo' ? 'ELO' : method}.`);
 	}
 	function checkinCtl(action: string, extra: Record<string, unknown> = {}, msg?: string): void {
-		void act('/skinsync/tourney/checkin_ctl', { action, ...extra }, msg);
+		void act('/rr/tourney/checkin_ctl', { action, ...extra }, msg);
 	}
 	async function startBracket(): Promise<void> {
-		const res = await act<{ needs_host?: boolean }>('/skinsync/tourney/start', {});
+		const res = await act<{ needs_host?: boolean }>('/rr/tourney/start', {});
 		if (res?.ok) {
 			notice = res.data?.needs_host
 				? { kind: 'err', text: 'Bracket started — but no host is registered. Add a host below so matches can be played.' }
@@ -322,20 +322,20 @@
 
 	// ── run-control actions (all TO-authed; every write flows through act → auth.post) ──────────────
 	function assignHost(matchId: number, hostSid: string): void {
-		void act('/skinsync/tourney/host_assign', { match_id: matchId, host_steamid: hostSid });
+		void act('/rr/tourney/host_assign', { match_id: matchId, host_steamid: hostSid });
 	}
 	function callToStation(matchId: number): void {
-		void act('/skinsync/tourney/match_run', { match_id: matchId, live: true }, 'Players called to station.');
+		void act('/rr/tourney/match_run', { match_id: matchId, live: true }, 'Players called to station.');
 	}
 	function pullBack(matchId: number): void {
-		void act('/skinsync/tourney/match_run', { match_id: matchId, live: false }, 'Match set back to ready.');
+		void act('/rr/tourney/match_run', { match_id: matchId, live: false }, 'Match set back to ready.');
 	}
 	function toggleStream(m: BracketMatch): void {
-		void act('/skinsync/tourney/match_run', { match_id: m.id, on_stream: !m.on_stream });
+		void act('/rr/tourney/match_run', { match_id: m.id, on_stream: !m.on_stream });
 	}
 	async function reportWinner(matchId: number, winnerSid: string): Promise<void> {
 		const res = await act<{ champion?: string | null }>(
-			'/skinsync/tourney/report',
+			'/rr/tourney/report',
 			{ match_id: matchId, winner_steamid: winnerSid },
 			'Result recorded.'
 		);
@@ -344,7 +344,7 @@
 		}
 	}
 	function undoMatch(matchId: number): void {
-		void act('/skinsync/tourney/match_reset', { match_id: matchId }, 'Match reset.');
+		void act('/rr/tourney/match_reset', { match_id: matchId }, 'Match reset.');
 	}
 
 	// ── DELETE (double-confirm) ─────────────────────────────────────────────────────────────────────
@@ -354,7 +354,7 @@
 			confirmDelete = true;
 			return;
 		}
-		const res = await act('/skinsync/tourney/delete', {});
+		const res = await act('/rr/tourney/delete', {});
 		if (res?.ok) void goto(`${base}/tournament`);
 	}
 </script>

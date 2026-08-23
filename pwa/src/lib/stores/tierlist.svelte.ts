@@ -2,7 +2,7 @@ import { api } from '$lib/config';
 
 // MvC2 team tier list store — the dataset's signature knowledge surface. rune-$state, modelled on
 // RegionsStore: one fetch, keep-last-good on error (never blank a list that's already showing).
-//   • data: GET /skinsync/tierlist  → { teams:[{team:"13,31,49", games, wins, winrate}, …] }
+//   • data: GET /rr/tierlist  → { teams:[{team:"13,31,49", games, wins, winrate}, …] }
 //           (already sorted by winrate desc; `team` = 3 comma-separated char-ids)
 // Optional region filter (?country=US / ?city=Name) is supported by the server but skipped in the v1
 // UI — the min-games gate is the priority. Types declared locally (types.ts is off-limits).
@@ -34,7 +34,7 @@ export class TierlistStore {
 		if (city) qs.set('city', city);
 		const q = qs.toString();
 		try {
-			const res = await fetch(api(`/skinsync/tierlist${q ? `?${q}` : ''}`), {
+			const res = await fetch(api(`/rr/tierlist${q ? `?${q}` : ''}`), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) throw new Error(`tierlist ${res.status}`);

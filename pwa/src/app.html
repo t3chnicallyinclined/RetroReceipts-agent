@@ -20,8 +20,8 @@
 					var t = p.get('token'),
 						s = p.get('steamid');
 					if (t && s && /^\d{17}$/.test(s)) {
-						localStorage.setItem('metasync_token', t);
-						localStorage.setItem('metasync_steamid', s);
+						localStorage.setItem('rr_token', t);
+						localStorage.setItem('rr_steamid', s);
 					}
 					history.replaceState(null, '', location.pathname + location.search);
 				} catch (e) {}
@@ -30,7 +30,7 @@
 			// Runs before first paint → no flash.
 			(function () {
 				try {
-					var t = localStorage.getItem('metasync_theme') || 'dark';
+					var t = localStorage.getItem('rr_theme') || localStorage.getItem('metasync_theme') || 'dark';
 					if (t === 'auto') document.documentElement.removeAttribute('data-theme');
 					else document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
 				} catch (e) {}

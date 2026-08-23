@@ -8,7 +8,7 @@ import type { LeaderboardScope } from './boards';
 export type ScopedLeaderboardResponse = LeaderboardResponse & { scope?: string };
 
 /**
- * GET /skinsync/leaderboard?tab=…&period=…&scope=…&limit=…
+ * GET /rr/leaderboard?tab=…&period=…&scope=…&limit=…
  * Live data source for the board. Same-origin in prod (nobd.net/app); Vite-proxied in dev.
  * `scope` defaults to `ranked` (legacy behaviour: ratings + tier titles + region fast-path).
  */
@@ -20,7 +20,7 @@ export async function fetchLeaderboard(
 	signal?: AbortSignal
 ): Promise<ScopedLeaderboardResponse> {
 	const url = api(
-		`/skinsync/leaderboard?tab=${encodeURIComponent(tab)}&period=${encodeURIComponent(period)}&scope=${encodeURIComponent(scope)}&limit=${limit}`
+		`/rr/leaderboard?tab=${encodeURIComponent(tab)}&period=${encodeURIComponent(period)}&scope=${encodeURIComponent(scope)}&limit=${limit}`
 	);
 	const res = await fetch(url, { signal, headers: { accept: 'application/json' } });
 	if (!res.ok) throw new Error(`leaderboard ${res.status}`);

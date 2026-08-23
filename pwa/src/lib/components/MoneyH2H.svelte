@@ -6,7 +6,7 @@
 	// 🪙 MONEY-MATCH RECEIPT — "RETRO RECEIPTS" treatment of a player's money-match head-to-head. Who they've
 	// made the most coins from and lost the most to, rendered as a literal dark-theme receipt: monospace,
 	// perforated edges, dashed section rules, itemized line-items (name left · net right), subtotals, and a
-	// bold TOTAL NET. Reads GET /skinsync/wager/h2h?steamid=… → [{ opp, net, won, lost, games }] where `opp`
+	// bold TOTAL NET. Reads GET /rr/wager/h2h?steamid=… → [{ opp, net, won, lost, games }] where `opp`
 	// is a SteamID and `net` is the SIGNED coin total vs that opponent (positive = this player profited).
 	// The endpoint is being built server-side and MAY NOT EXIST YET, so every non-2xx / parse blip becomes a
 	// graceful "NO TRANSACTIONS YET" receipt — never an error screen. Opponent SteamIDs resolve to a name the
@@ -71,7 +71,7 @@
 	async function load(sid: string): Promise<void> {
 		const myReq = ++reqId;
 		try {
-			const res = await fetch(api(`/skinsync/wager/h2h?steamid=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(`/rr/wager/h2h?steamid=${encodeURIComponent(sid)}`), {
 				headers: { accept: 'application/json' }
 			});
 			// 404 (endpoint not built yet) / any non-2xx → hide the section entirely (served stays false).

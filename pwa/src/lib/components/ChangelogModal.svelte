@@ -15,7 +15,7 @@
 	}
 
 	// Offline fallback ONLY — the remote is authoritative. (⚠ ops: append PWA releases to the central
-	// nobd.net/skinsync/update/changelog.json when the PWA ships — see DEPLOY-RELEASE.)
+	// nobd.net/rr/update/changelog.json when the PWA ships — see DEPLOY-RELEASE.)
 	const FALLBACK: ClEntry[] = [
 		{
 			v: APP_VERSION,
@@ -42,7 +42,7 @@
 		let cancelled = false;
 		(async () => {
 			try {
-				const res = await fetch(api('/skinsync/update/changelog.json'), {
+				const res = await fetch(api('/rr/update/changelog.json'), {
 					headers: { accept: 'application/json' }
 				});
 				if (!res.ok) throw new Error(String(res.status));

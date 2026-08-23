@@ -1,9 +1,9 @@
 // Tournament shapes + pure display helpers. Types are declared locally (types.ts is off-limits) and
-// MIRROR the live skinsync tournament payloads (GET /skinsync/tourney/list · /tourney/get and the
-// per-tournament SSE stream). The server model (metasync-srv/skinsync/src/tourney.rs) is the source of
+// MIRROR the live skinsync tournament payloads (GET /rr/tourney/list · /tourney/get and the
+// per-tournament SSE stream). The server model (RetroReceipts-server/skinsync/src/tourney.rs) is the source of
 // truth for every field name here — kept in sync with it.
 
-// ── browse-card summary (GET /skinsync/tourney/list → tournaments[]) ────────────────────────────────
+// ── browse-card summary (GET /rr/tourney/list → tournaments[]) ────────────────────────────────
 export interface TournamentSummary {
 	id: string;
 	name: string;
@@ -26,7 +26,7 @@ export interface TournamentSummary {
 	to_steamid?: string;
 }
 
-// ── full document (GET /skinsync/tourney/get?id= → tournament, and the SSE snapshot's `tournament`) ──
+// ── full document (GET /rr/tourney/get?id= → tournament, and the SSE snapshot's `tournament`) ──
 export interface Registration {
 	steamid: string;
 	seed?: number; // 1-based; 0 = not yet seeded

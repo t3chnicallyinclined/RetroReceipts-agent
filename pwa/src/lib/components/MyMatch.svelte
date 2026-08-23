@@ -18,7 +18,7 @@
 	// (so it never leaves an empty shell). YOU always sit left (orange), the OPPONENT right (blue), a giant
 	// gold VS between, the live set score on top, and a matchup-intel strip (win% · H2H · best team · kryptonite)
 	// below. Presence + live score come from the network `nowPlaying` feed (SSE); teams from your profile's
-	// current_match; the intel from /skinsync/matchup. Identical field names + copy to the desktop app.
+	// current_match; the intel from /rr/matchup. Identical field names + copy to the desktop app.
 
 	interface Matchup {
 		win_chance?: number;
@@ -57,12 +57,12 @@
 		if (opp === fetchedFor) return; // already resolved for this opponent
 		const rq = ++reqId;
 		Promise.all([
-			fetch(api(`/skinsync/profile?steamid=${encodeURIComponent(opp)}`), {
+			fetch(api(`/rr/profile?steamid=${encodeURIComponent(opp)}`), {
 				headers: { accept: 'application/json' }
 			})
 				.then((r) => (r.ok ? (r.json() as Promise<Profile>) : null))
 				.catch(() => null),
-			fetch(api(`/skinsync/matchup?me=${encodeURIComponent(my)}&opp=${encodeURIComponent(opp)}`), {
+			fetch(api(`/rr/matchup?me=${encodeURIComponent(my)}&opp=${encodeURIComponent(opp)}`), {
 				headers: { accept: 'application/json' }
 			})
 				.then((r) => (r.ok ? (r.json() as Promise<Matchup>) : null))
