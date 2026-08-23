@@ -2833,9 +2833,47 @@ static void do_set_lobby_max(const char *arg)
         if (n > RR_LOBBY_MAX_CEILING) n = RR_LOBBY_MAX_CEILING;
     }
     g_lobby_max_members = n;
-    char msg[48];
-    snprintf(msg, sizeof(msg), "lobby_max=%d", n);
+    /* Source-level inject: also poke the persistent CM session object's member-count field
+     * (obj+0xb0 -- the ctor FUN_14034bd40 hardcodes it to 2). The Steam CreateLobby-arg rewrite +
+     * SlotPublicMax mirror alone do NOT move the lobby's "X of N" header (proven on the box), so the
+     * game reads its OWN count from here. Only when a real count is requested (n>0) and the CM object
+     * is resolvable (you're on the Create-Lobby screen). Issue this BEFORE the Create press. */
+    int poked = 0; uint32_t oldb0 = 0;
+    if (n > 0) {
+        uint64_t cm = resolve_cm_obj();
+        if (cm) {
+            uint64_t addr = cm + 0xb0;
+            rd_u32(addr, &oldb0);
+            if (poke32(addr, (uint32_t)n)) { poked = 1; logmsg("[cfg] CM obj+0xb0 member-count %u -> %d", oldb0, n); }
+            else logmsg("[cfg] CM obj+0xb0 poke FAILED (vprotect)");
+        } else {
+            logmsg("[cfg] CM obj not resolvable (not on Create-Lobby screen?) -- +0xb0 NOT poked");
+        }
+    }
+    char msg[80];
+    snprintf(msg, sizeof(msg), "lobby_max=%d cm_b0=%s", n, poked ? "poked" : "skip");
     logmsg("[cfg] %s (next create; 0=observe, game ceiling=%d)", msg, RR_LOBBY_MAX_CEILING);
+    result_ok_simple(msg);
+}
+
+/* poke_cm_off <hexoff> <hexval> -- write a u32 at CM-object + <off>. Generic experimentation lever
+ * to pin WHICH field drives the lobby's "X of N" count (start with 0xb0). Explicit/manual. */
+static void do_poke_cm_off(const char *arg)
+{
+    uint64_t obj = resolve_cm_obj();
+    if (!obj) { result_fail("poke_cm_off", "cm_obj_not_found (be on the Create-Lobby screen)"); return; }
+    if (!arg || !*arg) { result_fail("poke_cm_off", "need <hexoff> <hexval>"); return; }
+    char *e = NULL;
+    uint64_t off = strtoull(arg, &e, 16);
+    while (*e == ' ' || *e == '\t') e++;
+    if (!*e) { result_fail("poke_cm_off", "need <hexoff> <hexval>"); return; }
+    uint32_t val = (uint32_t)strtoul(e, NULL, 16);
+    uint64_t addr = obj + off;
+    uint32_t old = 0; rd_u32(addr, &old);
+    if (!poke32(addr, val)) { result_fail("poke_cm_off", "vprotect_failed"); return; }
+    logmsg("[cm] POKE obj+0x%llx: 0x%x -> 0x%x", (unsigned long long)off, old, val);
+    char msg[64];
+    snprintf(msg, sizeof(msg), "poke obj+0x%llx=0x%x (was 0x%x)", (unsigned long long)off, val, old);
     result_ok_simple(msg);
 }
 
@@ -3830,6 +3868,7 @@ static DWORD WINAPI helper(LPVOID arg)
             else if (_stricmp(cmd, "read_created")  == 0) do_read_created();
             else if (_stricmp(cmd, "set_slots")     == 0) do_set_slots(arg);
             else if (_stricmp(cmd, "set_lobby_max") == 0) do_set_lobby_max(arg);
+            else if (_stricmp(cmd, "poke_cm_off")   == 0) do_poke_cm_off(arg);
             else if (_stricmp(cmd, "getsteamid")    == 0) do_getsteamid();
             else if (_stricmp(cmd, "capture_created")==0) do_capture_created();
             else if (_stricmp(cmd, "probe_req")     == 0) do_probe_req();
