@@ -561,12 +561,12 @@ static void stack_walk_log(void)
  * How many members the hosted Custom Match room holds. MvC2 lobbies support up
  * to 9 members, so we don't script the slot count through the menu -- we let the
  * game make its lobby normally and REWRITE cMaxMembers at the CreateLobby hook
- * (below), mirroring it into SlotPublicMax in lc_write_data(). Default is 2 (no
- * behavior change vs the game's native 1v1 create); the money-host path opts into
- * a 3-seat room -- host(spectator) + 2 players -- by issuing `set_lobby_max 3`
- * before it creates the wager lobby. Runtime-settable: `set_lobby_max N` (2..9);
- * N=0 = observe/passthrough the game's native value (for diagnostics). */
-#define RR_LOBBY_MAX_DEFAULT 2
+ * (below), mirror it into SlotPublicMax (lc_set_lobby_data), AND poke the game's
+ * own member-count field CM-obj+0xb0 (do_set_lobby_max) -- that last one is what
+ * actually moves the lobby's "X of N" count. Default is 3 (owner: every hosted
+ * room seats at least 3 -- host-spectator + 2 players). Runtime-settable:
+ * `set_lobby_max N` (3..9); N=0 = observe/passthrough the native value (diag). */
+#define RR_LOBBY_MAX_DEFAULT 3
 #define RR_LOBBY_MAX_CEILING 9
 static int g_lobby_max_members = RR_LOBBY_MAX_DEFAULT;
 
@@ -2826,10 +2826,10 @@ static void do_set_slots(const char *arg)
  * create (2..9; N=0 = observe the game's native value). Applies to the NEXT create. */
 static void do_set_lobby_max(const char *arg)
 {
-    if (!arg || !*arg) { result_fail("set_lobby_max", "need <N> (2..9, or 0=observe)"); return; }
+    if (!arg || !*arg) { result_fail("set_lobby_max", "need <N> (3..9, or 0=observe)"); return; }
     int n = (int)strtol(arg, NULL, 0);
     if (n != 0) {
-        if (n < 2) n = 2;
+        if (n < 3) n = 3;      /* owner floor: every hosted room seats at least 3 */
         if (n > RR_LOBBY_MAX_CEILING) n = RR_LOBBY_MAX_CEILING;
     }
     g_lobby_max_members = n;
