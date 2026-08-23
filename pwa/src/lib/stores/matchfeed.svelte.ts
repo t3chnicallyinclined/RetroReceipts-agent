@@ -1,4 +1,5 @@
 import { api } from '$lib/config';
+import { auth } from '$lib/stores/auth.svelte';
 import { getChannel, type SseChannel } from '$lib/rt.svelte';
 import type { SseFrame } from '$lib/types';
 
@@ -346,6 +347,16 @@ export class MatchFeedStore {
 
 		// A finished result ends any "now playing" row for that pair — regardless of the active filter.
 		this.#dropPair(pairKey(row.winner, row.loser));
+
+		// MY rating just changed → refresh my profile so every surface that shows it (top bar, profile,
+		// match card, rank badge) is current. Without this, `auth.me` is fetched only at boot and right
+		// after sign-in, so a whole session of ranked games would still display the rating you had when
+		// the page was opened. Deliberately fires on the RESULT event rather than polling, and only when
+		// the game actually involved me.
+		const mine = auth.steamid;
+		if (mine && (row.winner === mine || row.loser === mine)) {
+			void auth.loadMe();
+		}
 
 		// Only surface it on the board when it belongs to the active mode (legacy mode-less → ranked).
 		if ((row.mode ?? 'ranked') !== this.mode) return;

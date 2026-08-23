@@ -55,7 +55,12 @@
 			fetchedFor = '';
 			return;
 		}
-		if (opp === fetchedFor) return; // already resolved for this opponent
+		// Refetch when the opponent changes OR when a new game has landed for this pair: ratings and the H2H
+		// tally move after every game, and this used to resolve ONCE per opponent — so across a long set the
+		// panel kept showing the numbers from the first game.
+		// `wins` is the live set score per sid, so its total ticks up as each game lands — a free per-game signal.
+		const stamp = `${opp}|${Object.values(mine?.wins ?? {}).reduce((a, b) => a + b, 0)}`;
+		if (stamp === fetchedFor) return;
 		const rq = ++reqId;
 		Promise.all([
 			fetch(api(`/rr/profile?steamid=${encodeURIComponent(opp)}`), {
@@ -72,7 +77,7 @@
 			if (rq !== reqId) return; // superseded by a newer opponent
 			oppProfile = op;
 			mu = m && !(m as { error?: unknown }).error ? m : null;
-			fetchedFor = opp;
+			fetchedFor = stamp;
 		});
 	});
 
