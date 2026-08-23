@@ -4,8 +4,8 @@
 	import { wager } from '$lib/stores/wager.svelte';
 	import Avatar from './Avatar.svelte';
 
-	// THE MARQUEE — the open-challenge feed (WAGER-MATCH-SPEC): every quarter that's up for anyone to
-	// attempt. Reads wager.open (public, live off the `matches` channel). Signed-in → ⚔ Attempt matches the
+	// THE ARCADE — the open-challenge floor (WAGER-MATCH-SPEC): every quarter that's up for anyone to
+	// attempt, each an open cabinet. Reads wager.open (public, live off the `matches` channel). Signed-in → ⚔ Attempt matches the
 	// stake into escrow; signed-out → the sign-in door. Your own quarter shows Cancel instead.
 	const me = $derived(auth.steamid);
 	const rows = $derived(wager.open.slice(0, 12));
@@ -42,16 +42,16 @@
 
 <section class="sec">
 	<h2 class="shead">
-		<span class="ic" aria-hidden="true">🪙</span> Open Challenges
+		<span class="ic" aria-hidden="true">🕹</span> The Arcade
 		{#if rows.length}<span class="cnt">{rows.length}</span>{/if}
 	</h2>
 
 	{#if rows.length === 0}
 		<div class="empty">
 			{#if auth.authed}
-				No open challenges right now. Put a quarter up on the rail above and wait for a taker.
+				The arcade's quiet right now. Put a quarter up on the rail above and wait for a taker.
 			{:else}
-				No open challenges right now. Sign in to challenge someone for quarters.
+				The arcade's quiet right now. Sign in to challenge someone for quarters.
 			{/if}
 		</div>
 	{:else}

@@ -54,7 +54,7 @@
 				kind: 'ok',
 				text: opp
 					? `Challenge sent to ${oppName || 'them'} — 🪙 ${stake}, first to ${FT}.`
-					: `🪙 ${stake} on the marquee (first to ${FT}) — waiting for a taker.`
+					: `🪙 ${stake} in the arcade (first to ${FT}) — waiting for a taker.`
 			};
 		} else {
 			notice = { kind: 'err', text: res.error ?? 'Could not put your quarter up.' };

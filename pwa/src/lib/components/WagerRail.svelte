@@ -99,7 +99,7 @@
 			<!-- my quarter is up, waiting for a taker -->
 			<div class="body">
 				<span class="line"
-					>🪙 {w.stake} on the marquee · FT{w.ft ?? 2} for the pot —
+					>🪙 {w.stake} in the arcade · FT{w.ft ?? 2} for the pot —
 					{#if cabinet}<span class="secured">🎮 cabinet secured</span> · {/if}<span class="dim">waiting for a taker…</span></span
 				>
 				<div class="acts">

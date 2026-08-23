@@ -189,7 +189,7 @@
 				{/if}
 			</div>
 		{:else if inviteOwn}
-			<p class="iline dim">This is your quarter — it's up on the marquee below, waiting for a taker.</p>
+			<p class="iline dim">This is your quarter — it's up in the arcade below, waiting for a taker.</p>
 		{:else if invite}
 			<!-- resolved but not an open taker-able offer → I'm already a party to it (matched / underway) -->
 			<p class="iline dim">You're in this set — the live rail is below.</p>
@@ -207,7 +207,7 @@
 				</button>
 			</div>
 		{:else if inviteChecked}
-			<p class="iline dim">This challenge is no longer open — the quarter already left the marquee.</p>
+			<p class="iline dim">This challenge is no longer open — the quarter already left the arcade.</p>
 		{:else}
 			<p class="iline dim">Looking for this challenge…</p>
 		{/if}
