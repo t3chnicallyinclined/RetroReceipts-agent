@@ -162,6 +162,37 @@ fn auth_get(url: &str) -> ureq::Request {
 /// no-op when we already hold a token for this SteamID. Safe to call often; called as soon as the local
 /// SteamID is known (startup, from the Steam registry — no game needed).
 
+/// Report that the opponent's netplay pairing vanished while we were still holding them — i.e. WE stayed and
+/// THEY left. Fire-and-forget on its own thread so a slow POST never stalls the reader cycle (same discipline
+/// as the live-match broadcast).
+///
+/// The server owns the interpretation: it attributes the leave to `opp`, closes the pair's active match (which
+/// clears a frozen "IN MATCH"), and decides whether this was a genuine abandon — a locked wager left short of
+/// its FT — or just a normal set ending. The agent cannot make that call: the FT target is social convention
+/// and is not stored in game memory.
+///
+/// `my_wins`/`opp_wins` are the game's own set tally, side-corrected. **0-0 means "unknown"**, not a real
+/// scoreline — the caller sends it when the physical side isn't confirmed, because mapping the tally through an
+/// unconfirmed side is how W/L got inverted before.
+fn report_abandon(opp: String, session_id: Option<String>, my_wins: u32, opp_wins: u32) {
+    if opp.len() != 17 || !opp.bytes().all(|b| b.is_ascii_digit()) {
+        return; // not a real SteamID — nothing the server could attribute
+    }
+    if auth_token().is_none() {
+        return; // signed out: the endpoint is token-authed, so there is nothing to send
+    }
+    std::thread::spawn(move || {
+        let mut body = serde_json::json!({ "opp": opp, "my_wins": my_wins, "opp_wins": opp_wins });
+        if let Some(sid) = session_id {
+            body["session_id"] = serde_json::Value::String(sid);
+        }
+        match auth_post(&format!("{RR}/match/abandon")).send_json(body) {
+            Ok(_) => trace(&format!("[abandon] reported opp={opp} {my_wins}-{opp_wins}")),
+            Err(e) => trace(&format!("[abandon] post failed: {e}")),
+        }
+    });
+}
+
 pub fn ensure_registered(steamid: String) -> Result<(), String> {
     if steamid.len() != 17 { return Ok(()); } // no valid local id yet → caller retries later
     if auth_token().is_some() && auth_steamid_stored().as_deref() == Some(steamid.as_str()) { return Ok(()); }
@@ -2715,6 +2746,29 @@ fn reader_loop() {
                             // pairing, so a None here is trustworthy → short 2s grace (rides out one transient miss).
                             if opp_lost.is_none() { opp_lost = Some(std::time::Instant::now()); }
                             if opp_lost.map_or(false, |t| t.elapsed().as_secs() >= 2) {
+                                // ── Leave-signal: the pairing is gone while WE still held the opponent, so we are
+                                // the one who STAYED. Report it so the server can close a frozen "IN MATCH" and, for
+                                // a locked wager short of its FT, record a real abandon.
+                                //
+                                // We deliberately do NOT judge whether this was an abandon or a normal set end: the
+                                // FT target is social convention and is NOT in game memory at all, so only the server
+                                // (which knows the wager's FT) can decide. We just report what we saw.
+                                if let Some((lost_id, _)) = opp.as_ref() {
+                                    let (my_side, side_ok) = {
+                                        let s = snapshot().lock().unwrap();
+                                        (s.local_side, s.side_confirmed)
+                                    };
+                                    // ⚠ ss.p1/p2 are PHYSICAL sides (P1/P2), not me/them. Mapping them through an
+                                    // UNCONFIRMED side is exactly the Duc-class inversion that once flipped recorded
+                                    // W/L — so when the side isn't confirmed we send 0-0, which the server reads as
+                                    // "unknown, use your own state" rather than as a real 0-0 scoreline.
+                                    let (mw, ow) = if side_ok && (my_side == 1 || my_side == 2) {
+                                        if my_side == 2 { (ss.p2, ss.p1) } else { (ss.p1, ss.p2) }
+                                    } else {
+                                        (0, 0)
+                                    };
+                                    report_abandon(lost_id.clone(), ss.session_id.clone(), mw, ow);
+                                }
                                 opp = None; opp_addr = None; opp_lost = None;   // SET OVER → looking. KEEP opp_region:
                                 // the session region is per-launch stable, so the NEXT opponent re-locks via a cheap
                                 // WARM region scan instead of a full COLD sweep.
