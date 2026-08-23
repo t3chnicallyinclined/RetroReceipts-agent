@@ -117,9 +117,17 @@ pub(crate) const MAX_CID: u8 = 0x3A;             // Servbot = highest CPS2 unit 
 //    locally (self_ident → Steam registry) and can't be edited in the UI, so writes can't spoof another id. ──
 static AUTH: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None); // (token, steamid)
 
+// Shared root for the reader's durable state (auth.json + gs-cache + result-outbox). Windows keeps the
+// per-user app-data dir (%LOCALAPPDATA%\RetroReceipts, moved by the rename migration). On Linux LOCALAPPDATA
+// is unset, so we use crate::runtime_dir() (= $XDG_DATA_HOME/retro-receipts) — the SAME dir the migration and
+// the single-instance lock use — so auth.json + the result-outbox survive the rename AND a reboot, instead of
+// landing in /tmp (ephemeral) as the pre-0.3.8 LOCALAPPDATA-or-temp fallback did.
 fn rr_state_dir() -> std::path::PathBuf {
-    let base = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("RetroReceipts");
+    #[cfg(windows)]
+    let dir = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir).join("RetroReceipts");
+    #[cfg(not(windows))]
+    let dir = crate::runtime_dir();
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -986,12 +994,10 @@ const GS_CAP: usize = 20_000;                       // max unique frames buffere
 const GS_SPOOL_CAP: usize = 300;                    // max pending recordings on disk (soft backpressure)
 const RR_GAMESTATE: &str = "https://nobd.net/rr/gamestate";
 
-// Per-user spool for finished recordings, drained by the uploader between matches. LOCALAPPDATA so it
-// survives an app restart (a recording captured before a crash still uploads next launch); temp is a fallback.
+// Per-user spool for finished recordings, drained by the uploader between matches. Under rr_state_dir() so it
+// survives an app restart (a recording captured before a crash still uploads next launch) AND a reboot on Linux.
 fn gs_cache_dir() -> std::path::PathBuf {
-    let base = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("RetroReceipts").join("gs-cache");
+    let dir = rr_state_dir().join("gs-cache");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -1022,9 +1028,7 @@ const RESULT_OUTBOX_CAP: usize = 500; // max pending result reports on disk (sof
 fn is_permanent_reject(code: u16) -> bool { matches!(code, 400 | 409 | 413 | 422) }
 
 fn result_outbox_dir() -> std::path::PathBuf {
-    let base = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("RetroReceipts").join("result-outbox");
+    let dir = rr_state_dir().join("result-outbox");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
