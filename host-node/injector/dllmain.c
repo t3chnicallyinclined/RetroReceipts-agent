@@ -557,16 +557,31 @@ static void stack_walk_log(void)
     logmsg("[CL] --- end stack walk (cross-ref base+offset in Ghidra) ---");
 }
 
-/* our replacement for matchmaking vtable[CreateLobby] */
+/* --- RR lobby-size option --------------------------------------------------
+ * How many members the hosted Custom Match room holds. MvC2 lobbies support up
+ * to 9 members, so we don't script the slot count through the menu -- we let the
+ * game make its lobby normally and REWRITE cMaxMembers at the CreateLobby hook
+ * (below), mirroring it into SlotPublicMax in lc_write_data(). Default is 2 (no
+ * behavior change vs the game's native 1v1 create); the money-host path opts into
+ * a 3-seat room -- host(spectator) + 2 players -- by issuing `set_lobby_max 3`
+ * before it creates the wager lobby. Runtime-settable: `set_lobby_max N` (2..9);
+ * N=0 = observe/passthrough the game's native value (for diagnostics). */
+#define RR_LOBBY_MAX_DEFAULT 2
+#define RR_LOBBY_MAX_CEILING 9
+static int g_lobby_max_members = RR_LOBBY_MAX_DEFAULT;
+
+/* our replacement for matchmaking vtable[CreateLobby] -- rewrites the member cap
+ * to our chosen value so the game's OWN create produces an N-seat room */
 static uint64_t createlobby_thunk(void *thisptr, int eLobbyType, int cMaxMembers)
 {
-    logmsg("[CL] *** CreateLobby FIRED *** this=%p eLobbyType=%d cMaxMembers=%d",
-           thisptr, eLobbyType, cMaxMembers);
+    int want = (g_lobby_max_members > 0) ? g_lobby_max_members : cMaxMembers;
+    logmsg("[CL] *** CreateLobby FIRED *** this=%p eLobbyType=%d cMaxMembers=%d -> %d (RR)",
+           thisptr, eLobbyType, cMaxMembers, want);
     stack_walk_log();
     if (g_probe_req) probe_req_dump_at_create();
     uint64_t r = 0;
     createlobby_fn orig = (createlobby_fn)g_orig_createlobby;
-    if (orig) r = orig(thisptr, eLobbyType, cMaxMembers);   /* real create runs */
+    if (orig) r = orig(thisptr, eLobbyType, want);   /* real create runs with our member cap */
     logmsg("[CL] orig CreateLobby returned SteamAPICall_t=0x%llx",
            (unsigned long long)r);
     return r;
@@ -787,10 +802,11 @@ static uint64_t joinlobby_thunk(void *thisptr, uint64_t steamIDLobby)
     if (!cl) {
         logmsg("[hijack] -> CreateLobby slot NULL/unreadable -- cannot create");
     } else {
-        r = cl(thisptr, 2 /*k_ELobbyTypePublic*/, 2 /*cMaxMembers*/);
+        int want = (g_lobby_max_members > 0) ? g_lobby_max_members : 2;
+        r = cl(thisptr, 2 /*k_ELobbyTypePublic*/, want /*cMaxMembers*/);
         g_hijack_call = r;
-        logmsg("[hijack] -> CreateLobby(eLobbyType=2, cMaxMembers=2) returned "
-               "SteamAPICall_t=0x%llx%s", (unsigned long long)r,
+        logmsg("[hijack] -> CreateLobby(eLobbyType=2, cMaxMembers=%d) returned "
+               "SteamAPICall_t=0x%llx%s", want, (unsigned long long)r,
                (r == 0 || r == 0xffffffffffffffffULL) ? " (INVALID!)" : "");
         logmsg("[hijack] created-call handle=0x%llx (GetAPICallResult LobbyCreated_t "
                "off this = the created lobby id -- see wire_lobby)",
@@ -1372,9 +1388,15 @@ static void lc_set_lobby_data(uint64_t lobby)
     /* phase 2: write every key a205's parser expects, under the crash-guard. */
     if (__builtin_setjmp(g_lc_jmp) == 0) {
         g_lc_in_call = 1;
+        /* mirror the chosen room size (owner already occupies 1 seat at create) */
+        int lmax = (g_lobby_max_members > 0) ? g_lobby_max_members : 2;
+        int lopen = lmax - 1; if (lopen < 0) lopen = 0;
+        char maxStr[8], openStr[8];
+        snprintf(maxStr,  sizeof(maxStr),  "%d", lmax);
+        snprintf(openStr, sizeof(openStr), "%d", lopen);
         int ro = sd(mm, lobby, "OwnerId",         ownerStr);
-        int a  = sd(mm, lobby, "SlotPublicMax",   "2");
-        int b  = sd(mm, lobby, "SlotPublicOpen",  "1");
+        int a  = sd(mm, lobby, "SlotPublicMax",   maxStr);
+        int b  = sd(mm, lobby, "SlotPublicOpen",  openStr);
         int c  = sd(mm, lobby, "SlotPrivateMax",  "0");
         int d  = sd(mm, lobby, "SlotPrivateOpen", "0");
         int e  = sd(mm, lobby, "SearchKeyNum",    "0");
@@ -2800,6 +2822,23 @@ static void do_set_slots(const char *arg)
     result_ok_simple("slots_set");
 }
 
+/* set_lobby_max <N> -- the member cap the CreateLobby hook rewrites into every
+ * create (2..9; N=0 = observe the game's native value). Applies to the NEXT create. */
+static void do_set_lobby_max(const char *arg)
+{
+    if (!arg || !*arg) { result_fail("set_lobby_max", "need <N> (2..9, or 0=observe)"); return; }
+    int n = (int)strtol(arg, NULL, 0);
+    if (n != 0) {
+        if (n < 2) n = 2;
+        if (n > RR_LOBBY_MAX_CEILING) n = RR_LOBBY_MAX_CEILING;
+    }
+    g_lobby_max_members = n;
+    char msg[48];
+    snprintf(msg, sizeof(msg), "lobby_max=%d", n);
+    logmsg("[cfg] %s (next create; 0=observe, game ceiling=%d)", msg, RR_LOBBY_MAX_CEILING);
+    result_ok_simple(msg);
+}
+
 /* Steam vtable calls MUST run on the game main thread (steamclient bridge is
  * main/callback-thread bound; off-thread returns 0). So these commands MARSHAL:
  * queue the task + arm the FUN_140054100 main-thread hook; the result file is
@@ -3790,6 +3829,7 @@ static DWORD WINAPI helper(LPVOID arg)
             else if (_stricmp(cmd, "register_lc")   == 0) do_register_lc();
             else if (_stricmp(cmd, "read_created")  == 0) do_read_created();
             else if (_stricmp(cmd, "set_slots")     == 0) do_set_slots(arg);
+            else if (_stricmp(cmd, "set_lobby_max") == 0) do_set_lobby_max(arg);
             else if (_stricmp(cmd, "getsteamid")    == 0) do_getsteamid();
             else if (_stricmp(cmd, "capture_created")==0) do_capture_created();
             else if (_stricmp(cmd, "probe_req")     == 0) do_probe_req();
