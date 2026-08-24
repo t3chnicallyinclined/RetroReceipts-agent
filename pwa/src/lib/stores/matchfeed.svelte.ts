@@ -1,6 +1,7 @@
 import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
 import { invalidate } from '$lib/net.svelte';
+import { announce } from '$lib/stores/announce.svelte';
 import { getChannel, type SseChannel } from '$lib/rt.svelte';
 import type { SseFrame } from '$lib/types';
 
@@ -243,6 +244,10 @@ export class MatchFeedStore {
 	#apply(d: MatchFrame) {
 		const type = String(d.type ?? '');
 		if (type === 'connected') return; // handshake only
+		// Broadcast announcements ride the matches channel. Handled HERE because this channel is live for
+		// signed-out visitors too, whereas the /notifications poll is auth-only — and a launch announcement
+		// is aimed at exactly the people who haven't signed in yet.
+		if (type === 'announcement') return announce.push(d);
 		if (type === 'match_start') this.#onStart(d);
 		else if (type === 'match_live') this.#onLive(d); // Phase B: set-score advanced mid-match
 		else if (type === 'match_end') this.#onEnd(d);

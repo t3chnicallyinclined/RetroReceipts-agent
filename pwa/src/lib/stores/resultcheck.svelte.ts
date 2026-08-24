@@ -1,4 +1,5 @@
 import { api } from '$lib/config';
+import { announce } from '$lib/stores/announce.svelte';
 import { auth } from '$lib/stores/auth.svelte';
 
 // 🔔 Result Check store — the contest/confirm system for reported match results. Poll-based (the server has
@@ -92,12 +93,16 @@ class ResultCheckStore {
 				mine?: RcMine[];
 				heads_up?: RcHeadsUp[];
 				unread?: number;
+				announcements?: unknown[];
 			};
 			if (myReq !== this.#reqId) return; // superseded by a newer load
 			if (!j?.ok) return;
 			this.mine = Array.isArray(j.mine) ? j.mine : [];
 			this.headsUp = Array.isArray(j.heads_up) ? j.heads_up : [];
 			this.unread = Number(j.unread) || 0;
+			// Broadcast announcements ride along on this payload but are NOT per-user state — the server keeps
+			// no seen/unread for them, so they stay out of `unread` and dismissal is tracked client-side.
+			announce.setAll(j.announcements);
 			this.loaded = true;
 		} catch {
 			/* keep last-good */

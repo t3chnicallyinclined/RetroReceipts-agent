@@ -7,6 +7,7 @@
 	import AppLive from '$lib/components/AppLive.svelte';
 	import ChallengeStrip from '$lib/components/ChallengeStrip.svelte';
 	import DownloadAgent from '$lib/components/DownloadAgent.svelte';
+	import AnnounceBanner from '$lib/components/AnnounceBanner.svelte';
 	import RankInfoModal from '$lib/components/RankInfoModal.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
@@ -37,6 +38,7 @@
 	<div class="wrap">
 		<TopBar />
 		<ChallengeStrip />
+		<AnnounceBanner />
 		<DownloadAgent />
 		<main>
 			{@render children()}
