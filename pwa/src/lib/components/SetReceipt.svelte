@@ -156,12 +156,27 @@
 		return Array.isArray(raw) ? raw : [];
 	};
 
-	// Wins/losses split so the totals can build to a NET, the way a receipt builds to a TOTAL.
-	const wins = $derived(games.filter((g) => g.winner === (me ?? right?.steamid)));
-	const losses = $derived(games.filter((g) => g.winner !== (me ?? right?.steamid)));
-	const sum = (a: Game[]) => a.reduce((n, g) => n + (g.elo ?? 0), 0);
-	const winPts = $derived(sum(wins));
-	const lossPts = $derived(sum(losses));
+	/**
+	 * THE LINE — per-player totals, NEUTRAL by construction: one row per player, so the bottom of the
+	 * receipt reads the same from either seat (the rows above keep the viewer's perspective; the totals
+	 * are the record). Zero-sum sanity: TAKEN/GIVEN mirror and the NETs sum to zero.
+	 */
+	const lineFor = (sid: string | undefined) => {
+		let w = 0, l = 0, taken = 0, given = 0;
+		for (const g of games) {
+			const e = g.elo ?? 0;
+			if (g.winner === sid) {
+				w++;
+				taken += e;
+			} else {
+				l++;
+				given += e;
+			}
+		}
+		return { w, l, taken, given, net: taken - given };
+	};
+	const lLine = $derived(lineFor(left?.steamid));
+	const rLine = $derived(lineFor(right?.steamid));
 
 	/**
 	 * THE RUN LINE — the set compressed the way tennis compresses a match (6-4 3-6 7-5), except the unit is
@@ -170,29 +185,31 @@
 	 * load-bearing: opening `0-n` means you got run on from the jump, closing `n-0` means you closed it out.
 	 * W LLLL W LLLL → "1-4 1-4". LLLL WWWWW → "0-4 5-0" (the reverse sweep, a whole story in 7 chars).
 	 */
-	const runs = $derived.by(() => {
-		const who = me ?? right?.steamid;
+	const runsFor = (sid: string | undefined) => {
 		const segs: { won: boolean; n: number }[] = [];
 		for (const g of games) {
-			const w = g.winner === who;
+			const w = g.winner === sid;
 			const last = segs[segs.length - 1];
 			if (last && last.won === w) last.n++;
 			else segs.push({ won: w, n: 1 });
 		}
 		return segs;
-	});
-	const runLine = $derived.by(() => {
-		if (!runs.length) return '';
+	};
+	const runLineFor = (sid: string | undefined) => {
+		const segs = runsFor(sid);
+		if (!segs.length) return '';
 		const out: string[] = [];
 		let i = 0;
-		if (!runs[0].won) {
-			out.push(`0-${runs[0].n}`);
+		if (!segs[0].won) {
+			out.push(`0-${segs[0].n}`);
 			i = 1;
 		}
 		// from here segments strictly alternate won/lost, so [i] is always a win-run
-		for (; i < runs.length; i += 2) out.push(`${runs[i].n}-${runs[i + 1]?.n ?? 0}`);
+		for (; i < segs.length; i += 2) out.push(`${segs[i].n}-${segs[i + 1]?.n ?? 0}`);
 		return out.join(' ');
-	});
+	};
+	// the run BAR stays from the viewer's seat, like the rows above it
+	const runs = $derived(runsFor(me ?? right?.steamid));
 
 	// Rank tiers + the gap — this is what turns "I lost 2-8" into "I took two off an Adamantium".
 	const lRank = $derived(left?.rating != null ? rankOf(left.rating, left.games ?? 999) : null);
@@ -340,16 +357,29 @@
 		{/if}
 	</div>
 
-	<!-- ── totals: a receipt builds to one number ── -->
+	<!-- ── totals: THE LINE — one row per player, the same record from either seat ── -->
 	<div class="tots">
-		{#if wins.length}<div class="kv"><span>{wins.length} WON</span><span class="v">+{winPts}</span></div>{/if}
-		{#if losses.length}<div class="kv"><span>{losses.length} LOST</span><span class="v dim">−{lossPts}</span></div>{/if}
-		{#if runLine}<div class="kv"><span>RUN</span><span class="v">{runLine}</span></div>{/if}
+		<table class="ln">
+			<thead>
+				<tr><th class="nm2">THE LINE</th><th>W</th><th>L</th><th>TAKEN</th><th>GIVEN</th><th class="netc">NET</th></tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td class="nm2">{left?.name ?? 'Player'}</td>
+					<td>{lLine.w}</td><td>{lLine.l}</td>
+					<td>+{lLine.taken}</td><td>−{lLine.given}</td>
+					<td class="netc" class:up={lLine.net > 0}>{lLine.net > 0 ? '+' : ''}{lLine.net}</td>
+				</tr>
+				<tr>
+					<td class="nm2">{right?.name ?? 'Player'}</td>
+					<td>{rLine.w}</td><td>{rLine.l}</td>
+					<td>+{rLine.taken}</td><td>−{rLine.given}</td>
+					<td class="netc" class:up={rLine.net > 0}>{rLine.net > 0 ? '+' : ''}{rLine.net}</td>
+				</tr>
+			</tbody>
+		</table>
 		<div class="dbl"></div>
-		<div class="kv total">
-			<span>NET RATING</span>
-			<span class="tv" class:up={(netElo ?? 0) > 0}>{(netElo ?? 0) > 0 ? '+' : ''}{netElo ?? 0}</span>
-		</div>
+		<div class="kv"><span>RUN</span><span class="v">{left?.name ?? '—'} <b>{runLineFor(left?.steamid)}</b> · {right?.name ?? '—'} <b>{runLineFor(right?.steamid)}</b></span></div>
 	</div>
 
 	<!-- ── the cert band ── -->
@@ -729,9 +759,54 @@
 		background: var(--good);
 	}
 
-	/* ── totals ── */
+	/* ── totals: the box score. Columns foot (TAKEN/GIVEN mirror, NETs sum to zero) — checkable = trusted. ── */
 	.tots {
-		padding: 10px 16px 4px;
+		padding: 10px 16px 6px;
+	}
+	table.ln {
+		width: 100%;
+		border-collapse: collapse;
+		font-variant-numeric: tabular-nums;
+		font-size: 12px;
+	}
+	table.ln th {
+		font-size: 8.5px;
+		font-weight: 600;
+		letter-spacing: 0.15em;
+		color: var(--faint);
+		text-align: right;
+		padding: 0 0 5px 10px;
+	}
+	table.ln td {
+		text-align: right;
+		padding: 2px 0 2px 10px;
+		color: var(--ink);
+	}
+	table.ln .nm2 {
+		text-align: left;
+		padding-left: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 0;
+		width: 38%;
+	}
+	table.ln td.nm2 {
+		font-weight: 800;
+		font-style: italic;
+		text-transform: uppercase;
+		font-size: 13px;
+	}
+	/* NET is the finale column — bold and larger; positive earns good, negative stays quiet (never red) */
+	table.ln .netc {
+		font-weight: 900;
+		font-size: 16px;
+	}
+	table.ln td.netc {
+		color: var(--dim);
+	}
+	table.ln td.netc.up {
+		color: var(--good);
 	}
 	.kv {
 		display: flex;
@@ -750,29 +825,18 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.dim {
+		font-size: 11px;
 		color: var(--dim);
+	}
+	.v b {
+		color: var(--ink);
+		font-weight: 700;
 	}
 	.dbl {
 		height: 0;
 		margin: 8px 0;
 		border-top: 3px double color-mix(in srgb, var(--faint) 75%, transparent);
 	}
-	.total > span:first-child {
-		font-size: 10.5px;
-		letter-spacing: 0.12em;
-		color: var(--dim);
-	}
-	.tv {
-		font-size: 21px;
-		font-weight: 900;
-		color: var(--ink);
-	}
-	.tv.up {
-		color: var(--gold);
-	}
-
 	/* ── cert band ── */
 	.foot {
 		padding: 8px 14px 10px;
