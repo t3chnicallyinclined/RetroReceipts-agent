@@ -195,19 +195,6 @@
 		}
 		return segs;
 	};
-	const runLineFor = (sid: string | undefined) => {
-		const segs = runsFor(sid);
-		if (!segs.length) return '';
-		const out: string[] = [];
-		let i = 0;
-		if (!segs[0].won) {
-			out.push(`0-${segs[0].n}`);
-			i = 1;
-		}
-		// from here segments strictly alternate won/lost, so [i] is always a win-run
-		for (; i < segs.length; i += 2) out.push(`${segs[i].n}-${segs[i + 1]?.n ?? 0}`);
-		return out.join(' ');
-	};
 	// the run BAR stays from the viewer's seat, like the rows above it
 	const runs = $derived(runsFor(me ?? right?.steamid));
 
@@ -378,8 +365,6 @@
 				</tr>
 			</tbody>
 		</table>
-		<div class="dbl"></div>
-		<div class="kv"><span>RUN</span><span class="v">{left?.name ?? '—'} <b>{runLineFor(left?.steamid)}</b> · {right?.name ?? '—'} <b>{runLineFor(right?.steamid)}</b></span></div>
 	</div>
 
 	<!-- ── the cert band ── -->
@@ -807,35 +792,6 @@
 	}
 	table.ln td.netc.up {
 		color: var(--good);
-	}
-	.kv {
-		display: flex;
-		justify-content: space-between;
-		gap: 10px;
-	}
-	.kv > span:first-child {
-		color: var(--dim);
-		letter-spacing: 0.1em;
-		font-size: 9.5px;
-		flex: none;
-	}
-	.v {
-		text-align: right;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 11px;
-		color: var(--dim);
-	}
-	.v b {
-		color: var(--ink);
-		font-weight: 700;
-	}
-	.dbl {
-		height: 0;
-		margin: 8px 0;
-		border-top: 3px double color-mix(in srgb, var(--faint) 75%, transparent);
 	}
 	/* ── cert band ── */
 	.foot {
