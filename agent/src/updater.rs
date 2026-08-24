@@ -140,9 +140,28 @@ fn is_newer(remote: &str, current: &str) -> bool {
 /// mid-match — will be `mem::find_game_pid().is_none()` once the reader loop owns process detection. For the
 /// T1 skeleton there is no auto-apply path calling this, so it is safe to return true.
 pub fn safe_to_apply() -> bool {
-    // Never swap the running exe while MvC2 is up — an update mid-match would kill the reader/painter. The
-    // reader owns process detection; when the game is closed it's safe to self-replace + restart.
-    crate::mem::find_game_pid().is_none()
+    // The hazard is losing work IN FLIGHT, not the game merely being open. Applying an update restarts the
+    // reader, so mid-set that would drop the current game's frame tape and risk an unreported result — but
+    // sitting at a menu (or in training, or just launched) there is nothing to lose.
+    //
+    // So this used to be `find_game_pid().is_none()` — "game closed" — which is stricter than the actual
+    // risk and meant anyone who leaves MvC2 running never updated at all. Now: closed is still always safe,
+    // and with the game OPEN we additionally allow a menu with nothing in flight.
+    //
+    // Why each condition, since getting this wrong interrupts someone's set:
+    //   • state != "menu"  → "select" and "match" both mean a set is underway (select covers pairing and
+    //     character select, which is where the pairing exists before fighters load).
+    //   • in_session       → a live netplay pairing. It deliberately STAYS ALIVE BETWEEN GAMES of a set, so
+    //     this is what stops us updating in the gap between games.
+    //   • reporting        → actively reporting a live match.
+    //   • opponent.is_some() → still holding an opponent; cleared only when the set is genuinely over.
+    let Ok(s) = crate::reader::agent_status().lock() else {
+        return false; // poisoned status lock → we can't prove it's safe, so don't
+    };
+    if !s.game_running {
+        return true;
+    }
+    s.state == "menu" && !s.in_session && !s.reporting && s.opponent.is_none()
 }
 
 /// The systemd `--user` unit this process runs under, parsed from `/proc/self/cgroup` (cgroup v2). Returns the
