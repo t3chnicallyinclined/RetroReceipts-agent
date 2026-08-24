@@ -16,6 +16,20 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="theme-color" content="#0a0c12" />
 		<meta name="description" content="Marvel vs Capcom 2 — live ranks, tournaments & stats." />
+		<!-- Link previews (Discord/Facebook/X). ⚠ Scrapers do NOT run JS, so these STATIC tags are what a
+		     shared link shows for every route; URLs must be ABSOLUTE (scrapers resolve nothing). Per-URL
+		     dynamic previews (a set's score in the title) come from nginx routing scraper user-agents to
+		     the server's OG endpoint — these are the site-wide default underneath that. -->
+		<meta property="og:site_name" content="Retro Receipts" />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="Retro Receipts — MvC2 ranked, receipts & money matches" />
+		<meta property="og:description" content="Marvel vs Capcom 2 on Steam — live ranks, verified set receipts, tournaments and money matches. Get that receipt!" />
+		<meta property="og:image" content="https://nobd.net/app/og-card.png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="Retro Receipts — MvC2 ranked, receipts & money matches" />
+		<meta name="twitter:image" content="https://nobd.net/app/og-card.png" />
 		<script>
 			// Steam OpenID returns #token&steamid in the URL fragment. Capture it HERE — inline in the
 			// shell head, before any app bundle / route / service worker runs — so sign-in works even
