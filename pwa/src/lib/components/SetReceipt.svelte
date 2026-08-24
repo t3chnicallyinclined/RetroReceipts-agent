@@ -305,7 +305,8 @@
 						</span>
 					{/each}
 				</span>
-				<span class="x">VS</span>
+				<!-- the VS mark — the match screen's gold vs-hero, at row scale -->
+				<span class="x" aria-hidden="true">VS</span>
 				<span class="tm" class:changed={rw?.mineNew}>
 					{#each rw?.mine ?? [] as id, k (k)}
 						<span class="chip" title={charTag(id)}>
@@ -314,13 +315,15 @@
 						</span>
 					{/each}
 				</span>
-				<!-- An OCV/perfect/comeback is performed by the WINNER, so it's attributable: you did it, or
-				     it was done to you. OCV takes the molten accent — it's the violence stat. -->
-				<span class="res">
-					<b class="wl" class:w={won}>{won ? 'W' : 'L'}</b>
-					{#if g.ocv}<i class="fl ocv" class:mine={won}>{won ? 'OCV' : "OCV'D"}</i>
-					{:else if g.perfect}<i class="fl" class:mine={won}>{won ? 'PERFECT' : "PERF'D"}</i>
-					{:else if g.comeback}<i class="fl" class:mine={won}>{won ? 'COMEBACK' : 'RVRSD'}</i>{/if}
+				<b class="wl" class:w={won}>{won ? 'W' : 'L'}</b>
+				<!-- deck two: the game's stats. Combo is match-level (no owner in the payload) so it reads
+				     neutral; an OCV/perfect/comeback is the winner's, so it reads directional. -->
+				<span class="gs">
+					{#if g.combo && g.combo > 1}<span class="st">{g.combo} HIT COMBO</span>{/if}
+					{#if g.ocv}<span class="st fl ocv" class:mine={won}>{won ? 'OCV' : "OCV'D"}</span>{/if}
+					{#if g.perfect}<span class="st fl" class:mine={won}>{won ? 'PERFECT' : "PERF'D"}</span>{/if}
+					{#if g.comeback}<span class="st fl" class:mine={won}>{won ? 'COMEBACK' : 'REVERSED'}</span>{/if}
+					<span class="st vf" class:ok={g.verified || g.confirmed}>{g.verified || g.confirmed ? '✓ VERIFIED' : 'UNVERIFIED'}</span>
 				</span>
 			</div>
 		{:else}
@@ -554,9 +557,10 @@
 	}
 	.g {
 		display: grid;
-		grid-template-columns: 40px 1fr 44px 1fr 62px;
+		grid-template-columns: 40px 1fr 44px 1fr 46px;
+		grid-template-rows: auto auto;
 		align-items: center;
-		margin-bottom: 4px;
+		margin-bottom: 5px;
 		padding: 5px 8px 4px 9px;
 		background: var(--panel);
 		border: 1px solid var(--line);
@@ -620,36 +624,62 @@
 		border: 1px solid var(--line);
 		color: var(--dim);
 	}
+	/* the VS mark — the match screen's gold vs-hero, shrunk to row scale (same gradient + glow) */
 	.x {
-		text-align: center;
+		justify-self: center;
+		font-size: 15px;
 		font-weight: 900;
 		font-style: italic;
-		font-size: 11px;
-		letter-spacing: 0.06em;
-		color: var(--faint);
+		letter-spacing: -0.03em;
+		line-height: 0.9;
+		transform: skewX(-8deg);
+		background: linear-gradient(175deg, #fff3c0 20%, var(--gold) 45%, #a3670a 80%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		filter: drop-shadow(0 2px 7px rgba(232, 185, 60, 0.28));
+		user-select: none;
 	}
-	/* the result block anchors the right edge: a big letter, not a chip */
-	.res {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		line-height: 1.1;
-	}
-	.res .wl {
-		font-size: 20px;
+	/* the result letter anchors the right edge and spans BOTH decks. ⚠ EXPLICIT column: an item with a
+	   definite row but auto column is placed BEFORE the fully-auto items and would grab row 1 col 1. */
+	.wl {
+		grid-column: 5;
+		grid-row: 1 / span 2;
+		justify-self: end;
+		align-self: center;
+		font-size: 24px;
 		font-weight: 900;
 		font-style: italic;
 		color: var(--faint);
 	}
-	.res .wl.w {
+	.wl.w {
 		color: var(--good);
 	}
-	.fl {
-		font-style: normal;
-		font-size: 8px;
-		letter-spacing: 0.09em;
-		color: var(--faint);
+	/* deck two: the stats strip, under the teams, dashed off from deck one */
+	.gs {
+		grid-column: 1 / 5;
+		grid-row: 2;
+		display: flex;
+		align-items: baseline;
+		gap: 12px;
+		margin-top: 4px;
+		padding-top: 3px;
+		border-top: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+		font-size: 8.5px;
+		letter-spacing: 0.11em;
+		color: var(--dim);
 		white-space: nowrap;
+		overflow: hidden;
+	}
+	.gs .vf {
+		margin-left: auto;
+		color: var(--faint);
+	}
+	.gs .vf.ok {
+		color: color-mix(in srgb, var(--gold) 55%, var(--faint));
+	}
+	.fl {
+		color: var(--faint);
 	}
 	.fl.mine {
 		color: var(--ink);
@@ -663,7 +693,7 @@
 	}
 	@media (max-width: 480px) {
 		.g {
-			grid-template-columns: 32px 1fr 30px 1fr 52px;
+			grid-template-columns: 32px 1fr 30px 1fr 34px;
 		}
 		.chip {
 			width: 30px;
@@ -672,6 +702,12 @@
 		.sbox {
 			width: 36px;
 			height: 36px;
+		}
+		.x {
+			font-size: 12px;
+		}
+		.gs {
+			gap: 8px;
 		}
 	}
 	.none {
