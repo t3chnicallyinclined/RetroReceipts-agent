@@ -117,19 +117,24 @@
 		l: games.length ? tags(teamOf(games[0], left?.steamid ?? '')) : [],
 		r: games.length ? tags(teamOf(games[0], right?.steamid ?? '')) : []
 	}));
-	/** Per game: which side (if any) changed team vs the previous game — drives the change-only sub-line. */
-	const switches = $derived.by(() => {
-		const out: { l?: string[]; r?: string[] }[] = [];
-		let pl = standing.l.join(), pr = standing.r.join();
-		games.forEach((g, i) => {
-			const l = tags(teamOf(g, left?.steamid ?? '')), r = tags(teamOf(g, right?.steamid ?? ''));
-			const row: { l?: string[]; r?: string[] } = {};
-			if (i > 0 && l.join() !== pl) row.l = l;
-			if (i > 0 && r.join() !== pr) row.r = r;
-			pl = l.join(); pr = r.join();
-			out.push(row);
+	/**
+	 * Per game: BOTH teams, plus whether each side changed from the previous game.
+	 *
+	 * Teams are shown on EVERY game because in MvC2 you pick at character select before each one — a set of
+	 * ten games can legitimately be ten different teams per player, so this is per-game data, not set-level.
+	 * An UNCHANGED team is rendered faintly and a CHANGED one at full strength, so a static set reads as
+	 * quiet repetition rather than a wall, and a counter-pick pops the moment it happens.
+	 */
+	const rows = $derived.by(() => {
+		let pm = '', po = '';
+		return games.map((g) => {
+			const mine = tags(teamOf(g, right?.steamid ?? ''));
+			const theirs = tags(teamOf(g, left?.steamid ?? ''));
+			const km = mine.join(), ko = theirs.join();
+			const row = { mine, theirs, mineNew: pm !== '' && km !== pm, theirsNew: po !== '' && ko !== po };
+			pm = km; po = ko;
+			return row;
 		});
-		return out;
 	});
 
 	// Wins/losses split so the total can show its own subtotals, the way a receipt builds to a TOTAL.
@@ -198,46 +203,37 @@
 			</div>
 		</div>
 
-		<!-- MATCHUP printed ONCE. Teams barely change within a set, so per-row teams print the same string
-		     ten times and crowd out the fields that do vary. -->
-		{#if games.length}
-			<div class="sec">MATCHUP</div>
-			<div class="mu">
-				<span class="who">{(left?.name ?? 'Player').slice(0, 14)}</span>
-				<span class="tm">{#each standing.l as t (t)}<span class="tg">{t}</span>{/each}</span>
-			</div>
-			<div class="mu">
-				<span class="who me">{(right?.name ?? 'Player').slice(0, 14)}</span>
-				<span class="tm">{#each standing.r as t (t)}<span class="tg">{t}</span>{/each}</span>
-			</div>
-			<div class="rule dash"></div>
-		{/if}
-
-		<div class="sec sp"><span>GAMES</span><span class="hd">COMBO · RATING</span></div>
+		<div class="sec sp">
+			<span>GAMES</span><span class="hd">YOU vs THEM · COMBO · RATING</span>
+		</div>
 		{#each games as g, i (g.match_index ?? i)}
 			{@const won = g.winner === (me ?? right?.steamid)}
+			{@const rw = rows[i]}
 			<div class="g">
 				<span class="n">{pad((g.match_index ?? i) + 1)}</span>
 				<span class="wl" class:won>{won ? 'W' : 'L'}</span>
-				<span class="bg">
-					<!-- An OCV/perfect/comeback is BY DEFINITION performed by the winner, so we can attribute it:
-					     you did it, or it was done to you. Four identical flag rows become four stories. -->
-					{#if g.ocv}<span class="fl" class:mine={won}>{won ? 'OCV' : "OCV'D"}</span>{/if}
-					{#if g.perfect}<span class="fl" class:mine={won}>{won ? 'PERFECT' : "PERF'D"}</span>{/if}
-					{#if g.comeback}<span class="fl" class:mine={won}>{won ? 'COMEBACK' : 'REVERSED'}</span>{/if}
+				<span class="tm" class:changed={rw?.mineNew}>
+					{#each rw?.mine ?? [] as t, k (k)}<span class="tg">{t}</span>{/each}
 				</span>
 				{#if g.combo}
 					<span class="cb" class:best={g.combo === bestCombo}>{g.combo === bestCombo ? '★' : ''}{g.combo}</span>
 				{:else}<span class="cb"></span>{/if}
 				<span class="e">{g.elo ? (won ? '+' : '−') + g.elo : ''}</span>
 			</div>
-			<!-- change-only team line: a switch mid-set is an EVENT worth seeing, not noise to repeat -->
-			{#if switches[i]?.l}
-				<div class="sw"><span class="swn">{(left?.name ?? 'P1').slice(0, 12)} →</span>{#each switches[i].l ?? [] as t (t)}<span class="tg">{t}</span>{/each}</div>
-			{/if}
-			{#if switches[i]?.r}
-				<div class="sw"><span class="swn">{(right?.name ?? 'P2').slice(0, 12)} →</span>{#each switches[i].r ?? [] as t (t)}<span class="tg">{t}</span>{/each}</div>
-			{/if}
+			<div class="g sub">
+				<span class="n"></span>
+				<span class="wl ghost">vs</span>
+				<span class="tm them" class:changed={rw?.theirsNew}>
+					{#each rw?.theirs ?? [] as t, k (k)}<span class="tg">{t}</span>{/each}
+				</span>
+				<span class="bg">
+					<!-- An OCV/perfect/comeback is by definition performed by the WINNER, so it's attributable:
+					     you did it, or it was done to you. -->
+					{#if g.ocv}<span class="fl" class:mine={won}>{won ? 'OCV' : "OCV'D"}</span>{/if}
+					{#if g.perfect}<span class="fl" class:mine={won}>{won ? 'PERFECT' : "PERF'D"}</span>{/if}
+					{#if g.comeback}<span class="fl" class:mine={won}>{won ? 'COMEBACK' : 'REVERSED'}</span>{/if}
+				</span>
+			</div>
 		{:else}
 			<div class="none">No games recorded for this set.</div>
 		{/each}
@@ -266,25 +262,40 @@
 </ReceiptPaper>
 
 <style>
-	/* ── matchup block: printed once, not per row ── */
-	.mu {
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		font-size: 10.5px;
-	}
-	.mu .who {
+	/* teams are per-GAME: you pick at character select before each one. An UNCHANGED team stays faint so a
+	   static set reads as quiet repetition; a CHANGED one comes up to full ink so a counter-pick pops. */
+	.tm {
 		flex: 1;
 		min-width: 0;
+		display: flex;
+		gap: 3px;
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: var(--dim);
 	}
-	.mu .who.me {
+	.tm .tg {
+		color: var(--faint);
+	}
+	.tm.changed .tg {
 		color: var(--ink);
 		font-weight: 700;
 	}
+	.tm.them .tg {
+		color: color-mix(in srgb, var(--faint) 80%, transparent);
+	}
+	.tm.them.changed .tg {
+		color: var(--dim);
+		font-weight: 700;
+	}
+	.g.sub {
+		margin-bottom: 3px;
+	}
+	.wl.ghost {
+		border-color: transparent;
+		color: var(--faint);
+		font-weight: 400;
+		font-size: 8.5px;
+	}
+
+	/* ── matchup block: printed once, not per row ── */
 	.tm {
 		flex: none;
 		display: flex;
@@ -363,16 +374,6 @@
 		width: 32px;
 		text-align: right;
 		color: var(--ink);
-	}
-	.sw {
-		display: flex;
-		align-items: baseline;
-		gap: 5px;
-		margin: 0 0 2px 23px;
-	}
-	.swn {
-		font-size: 9px;
-		color: var(--faint);
 	}
 	.sec.sp {
 		display: flex;
