@@ -275,18 +275,17 @@
 
 	<!-- ── the games plate: one line per game — time · result · matchup, nothing else ── -->
 	<div class="plate">
-		<div class="phd"><span>GAMES</span><span class="hd">TIME · W/L · THEM vs YOU</span></div>
+		<div class="phd"><span>GAMES</span><span class="hd">THEM vs YOU</span></div>
 		{#each games as g, i (g.match_index ?? i)}
 			{@const won = g.winner === (me ?? right?.steamid)}
 			{@const rw = rows[i]}
 			{@const aThem = assistOf(g, left?.steamid ?? '')}
 			{@const aMine = assistOf(g, right?.steamid ?? '')}
-			<!-- each game is the matchup IN SPRITES — P1 squad vs P2 squad, the way the game itself shows a
-			     pick. Static portraits here (cheap; 6 per row × N rows), the animated ones live in the tape. -->
-			<div class="g">
-				<span class="n">{pad((g.match_index ?? i) + 1)}</span>
-				<span class="t">{hhmm(g.ts)}</span>
-				<span class="wl" class:won>{won ? 'W' : 'L'}</span>
+			<!-- each game is a full-width VS plate — the matchup IN SPRITES, teams flanking a center VS the
+			     way the game's own versus screen does. Won rows carry a good edge + a wash from YOUR side;
+			     losses stay quiet (never red). Static portraits here; the animated squads live in the tape. -->
+			<div class="g" class:won>
+				<span class="gi"><b>{pad((g.match_index ?? i) + 1)}</b><i>{hhmm(g.ts)}</i></span>
 				<span class="tm them" class:changed={rw?.theirsNew}>
 					{#each rw?.theirs ?? [] as id, k (k)}
 						<span class="cs" title={charTag(id)}>
@@ -295,7 +294,7 @@
 						</span>
 					{/each}
 				</span>
-				<span class="x">vs</span>
+				<span class="x">VS</span>
 				<span class="tm" class:changed={rw?.mineNew}>
 					{#each rw?.mine ?? [] as id, k (k)}
 						<span class="cs" title={charTag(id)}>
@@ -305,9 +304,12 @@
 					{/each}
 				</span>
 				<!-- An OCV/perfect/comeback is performed by the WINNER, so it's attributable: you did it, or
-				     it was done to you. One flag per row, OCV first — it's the loud one. -->
-				<span class="fl" class:mine={won}>
-					{g.ocv ? (won ? 'OCV' : "OCV'D") : g.perfect ? (won ? 'PERF' : "PERF'D") : g.comeback ? (won ? 'CMBK' : 'RVRSD') : ''}
+				     it was done to you. OCV takes the molten accent — it's the violence stat. -->
+				<span class="res">
+					<b class="wl" class:w={won}>{won ? 'W' : 'L'}</b>
+					{#if g.ocv}<i class="fl ocv" class:mine={won}>{won ? 'OCV' : "OCV'D"}</i>
+					{:else if g.perfect}<i class="fl" class:mine={won}>{won ? 'PERFECT' : "PERF'D"}</i>
+					{:else if g.comeback}<i class="fl" class:mine={won}>{won ? 'COMEBACK' : 'RVRSD'}</i>{/if}
 				</span>
 			</div>
 		{:else}
@@ -499,7 +501,7 @@
 	.sq {
 		display: flex;
 		align-items: flex-end; /* pixel-art frames vary in height — plant everyone on one floor */
-		gap: 4px;
+		gap: 6px;
 	}
 	.sq-row .sq {
 		justify-content: flex-end;
@@ -509,8 +511,8 @@
 	}
 	.sbox {
 		display: block;
-		width: 30px;
-		height: 30px;
+		width: 46px;
+		height: 46px;
 	}
 
 	/* ── games plate — box scores print on a tinted band ── */
@@ -529,52 +531,53 @@
 		margin-bottom: 5px;
 	}
 	.g {
-		display: flex;
+		display: grid;
+		grid-template-columns: 40px 1fr 44px 1fr 62px;
 		align-items: center;
-		gap: 6px;
-		font-size: 10.5px;
-		margin-bottom: 3px;
-	}
-	.g .n {
-		flex: none;
-		width: 16px;
-		color: var(--faint);
-	}
-	.g .t {
-		flex: none;
-		width: 34px;
-		color: var(--faint);
-	}
-	/* W/L: TWO channels on purpose — colour AND fill. A filled-vs-hollow shape survives greyscale, a
-	   screenshot re-encode, and a phone in sunlight. Losses are deliberately NOT red: eight red L's turns
-	   the thing you're meant to be proud of into a wall of shame. */
-	.wl {
-		flex: none;
-		width: 17px;
-		text-align: center;
-		font-weight: 900;
-		font-size: 10px;
-		border-radius: 3px;
+		margin-bottom: 4px;
+		padding: 5px 8px 4px 9px;
+		background: var(--panel);
 		border: 1px solid var(--line);
+		border-left: 3px solid var(--line);
+	}
+	/* the win treatment: accent edge + a wash rising from YOUR side of the plate. Losses stay quiet. */
+	.g.won {
+		border-left-color: var(--good);
+		background:
+			linear-gradient(270deg, color-mix(in srgb, var(--good) 11%, transparent), transparent 58%),
+			var(--panel);
+	}
+	.gi {
+		display: flex;
+		flex-direction: column;
+		line-height: 1.3;
+	}
+	.gi b {
+		font-size: 11px;
+		font-weight: 700;
 		color: var(--dim);
 	}
-	.wl.won {
-		background: var(--good);
-		border-color: var(--good);
-		color: var(--bg);
+	.gi i {
+		font-style: normal;
+		font-size: 8.5px;
+		color: var(--faint);
 	}
 	.tm {
-		flex: none;
 		display: flex;
 		align-items: flex-end;
+		justify-content: flex-start;
 		gap: 3px;
+		min-width: 0;
+	}
+	.tm.them {
+		justify-content: flex-end; /* both teams close on the center VS, like the versus screen */
 	}
 	/* sprite chip + (future) assist badge. Unchanged teams sit slightly dimmed so a counter-pick pops. */
 	.cs {
 		position: relative;
 		display: block;
-		width: 24px;
-		height: 24px;
+		width: 38px;
+		height: 38px;
 	}
 	.ci {
 		width: 100%;
@@ -583,24 +586,19 @@
 		object-position: bottom;
 		image-rendering: pixelated;
 		display: block;
-		opacity: 0.62;
+		opacity: 0.82;
 	}
 	.tm.changed .ci {
 		opacity: 1;
-	}
-	.tm.them .ci {
-		opacity: 0.5;
-	}
-	.tm.them.changed .ci {
-		opacity: 0.85;
+		filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ink) 40%, transparent));
 	}
 	/* assist type (α/β/γ) — renders only when the server sends wassist/lassist */
 	.as {
 		position: absolute;
-		right: -3px;
-		bottom: -2px;
+		right: -2px;
+		bottom: -1px;
 		font-style: normal;
-		font-size: 7.5px;
+		font-size: 8px;
 		line-height: 1;
 		padding: 1px 2px;
 		border-radius: 3px;
@@ -609,23 +607,58 @@
 		color: var(--dim);
 	}
 	.x {
-		flex: none;
+		text-align: center;
+		font-weight: 900;
+		font-style: italic;
+		font-size: 11px;
+		letter-spacing: 0.06em;
 		color: var(--faint);
-		font-size: 8.5px;
-		letter-spacing: 0.05em;
+	}
+	/* the result block anchors the right edge: a big letter, not a chip */
+	.res {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		line-height: 1.1;
+	}
+	.res .wl {
+		font-size: 20px;
+		font-weight: 900;
+		font-style: italic;
+		color: var(--faint);
+	}
+	.res .wl.w {
+		color: var(--good);
 	}
 	.fl {
-		flex: 1;
-		min-width: 0;
-		text-align: right;
-		font-size: 8.5px;
-		letter-spacing: 0.08em;
+		font-style: normal;
+		font-size: 8px;
+		letter-spacing: 0.09em;
 		color: var(--faint);
 		white-space: nowrap;
-		overflow: hidden;
 	}
 	.fl.mine {
 		color: var(--ink);
+	}
+	/* OCV is the violence stat — it takes the molten accent, bright when yours, cooled when eaten */
+	.fl.ocv {
+		color: color-mix(in srgb, #ff5c2c 55%, var(--faint));
+	}
+	.fl.ocv.mine {
+		color: #ff5c2c;
+	}
+	@media (max-width: 480px) {
+		.g {
+			grid-template-columns: 32px 1fr 30px 1fr 52px;
+		}
+		.cs {
+			width: 30px;
+			height: 30px;
+		}
+		.sbox {
+			width: 36px;
+			height: 36px;
+		}
 	}
 	.none {
 		color: var(--faint);
