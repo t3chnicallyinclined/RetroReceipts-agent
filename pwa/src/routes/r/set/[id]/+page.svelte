@@ -11,6 +11,14 @@
 	// so it needs nothing new from the server.
 	const id = $derived(page.params.id ?? '');
 
+	// ⚠ WHOSE SEAT THE SLIP IS READ FROM, pinned in the URL — this is the difference between sharing YOUR
+	// receipt and sharing your opponent's. Without it `me` fell back to auth.steamid, so the author saw
+	// "2-8, net -3, my wins highlighted" and every logged-out stranger who opened the same link saw the
+	// OPPONENT's receipt: their 8-2, their +3, their W chips. You'd post your underdog run and the internet
+	// would receive the other guy's victory lap.
+	// Precedence: ?p= (baked in by Copy link) → the signed-in viewer → null (component falls back to winner).
+	const perspective = $derived(page.url.searchParams.get('p') || auth.steamid || null);
+
 	let data = $state<SetReceiptData | null>(null);
 	let error = $state('');
 	let loading = $state(true);
@@ -42,7 +50,10 @@
 	let copied = $state(false);
 	async function copyLink() {
 		try {
-			await navigator.clipboard.writeText(location.href);
+			// Bake the current seat into the shared URL so the recipient sees the slip the SHARER sees.
+			const u = new URL(location.href);
+			if (perspective) u.searchParams.set('p', perspective);
+			await navigator.clipboard.writeText(u.toString());
 			copied = true;
 			setTimeout(() => (copied = false), 1600);
 		} catch {
@@ -62,7 +73,7 @@
 			<a class="back" href="{base}/match">← Back to the arcade</a>
 		</div>
 	{:else if data}
-		<SetReceipt r={data} me={auth.steamid ?? null} />
+		<SetReceipt r={data} me={perspective} />
 		<button type="button" class="act" onclick={copyLink}>{copied ? '✓ Link copied' : 'Copy link'}</button>
 	{/if}
 </div>

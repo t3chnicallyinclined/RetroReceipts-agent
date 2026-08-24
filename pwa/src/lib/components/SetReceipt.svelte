@@ -2,7 +2,8 @@
 	import ReceiptPaper from './ReceiptPaper.svelte';
 	import Avatar from './Avatar.svelte';
 	import Flag from './Flag.svelte';
-	import { charName } from '$lib/chars';
+	import { charTag } from '$lib/chars';
+	import { rankOf } from '$lib/ranks';
 	import { base } from '$app/paths';
 
 	// 🧾 SET RECEIPT — the ranked counterpart to the money-match slip. Renders GET /rr/session?id=<session_id>
@@ -102,6 +103,51 @@
 	});
 	// Per-game trust: how many of the set's games the server can stand behind.
 	const confirmedCt = $derived(games.filter((g) => g.confirmed || g.verified).length);
+	const allVerified = $derived(games.length > 0 && games.every((g) => g.verified));
+
+	// Team for a given side of a given game, as 4-char tags. wteam/lteam are keyed by WHO WON, so this has
+	// to resolve through the winner — reading `wteam` for "my team" is only right on games I won.
+	const teamOf = (g: Game, sid: string): number[] => (g.winner === sid ? (g.wteam ?? []) : (g.lteam ?? []));
+	const tags = (ids: number[]) => ids.map(charTag);
+
+	// Teams are SET-level data with occasional game-level overrides: most players don't switch, so printing
+	// them per row prints the same string N times and crowds out everything that actually varies. Print the
+	// standing matchup once, then a sub-line ONLY on the game where a side's team changes.
+	const standing = $derived.by(() => ({
+		l: games.length ? tags(teamOf(games[0], left?.steamid ?? '')) : [],
+		r: games.length ? tags(teamOf(games[0], right?.steamid ?? '')) : []
+	}));
+	/** Per game: which side (if any) changed team vs the previous game — drives the change-only sub-line. */
+	const switches = $derived.by(() => {
+		const out: { l?: string[]; r?: string[] }[] = [];
+		let pl = standing.l.join(), pr = standing.r.join();
+		games.forEach((g, i) => {
+			const l = tags(teamOf(g, left?.steamid ?? '')), r = tags(teamOf(g, right?.steamid ?? ''));
+			const row: { l?: string[]; r?: string[] } = {};
+			if (i > 0 && l.join() !== pl) row.l = l;
+			if (i > 0 && r.join() !== pr) row.r = r;
+			pl = l.join(); pr = r.join();
+			out.push(row);
+		});
+		return out;
+	});
+
+	// Wins/losses split so the total can show its own subtotals, the way a receipt builds to a TOTAL.
+	const wins = $derived(games.filter((g) => g.winner === (me ?? right?.steamid)));
+	const losses = $derived(games.filter((g) => g.winner !== (me ?? right?.steamid)));
+	const sum = (a: Game[]) => a.reduce((n, g) => n + (g.elo ?? 0), 0);
+	const winPts = $derived(sum(wins));
+	const lossPts = $derived(sum(losses));
+
+	// Rank tiers + the gap — this is what turns "I lost 2-8" into "I took two off an Adamantium".
+	const lRank = $derived(left?.rating != null ? rankOf(left.rating, left.games ?? 999) : null);
+	const rRank = $derived(right?.rating != null ? rankOf(right.rating, right.games ?? 999) : null);
+	const gap = $derived(
+		left?.rating != null && right?.rating != null ? Math.abs(left.rating - right.rating) : 0
+	);
+	const underdog = $derived(
+		right?.rating != null && left?.rating != null && right.rating < left.rating && gap >= 100
+	);
 	const bestCombo = $derived(games.reduce((m, g) => Math.max(m, g.combo ?? 0), 0));
 </script>
 
@@ -120,7 +166,7 @@
 			<div class="vs">
 				<div class="fighter">
 					<div class="nm">{left?.name ?? 'Player'}</div>
-					<div class="tier">{left?.rating ?? ''}</div>
+					<div class="tier">{[lRank?.n, left?.rating].filter(Boolean).join(' ')}</div>
 				</div>
 				<div class="score">
 					<span class={(tally[left?.steamid ?? ''] ?? 0) >= (tally[right?.steamid ?? ''] ?? 0) ? 'w' : 'l'}>
@@ -133,9 +179,13 @@
 				</div>
 				<div class="fighter r">
 					<div class="nm">{right?.name ?? 'Player'}</div>
-					<div class="tier">{right?.rating ?? ''}</div>
+					<div class="tier">{[rRank?.n, right?.rating].filter(Boolean).join(' ')}</div>
 				</div>
 			</div>
+			{#if underdog}
+				<!-- the line that makes a losing set postable: two wins off someone three tiers up -->
+				<div class="dog">· UNDERDOG · {gap} RATING GAP ·</div>
+			{/if}
 			<div class="faces">
 				<a class="fa" href="{base}/u/{left?.steamid ?? ''}">
 					<Avatar url={left?.avatar} size={20} alt={left?.name ?? 'Player'} />
@@ -148,44 +198,66 @@
 			</div>
 		</div>
 
-		<!-- Every game, itemized. This is the part the money receipt usually can't show. -->
-		<div class="sec">GAMES</div>
+		<!-- MATCHUP printed ONCE. Teams barely change within a set, so per-row teams print the same string
+		     ten times and crowd out the fields that do vary. -->
+		{#if games.length}
+			<div class="sec">MATCHUP</div>
+			<div class="mu">
+				<span class="who">{(left?.name ?? 'Player').slice(0, 14)}</span>
+				<span class="tm">{#each standing.l as t (t)}<span class="tg">{t}</span>{/each}</span>
+			</div>
+			<div class="mu">
+				<span class="who me">{(right?.name ?? 'Player').slice(0, 14)}</span>
+				<span class="tm">{#each standing.r as t (t)}<span class="tg">{t}</span>{/each}</span>
+			</div>
+			<div class="rule dash"></div>
+		{/if}
+
+		<div class="sec sp"><span>GAMES</span><span class="hd">COMBO · RATING</span></div>
 		{#each games as g, i (g.match_index ?? i)}
-			{@const rightWon = g.winner === right?.steamid}
+			{@const won = g.winner === (me ?? right?.steamid)}
 			<div class="g">
 				<span class="n">{pad((g.match_index ?? i) + 1)}</span>
-				<span class="t">{hhmm(g.ts)}</span>
-				<!-- team as NAMES, not sprites: a printed slip is text, and three tiny sprites at this size read
-				     as mush. Abbreviated so a full team fits one line at receipt width. -->
-				<span class="teams">{((rightWon ? g.wteam : g.lteam) ?? []).map((c) => charName(c).slice(0, 4).toUpperCase()).join(' / ')}</span>
-				<span class="won" class:r={rightWon}>{rightWon ? '▸' : '◂'}</span>
-				{#if g.elo}<span class="e">{rightWon ? '+' : '−'}{g.elo}</span>{/if}
+				<span class="wl" class:won>{won ? 'W' : 'L'}</span>
+				<span class="bg">
+					<!-- An OCV/perfect/comeback is BY DEFINITION performed by the winner, so we can attribute it:
+					     you did it, or it was done to you. Four identical flag rows become four stories. -->
+					{#if g.ocv}<span class="fl" class:mine={won}>{won ? 'OCV' : "OCV'D"}</span>{/if}
+					{#if g.perfect}<span class="fl" class:mine={won}>{won ? 'PERFECT' : "PERF'D"}</span>{/if}
+					{#if g.comeback}<span class="fl" class:mine={won}>{won ? 'COMEBACK' : 'REVERSED'}</span>{/if}
+				</span>
+				{#if g.combo}
+					<span class="cb" class:best={g.combo === bestCombo}>{g.combo === bestCombo ? '★' : ''}{g.combo}</span>
+				{:else}<span class="cb"></span>{/if}
+				<span class="e">{g.elo ? (won ? '+' : '−') + g.elo : ''}</span>
 			</div>
-			{#if g.ocv || g.perfect || g.comeback}
-				<div class="flags">
-					{#if g.ocv}<span class="fl">OCV</span>{/if}
-					{#if g.perfect}<span class="fl">PERFECT</span>{/if}
-					{#if g.comeback}<span class="fl">COMEBACK</span>{/if}
-				</div>
+			<!-- change-only team line: a switch mid-set is an EVENT worth seeing, not noise to repeat -->
+			{#if switches[i]?.l}
+				<div class="sw"><span class="swn">{(left?.name ?? 'P1').slice(0, 12)} →</span>{#each switches[i].l ?? [] as t (t)}<span class="tg">{t}</span>{/each}</div>
+			{/if}
+			{#if switches[i]?.r}
+				<div class="sw"><span class="swn">{(right?.name ?? 'P2').slice(0, 12)} →</span>{#each switches[i].r ?? [] as t (t)}<span class="tg">{t}</span>{/each}</div>
 			{/if}
 		{:else}
 			<div class="none">No games recorded for this set.</div>
 		{/each}
 
 		<div class="rule dash"></div>
-		{#if bestCombo > 0}<div class="kv"><span>BIGGEST COMBO</span><span class="v">{bestCombo} hits</span></div>{/if}
-		<div class="kv">
-			<span>CONFIRMED</span>
-			<span class="v">{confirmedCt} of {games.length} games</span>
-		</div>
-		{#if netElo !== null}
-			<div class="kv">
-				<span>NET RATING</span>
-				<span class="v big" class:up={netElo > 0} class:down={netElo < 0}>
-					{netElo > 0 ? '+' : ''}{netElo}
-				</span>
-			</div>
+		{#if wins.length}
+			<div class="kv"><span>{wins.length} WON</span><span class="v">+{winPts}</span></div>
 		{/if}
+		{#if losses.length}
+			<div class="kv"><span>{losses.length} LOST</span><span class="v dim">−{lossPts}</span></div>
+		{/if}
+		{#if bestCombo > 0}
+			<!-- ⚠ `combo` carries no owner in the payload, so this is deliberately NOT claimed as yours. -->
+			<div class="kv"><span>LONGEST COMBO</span><span class="v">{bestCombo} hits</span></div>
+		{/if}
+		<div class="rule dbl2"></div>
+		<div class="kv total">
+			<span>NET RATING</span>
+			<span class="tv" class:up={(netElo ?? 0) > 0}>{(netElo ?? 0) > 0 ? '+' : ''}{netElo ?? 0}</span>
+		</div>
 	{/snippet}
 
 	{#snippet footer()}
@@ -194,6 +266,152 @@
 </ReceiptPaper>
 
 <style>
+	/* ── matchup block: printed once, not per row ── */
+	.mu {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		font-size: 10.5px;
+	}
+	.mu .who {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--dim);
+	}
+	.mu .who.me {
+		color: var(--ink);
+		font-weight: 700;
+	}
+	.tm {
+		flex: none;
+		display: flex;
+		gap: 4px;
+	}
+	/* 4ch by LAYOUT — short tags (RYU, ICE, DAN) must not be padded with literal spaces, which HTML collapses */
+	.tg {
+		display: inline-block;
+		width: 4ch;
+		text-align: center;
+		color: var(--dim);
+		font-size: 10px;
+		letter-spacing: 0.02em;
+	}
+
+	/* ── game rows ── */
+	.g {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 10.5px;
+	}
+	.g .n {
+		flex: none;
+		width: 16px;
+		color: var(--faint);
+	}
+	/* W/L: TWO channels on purpose — colour AND fill. Red/green is the worst colour-blind pair, and a
+	   filled-vs-hollow shape survives greyscale, a screenshot re-encode, and a phone in sunlight.
+	   Losses are deliberately NOT red: eight red L's turns the thing you're meant to be proud of into a
+	   wall of shame, and the wins pop harder against quiet grey than against a second hot hue. */
+	.wl {
+		flex: none;
+		width: 17px;
+		text-align: center;
+		font-weight: 900;
+		font-size: 10px;
+		border-radius: 3px;
+		border: 1px solid var(--line);
+		color: var(--dim);
+	}
+	.wl.won {
+		background: var(--good);
+		border-color: var(--good);
+		color: var(--bg);
+	}
+	.bg {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		gap: 5px;
+		overflow: hidden;
+	}
+	/* badges are monochrome: gold is reserved for the winner, the money and the seal (DESIGN-SYSTEM budget) */
+	.fl {
+		font-size: 8.5px;
+		letter-spacing: 0.1em;
+		color: var(--faint);
+		white-space: nowrap;
+	}
+	.fl.mine {
+		color: var(--ink);
+	}
+	.cb {
+		flex: none;
+		width: 34px;
+		text-align: right;
+		color: var(--dim);
+		font-size: 10px;
+	}
+	.cb.best {
+		color: var(--ink);
+	}
+	.g .e {
+		flex: none;
+		width: 32px;
+		text-align: right;
+		color: var(--ink);
+	}
+	.sw {
+		display: flex;
+		align-items: baseline;
+		gap: 5px;
+		margin: 0 0 2px 23px;
+	}
+	.swn {
+		font-size: 9px;
+		color: var(--faint);
+	}
+	.sec.sp {
+		display: flex;
+		justify-content: space-between;
+	}
+	.sec .hd {
+		color: var(--faint);
+		letter-spacing: 0.06em;
+	}
+	.dog {
+		margin-top: 5px;
+		text-align: center;
+		font-size: 9px;
+		letter-spacing: 0.16em;
+		color: var(--gold);
+	}
+	/* the TOTAL — a receipt builds to one */
+	.rule.dbl2 {
+		height: 0;
+		margin: 8px 0;
+		border-top: 3px double color-mix(in srgb, var(--faint) 75%, transparent);
+	}
+	.total > span:first-child {
+		font-size: 10.5px;
+		letter-spacing: 0.12em;
+		color: var(--dim);
+	}
+	.tv {
+		font-size: 21px;
+		font-weight: 900;
+		color: var(--ink);
+	}
+	.tv.up {
+		color: var(--gold);
+	}
+	.dim {
+		color: var(--dim);
+	}
+
 	/* ReceiptPaper scopes its own .rule to its markup; a rule inside these snippets needs its own rule. */
 	.rule {
 		height: 0;
@@ -223,16 +441,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.big {
-		font-size: 15px;
-		font-weight: 900;
-	}
-	.up {
-		color: var(--gold);
-	}
-	.down {
-		color: var(--dim);
 	}
 	.sec {
 		color: var(--dim);
@@ -322,44 +530,11 @@
 		color: var(--faint);
 		width: 16px;
 	}
-	.g .t {
-		flex: none;
-		color: var(--faint);
-		font-size: 9.5px;
-	}
-	.g .teams {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: var(--dim);
-		font-size: 9.5px;
-		letter-spacing: 0.04em;
-	}
-	.g .won {
-		flex: none;
-		color: var(--faint);
-		font-weight: 800;
-	}
-	.g .won.r {
-		color: var(--gold);
-	}
 	.g .e {
 		flex: none;
 		width: 30px;
 		text-align: right;
 		color: var(--dim);
-	}
-	.flags {
-		display: flex;
-		gap: 5px;
-		margin: 0 0 2px 23px;
-	}
-	.fl {
-		font-size: 8.5px;
-		letter-spacing: 0.1em;
-		color: var(--gold);
 	}
 	.none {
 		color: var(--faint);
