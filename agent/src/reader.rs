@@ -1179,6 +1179,75 @@ fn gamestate_snapshot() -> Option<GsSnapshot> {
 fn le32(b: &[u8], o: usize) -> u32 { u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) }
 fn lef32(b: &[u8], o: usize) -> f32 { f32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) }
 
+// ── gs-110: TRUE per-game match stats, computed from the frame tape at KO time ─────────────────────────
+// The Valorant-tracker layer: what the receipt shows per game beyond W/L. Everything here is derived from
+// per-frame deltas of VERIFIED offsets only (hp, red_hp, hitstun, combo-dealt, meter) — the two
+// unverified fields (action, combo_recv) are deliberately untouched.
+//
+// Ground rules learned from gs-105 (the retired first attempt):
+//  • Sides are INTERLEAVED: P1 = slots 0/2/4, P2 = slots 1/3/5.
+//  • Never SUM red-health rises — red oscillates and over-counts ~50× (the 27k bug). Chip here is the sum
+//    of HP DECREASES on a slot while that slot's hitstun flag is 0 (= it was blocking, or got chipped by
+//    a projectile in neutral) — the FGC meaning of chip, bounded by the actual health that left the bar.
+//  • Damage = hp decreases only (healing/red-recovery rises are ignored, re-dealt recovered health is
+//    legitimately new damage). Per-frame per-slot drops are clamped to a full bar to shrug off any glitch
+//    row that slipped the capture gates.
+//  • Attribution is SIDE-level (exact): damage dealt BY a side = health that left the OTHER side's slots.
+//    Per-character "who dealt it" needs point-detection and stays out until OFF_ACTION is verified.
+/// Per-side totals + per-slot detail + a downsampled momentum line for one game's tape.
+struct GameStats {
+    dmg: [u32; 2],      // damage dealt by [P1, P2]
+    chip: [u32; 2],     // of which chip (victim hitstun == 0 at the drop)
+    kos: [u32; 2],      // enemy characters KO'd by [P1, P2]
+    meter: [u32; 2],    // super bars built by [P1, P2] (counting fills, not spend)
+    first_hit: u8,      // 1|2 = which side drew first blood, 0 = nobody (timeout tape / empty)
+    deaths: [u8; 6],    // per-slot: 1 if that character was KO'd
+    bc_slot: u8,        // slot that dealt the biggest combo of the game (255 = none seen)
+    bc_hits: u16,       // its hit count
+    swing: Vec<i16>,    // ≤48 samples of (P1 team hp sum − P2 team hp sum): the momentum line, −432..432
+}
+fn compute_game_stats(frames: &[GsRow]) -> Option<GameStats> {
+    if frames.len() < 2 { return None; }
+    let side_of = |slot: usize| -> usize { slot & 1 }; // 0/2/4 → P1(0), 1/3/5 → P2(1)
+    let mut st = GameStats { dmg: [0; 2], chip: [0; 2], kos: [0; 2], meter: [0; 2], first_hit: 0,
+                             deaths: [0; 6], bc_slot: 255, bc_hits: 0, swing: Vec::new() };
+    let mut prev = &frames[0];
+    let mut prev_meter = [prev.m1 as u32 * 1000 + prev.mfill as u32, prev.m2 as u32 * 1000 + prev.mfill as u32];
+    for f in &frames[1..] {
+        for s in 0..6 {
+            let (was, now) = (prev.hp[s], f.hp[s]);
+            if now < was {
+                let drop = ((was - now) as u32).min(HP_FULL as u32); // clamp: one glitch row can't exceed a bar
+                let dealer = 1 - side_of(s); // health leaving slot s was dealt by the other side
+                st.dmg[dealer] += drop;
+                if f.hitstun[s] == 0 { st.chip[dealer] += drop; }
+                if st.first_hit == 0 { st.first_hit = (dealer + 1) as u8; }
+                if now == 0 && was > 0 { st.kos[dealer] += 1; st.deaths[s] = 1; }
+            }
+            if f.cd[s] > st.bc_hits { st.bc_hits = f.cd[s]; st.bc_slot = s as u8; }
+        }
+        // meter BUILT = positive movement of (bars*1000 + fill); spend (super) is a negative jump → ignored
+        let cur_meter = [f.m1 as u32 * 1000 + f.mfill as u32, f.m2 as u32 * 1000 + f.mfill as u32];
+        for side in 0..2 {
+            if cur_meter[side] > prev_meter[side] { st.meter[side] += cur_meter[side] - prev_meter[side]; }
+            prev_meter[side] = cur_meter[side];
+        }
+        prev = f;
+    }
+    // meter accumulates in fill units; report whole bars (1000 fill ≈ 1 bar on this build's HUD scale)
+    for side in 0..2 { st.meter[side] /= 1000; }
+    // the momentum line: ≤48 evenly spaced samples of the team-health differential
+    let n = frames.len();
+    let samples = n.min(48);
+    for k in 0..samples {
+        let f = &frames[k * (n - 1) / samples.max(1).saturating_sub(1).max(1)];
+        let p1: i32 = [0usize, 2, 4].iter().map(|&s| f.hp[s] as i32).sum();
+        let p2: i32 = [1usize, 3, 5].iter().map(|&s| f.hp[s] as i32).sum();
+        st.swing.push((p1 - p2).clamp(-432, 432) as i16);
+    }
+    Some(st)
+}
+
 fn gs_team_wiped(hp: &[u16; 6]) -> bool { (hp[0] == 0 && hp[2] == 0 && hp[4] == 0) || (hp[1] == 0 && hp[3] == 0 && hp[5] == 0) }
 #[allow(dead_code)] // superseded by gs_match_load; kept as a documented helper
 fn gs_both_alive(hp: &[u16; 6]) -> bool { (hp[0] > 0 || hp[2] > 0 || hp[4] > 0) && (hp[1] > 0 || hp[3] > 0 || hp[5] > 0) }
@@ -2065,7 +2134,7 @@ fn report_result_server(reporter: String, winner: String, winner_name: String, l
         //  • comeback = the WINNER's max character-count deficit overcome (loser doesn't "come back").
         //  (damage-dealt has no clean source — MvC2 keeps no cumulative damage counter — so its board is retired.)
         let winner_side: u8 = if winner == reporter { side } else { 3 - side };
-        let (wdmg, ldmg, wchip, lchip, wcomeback): (u32, u32, u32, u32, u8) = gs.as_ref().map(|g| {
+        let (wchip, lchip, wcomeback): (u32, u32, u8) = gs.as_ref().map(|g| {
             let ws: [usize; 3] = if winner_side == 1 { [0, 2, 4] } else { [1, 3, 5] };
             let ls: [usize; 3] = if winner_side == 1 { [1, 3, 5] } else { [0, 2, 4] };
             let (mut wchip, mut lchip) = (0u32, 0u32);
@@ -2080,8 +2149,13 @@ fn report_result_server(reporter: String, winner: String, winner_name: String, l
                 let la = ls.iter().filter(|&&s| f.hp[s] > 0).count() as i32;
                 if la - wa > comeback { comeback = la - wa; }
             }
-            (0u32, 0u32, wchip.min(432), lchip.min(432), comeback.max(0) as u8)
-        }).unwrap_or((0, 0, 0, 0, 0));
+            (wchip.min(432), lchip.min(432), comeback.max(0) as u8)
+        }).unwrap_or((0, 0, 0));
+        // gs-110: the TRUE per-game stats layer (see compute_game_stats). P1/P2-oriented values are re-keyed
+        // to winner/loser here so the server can store them symmetrically no matter which player reports.
+        let stats = gs.as_ref().and_then(|g| compute_game_stats(&g.frames));
+        let (wi, li) = if winner_side == 1 { (0usize, 1usize) } else { (1usize, 0usize) };
+        let (wdmg, ldmg) = stats.as_ref().map_or((0, 0), |s| (s.dmg[wi], s.dmg[li]));
         // IDEMPOTENCY KEY: a per-reporter id for THIS game, generated once and frozen into the spooled body so
         // every retry re-sends it byte-identical. The server dedups on it (per reporter) → a retry is an exact
         // no-op even in the committed-but-ACK-lost case (the one path that would otherwise double-credit via the
@@ -2097,8 +2171,25 @@ fn report_result_server(reporter: String, winner: String, winner_name: String, l
             "winner_name": winner_name, "loser_name": loser_name,
             "ocv": ocv, "perfect": perfect, "comeback": comeback,
             "winner_team": winner_team, "loser_team": loser_team, "biggest_combo": biggest_combo, "meters_used": meters_used,
-            // gs-105 frame-derived per-side stats (0 when no recording): damage dealt, chip dealt, winner's comeback
+            // gs-105 frame-derived per-side stats (0 when no recording). wdmg/ldmg carry REAL damage dealt as
+            // of gs-110 (they shipped as always-0 before, so filling them is purely additive); wchip/lchip keep
+            // their original peak-red meaning untouched.
             "wdmg": wdmg, "ldmg": ldmg, "wchip": wchip, "lchip": lchip, "wcomeback": wcomeback,
+            // gs-110: the receipt-stats layer, winner/loser-keyed (server: store + echo verbatim in /rr/session).
+            // Absent entirely when no tape was recorded — never zero-filled, so "no data" stays distinguishable.
+            "stats": stats.as_ref().map(|s| serde_json::json!({
+                "v": 1,
+                "wchipd": s.chip[wi], "lchipd": s.chip[li],       // TRUE chip damage dealt (victim unhit-flag)
+                "wkos": s.kos[wi], "lkos": s.kos[li],             // characters KO'd
+                "wmeter": s.meter[wi], "lmeter": s.meter[li],     // super bars built
+                "first_hit": if s.first_hit == 0 { "" } else if s.first_hit == winner_side { "w" } else { "l" },
+                "deaths": s.deaths,                                // per-slot (P1=0/2/4, P2=1/3/5 interleave)
+                "bc_slot": s.bc_slot, "bc_hits": s.bc_hits,       // biggest combo + the slot that DEALT it
+                "swing": s.swing,                                  // ≤48-pt P1−P2 team-health momentum line
+            })),
+            // gs-110: assist type per slot (α=0/β=1/γ=2, interleaved slots) — snapshotted at char select,
+            // captured since 0.3.x but never reported until now. Server: split by side → wassist/lassist.
+            "assist": gs.as_ref().map(|g| g.assist),
             "side": side,   // gs-92: which side the reporter was (1=P1,2=P2) — makes every game auditable server-side
             "session_id": session_id, "match_index": match_index,   // gs-96: tie each game to its ranked set (≤10 games)
             "client_result_id": client_result_id,   // per-reporter idempotency key (see above) — server dedups on it
@@ -3166,3 +3257,39 @@ pub fn status_line() -> String {
     if a.reporting { format!("{}  ● reporting", base) } else { base }
 }
 
+
+// ── gs-110 attribution self-test: a synthetic 6-frame game exercising clean vs chip, KO, first-hit,
+// combo ownership and the interleaved side map. Catches sign/side inversions before a fleet release —
+// the class of bug gs-105 shipped with (27k chip) and only caught in prod data.
+#[cfg(test)]
+mod gs_stats_tests {
+    use super::*;
+    fn row(frame: u32, hp: [u16; 6], hitstun: [u8; 6], cd: [u16; 6], m1: u8, m2: u8, mfill: u16) -> GsRow {
+        GsRow { frame, p1_in: 0, p2_in: 0, kcode: 0, hp, px: [0.0; 6], py: [0.0; 6], m1, m2, mfill,
+                cd, cr: [0; 6], vx: [0.0; 6], vy: [0.0; 6], rhp: [0; 6], face: [0; 6], hitstun, act: [0; 6] }
+    }
+    #[test]
+    fn attribution_sides_chip_ko() {
+        let full = [144u16; 6];
+        let frames = vec![
+            row(0, full, [0; 6], [0; 6], 0, 0, 0),
+            // P1 (slots 0/2/4) hits P2's point (slot 1) for 50 CLEAN — slot 1 is in hitstun
+            row(1, [144, 94, 144, 144, 144, 144], [0, 0xff, 0, 0, 0, 0], [4, 0, 0, 0, 0, 0], 0, 0, 500),
+            // P2 (slot 1) answers with 30 clean on P1's point (slot 0), a 7-hit combo
+            row(2, [114, 94, 144, 144, 144, 144], [0xff, 0, 0, 0, 0, 0], [0, 7, 0, 0, 0, 0], 0, 1, 200),
+            // P1 chips slot 1 for 20 — slot 1 NOT in hitstun (blocking)
+            row(3, [114, 74, 144, 144, 144, 144], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], 1, 1, 100),
+            // P1 finishes slot 1: 74 → 0 (KO), 12-hit combo (game's biggest)
+            row(4, [114, 0, 144, 144, 144, 144], [0, 0xff, 0, 0, 0, 0], [12, 0, 0, 0, 0, 0], 1, 1, 300),
+            row(5, [114, 0, 144, 144, 144, 144], [0; 6], [0; 6], 1, 1, 300),
+        ];
+        let s = compute_game_stats(&frames).expect("stats");
+        assert_eq!(s.dmg, [50 + 20 + 74, 30], "damage dealt [P1, P2]");
+        assert_eq!(s.chip, [20, 0], "only the blocked 20 is chip");
+        assert_eq!(s.kos, [1, 0], "P1 KO'd one character");
+        assert_eq!(s.deaths, [0, 1, 0, 0, 0, 0], "slot 1 died");
+        assert_eq!(s.first_hit, 1, "P1 drew first blood");
+        assert_eq!((s.bc_slot, s.bc_hits), (0, 12), "biggest combo owned by slot 0");
+        assert!(s.swing.len() >= 2 && s.swing[0] == 0 && *s.swing.last().unwrap() > 0, "momentum ends P1-positive");
+    }
+}
