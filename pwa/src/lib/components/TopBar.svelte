@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
 	import { NAV } from '$lib/nav';
+	import OnlineChip from './OnlineChip.svelte';
 	import WalletChip from './WalletChip.svelte';
 	import ResultCheckBell from './ResultCheckBell.svelte';
 	import AccountMenu from './AccountMenu.svelte';
@@ -41,6 +42,7 @@
 	</nav>
 
 	<div class="authslot">
+		<OnlineChip />
 		<WalletChip />
 		<ResultCheckBell />
 		<AccountMenu />
