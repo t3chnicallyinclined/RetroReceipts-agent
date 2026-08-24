@@ -2,6 +2,7 @@
 	import { createVirtualizer } from '@tanstack/svelte-virtual';
 	import BoardRow from './BoardRow.svelte';
 	import { STAT_LABEL } from '$lib/boards';
+	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import type { BoardItem, LeaderboardTab } from '$lib/types';
 
 	// The ARENA "Board" — a dense columnar list. Rows + tier cutlines are virtualized with
@@ -23,22 +24,47 @@
 	} = $props();
 
 	const ROW = 44;
+	const ROW_NARROW = 56; // phones: the preferred team renders UNDER the name → rows are two-line
 	const CUT = 26;
 
 	let scrollEl = $state<HTMLDivElement | null>(null);
+
+	// Deterministic heights are what make the virtualizer exact — so the phone breakpoint must be
+	// mirrored in JS, not just CSS. matchMedia keeps them in lock-step; the virtualizer below reads
+	// `narrow` so a viewport crossing rebinds it with the right estimate.
+	let narrow = $state(false);
+	$effect(() => {
+		const mq = window.matchMedia('(max-width: 640px)');
+		narrow = mq.matches;
+		const on = (e: MediaQueryListEvent) => (narrow = e.matches);
+		mq.addEventListener('change', on);
+		return () => mq.removeEventListener('change', on);
+	});
 
 	// $derived.by reads `scrollEl` and `items.length` so it rebinds when the scroller mounts and when
 	// the row count changes. On scroll the store emits the SAME instance → reference stays stable.
 	const virtualizer = $derived.by(() => {
 		const el = scrollEl;
 		const count = items.length;
+		const row = narrow ? ROW_NARROW : ROW;
 		return createVirtualizer<HTMLDivElement, HTMLDivElement>({
 			count,
 			getScrollElement: () => el,
-			estimateSize: (i) => (items[i]?.kind === 'cut' ? CUT : ROW),
+			estimateSize: (i) => (items[i]?.kind === 'cut' ? CUT : row),
 			overscan: 12,
 			getItemKey: (i) => items[i]?.key ?? i
 		});
+	});
+
+	// CUSTOM SKINS on the board: batch-prime the visible rows' loadouts (25/call, dedup'd in the store),
+	// re-running as the window scrolls — one request per NEW screenful, rows repaint as palettes land.
+	$effect(() => {
+		const vs = $virtualizer.getVirtualItems();
+		const ids = vs
+			.map((v) => items[v.index])
+			.filter((it) => it && it.kind !== 'cut')
+			.map((it) => (it as { player: { steamid?: string } }).player?.steamid);
+		if (ids.length) void loadouts.prime(ids);
 	});
 </script>
 
@@ -46,10 +72,12 @@
 	<div class="bd-head">
 		<span class="c">#</span>
 		<span>Player</span>
+		<span class="c col-team">Team</span>
 		{#if !scoped}<span class="col-tier">Tier</span>{/if}
 		<span class="r">{tab === 'rating' ? 'Rating' : STAT_LABEL[tab]}</span>
 		<span class="r col-wl">W – L</span>
 		<span class="r col-wr">Win %</span>
+		<span class="col-ch"></span>
 	</div>
 	<div class="bd-scroll" bind:this={scrollEl}>
 		<div class="bd-canvas" style="height:{$virtualizer.getTotalSize()}px">
@@ -80,13 +108,12 @@
 		border: 1px solid var(--line);
 		border-radius: 14px;
 		overflow: hidden;
-		/* desktop: rank · name · tier · stat · W–L · win% (defined here so a media query can override) */
-		--bd-cols: 40px minmax(0, 1fr) 138px 92px 84px 60px;
+		/* desktop: rank · name · team · tier · stat · W–L · win% · ⚔ (media query overrides below) */
+		--bd-cols: 40px minmax(0, 1fr) 88px 124px 84px 78px 54px 40px;
 	}
-	/* Scoped (Lobby/Tournament): no Tier column — rank · name · stat · W–L · win%. Rows omit the
-	   tier cell too (BoardRow) so the grid stays aligned. */
+	/* Scoped (Lobby/Tournament): no Tier column — rows omit the tier cell too (BoardRow). */
 	.board.scoped {
-		--bd-cols: 40px minmax(0, 1fr) 92px 84px 60px;
+		--bd-cols: 40px minmax(0, 1fr) 88px 84px 78px 54px 40px;
 	}
 	.bd-head {
 		display: grid;
@@ -153,13 +180,14 @@
 		   track count on phones. */
 		.board,
 		.board.scoped {
-			--bd-cols: 28px minmax(0, 1fr) auto;
+			--bd-cols: 28px minmax(0, 1fr) auto auto;
 		}
 		.bd-head {
 			gap: 8px;
 			padding: 0 12px;
 		}
 		.bd-head .col-tier,
+		.bd-head .col-team,
 		.bd-head .col-wl,
 		.bd-head .col-wr {
 			display: none;

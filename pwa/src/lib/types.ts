@@ -11,6 +11,7 @@ export interface Player {
 	losses: number;
 	confirmed_wins?: number; // wins verified by both-agree / replay
 	verified_wins?: number;
+	top_team?: number[]; // most-played team (char-id triple; [] / absent = never recorded)
 	stat?: number; // the active tab's stat value (server-computed)
 	rank?: string; // server-supplied tier name — never trusted; client derives from rating+games
 }

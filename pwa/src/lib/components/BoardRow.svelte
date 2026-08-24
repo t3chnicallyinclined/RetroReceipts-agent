@@ -2,6 +2,10 @@
 	import { base } from '$app/paths';
 	import RankBadge from './RankBadge.svelte';
 	import Avatar from './Avatar.svelte';
+	import CharSprite from './CharSprite.svelte';
+	import ChallengeButton from './ChallengeButton.svelte';
+	import { charTag } from '$lib/chars';
+	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor } from '$lib/ranks';
 	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import { statValue } from '$lib/boards';
@@ -34,6 +38,12 @@
 	// anyone whose opponents don't run the agent. Labelling this count "verified" overstated it.
 	const cw = $derived(player.confirmed_wins == null ? null : Number(player.confirmed_wins));
 	const showVerified = $derived(tab === 'wins' && cw != null && cw < val);
+
+	// Preferred team — the server's career most-played triple. Desktop: its own column; phones: under the
+	// name (the column would crowd exactly the rows the mobile font fix exists for). Sprites wear the
+	// owner's custom skins via the board-level batch prime (peek NEVER fetches — Board primes).
+	const team = $derived(Array.isArray(player.top_team) ? player.top_team.slice(0, 3) : []);
+	const lo = $derived(loadouts.peek(player.steamid));
 </script>
 
 <div class="bd-row" class:me class:flash>
@@ -51,6 +61,14 @@
 			<span class="nm">{player.name || 'Player'}</span>
 		{/if}
 		{#if me}<span class="me-tag">YOU</span>{/if}
+		{#if team.length}
+			<span class="subteam" aria-hidden="true">
+				{#each team as id, k (k)}<span class="tchip s"><CharSprite {id} still palette={lo?.[id] ?? null} alt={charTag(id)} /></span>{/each}
+			</span>
+		{/if}
+	</div>
+	<div class="bd-team">
+		{#each team as id, k (k)}<span class="tchip"><CharSprite {id} still palette={lo?.[id] ?? null} alt={charTag(id)} /></span>{/each}
 	</div>
 	{#if !scoped}
 		<div class="bd-tier">
@@ -63,6 +81,9 @@
 	</div>
 	<div class="bd-num dim col-wl">{player.wins ?? 0} – {player.losses ?? 0}</div>
 	<div class="bd-num col-wr" style="color:{winrateColor(w)}">{w}%</div>
+	<div class="bd-ch">
+		{#if player.steamid}<ChallengeButton steamid={player.steamid} name={player.name || 'this player'} compact />{/if}
+	</div>
 </div>
 
 <style>
@@ -97,6 +118,32 @@
 		min-width: 0;
 		white-space: nowrap;
 		overflow: hidden;
+	}
+	/* preferred team — desktop column of sprite chips; phones use .subteam under the name instead */
+	.bd-team {
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 3px;
+	}
+	.tchip {
+		display: block;
+		width: 24px;
+		height: 24px;
+	}
+	.tchip.s {
+		width: 15px;
+		height: 15px;
+	}
+	.subteam {
+		display: none; /* phones only */
+		align-items: flex-end;
+		gap: 2px;
+		flex: none;
+	}
+	.bd-ch {
+		display: flex;
+		justify-content: flex-end;
 	}
 	.bd-name .lnk {
 		display: flex;
@@ -165,16 +212,40 @@
 			animation: none;
 		}
 	}
-	/* Match Board's mobile collapse: drop tier · W–L · win% so rank · name · stat stay aligned. */
+	/* Match Board's mobile collapse: drop team-column · tier · W–L · win% so rank · name · stat · ⚔ stay
+	   aligned — and SHRINK the typography: at 13.5px long names clipped into unreadability on phones. */
 	@media (max-width: 640px) {
 		.bd-row {
 			gap: 8px;
 			padding: 0 12px;
+			height: 56px; /* two-line rows: name + team-under-name (Board mirrors via ROW_NARROW) */
+			contain-intrinsic-size: auto 56px;
 		}
 		.bd-tier,
+		.bd-team,
 		.col-wl,
 		.col-wr {
 			display: none;
+		}
+		.bd-rank {
+			font-size: 11px;
+		}
+		.bd-name {
+			font-size: 11.5px;
+			gap: 5px;
+			flex-wrap: wrap; /* the subteam line wraps under the name */
+			align-content: center;
+		}
+		.bd-name .lnk {
+			gap: 5px;
+		}
+		.bd-num {
+			font-size: 12px;
+		}
+		.subteam {
+			display: flex;
+			width: 100%;
+			padding-left: 25px; /* align under the name, past the 20px avatar + gap */
 		}
 	}
 </style>

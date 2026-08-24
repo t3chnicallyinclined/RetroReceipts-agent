@@ -72,6 +72,42 @@ class LoadoutStore {
 		}
 	}
 
+	/** Like `of` but NEVER fetches — for dense surfaces (boards) where `prime` is the only loader. */
+	peek(steamid: string | null | undefined): Loadout | null {
+		return steamid ? (this.#byId[steamid] ?? null) : null;
+	}
+
+	/**
+	 * Batch-load loadouts for a set of players via GET /rr/loadout?steamids=a,b,c (≤25 per call; players
+	 * with no loadout are OMITTED from the response map → recorded here as {} = stock). Already-known and
+	 * in-flight ids are skipped, so calling this on every scroll frame costs one request per NEW screenful.
+	 */
+	async prime(steamids: (string | null | undefined)[]): Promise<void> {
+		const want = [...new Set(steamids.filter((s): s is string => !!s && /^\d{17}$/.test(s)))].filter(
+			(s) => !(s in this.#byId) && !this.#pending.has(s)
+		);
+		for (let at = 0; at < want.length; at += 25) {
+			const chunk = want.slice(at, at + 25);
+			chunk.forEach((s) => this.#pending.add(s));
+			try {
+				const j = await apiGet<{ ok?: boolean; loadouts?: Record<string, unknown> }>(
+					`/rr/loadout?steamids=${chunk.join(',')}`,
+					{ ttl: 30_000 }
+				);
+				const got = (j?.loadouts ?? {}) as Record<string, unknown>;
+				const patch: Record<string, Loadout> = {};
+				for (const s of chunk) patch[s] = normalize(got[s]);
+				this.#byId = { ...this.#byId, ...patch };
+			} catch {
+				const patch: Record<string, Loadout> = {};
+				chunk.forEach((s) => (patch[s] = {}));
+				this.#byId = { ...this.#byId, ...patch }; // miss = stock; a later refresh() can retry
+			} finally {
+				chunk.forEach((s) => this.#pending.delete(s));
+			}
+		}
+	}
+
 	/** Forget one player (e.g. after their picker saves) so the next ask refetches. */
 	refresh(steamid: string): void {
 		if (!steamid) return;
