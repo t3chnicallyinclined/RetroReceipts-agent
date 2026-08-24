@@ -1,6 +1,8 @@
-// Who's on the collection RIGHT NOW — GET /rr/presence ({online, players[]}), the agent-heartbeat census.
-// Powers the top-bar OnlineChip on every page, signed-in or not: "how many people are on" is the first
-// thing a fighting-game player asks of a platform, and the honest answer is also the best marketing.
+// Who's on the collection RIGHT NOW — GET /rr/presence. Public shape (server 2026-08-24): {ok,
+// game_players} = players in the STEAM Marvel Collection right now (Tris's rule: the public count is
+// people playing the GAME; app-user presence lives behind the admin key). Powers the top-bar OnlineChip
+// on every page, signed-in or not — "how many people are on" is the first thing a fighting-game player
+// asks of a platform, and the honest answer is also the best marketing.
 //
 // Poll, not SSE: the count changes on the minutes scale, a 30s poll is one tiny GET through the shared
 // dedup layer, and it works for signed-out visitors with zero bus plumbing. Pauses while the tab is
@@ -30,8 +32,8 @@ class PresenceStore {
 
 	async #tick(): Promise<void> {
 		try {
-			const j = await apiGet<{ online?: number; players?: unknown }>('/rr/presence', { ttl: 10_000 });
-			const n = Number(j?.online);
+			const j = await apiGet<{ game_players?: number; online?: number; players?: unknown }>('/rr/presence', { ttl: 10_000 });
+			const n = Number(j?.game_players ?? j?.online); // old field kept as fallback for a stale server
 			this.online = Number.isFinite(n) && n >= 0 ? n : null;
 			this.players = Array.isArray(j?.players)
 				? (j.players as unknown[]).filter((p): p is string => typeof p === 'string')

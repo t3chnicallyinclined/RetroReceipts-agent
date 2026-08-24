@@ -78,6 +78,9 @@ export function remapSprite(
 
 // ── module-wide cache: (image URL | palette) → remapped canvas ──────────────────────────────────────────
 const cache = new Map<string, Promise<HTMLCanvasElement | null>>();
+// The studio's live preview remaps on every (debounced) edit — cap the cache so a long editing session
+// can't hold hundreds of atlas-sized canvases. Map iterates in insertion order → evict oldest first.
+const CACHE_CAP = 48;
 
 /**
  * Load `url` and remap it to `pal` for character `cid`, cached module-wide. Resolves null on any failure
@@ -102,5 +105,10 @@ export function remappedImage(url: string, cid: number, pal: string[]): Promise<
 		}
 	})();
 	cache.set(key, p);
+	while (cache.size > CACHE_CAP) {
+		const oldest = cache.keys().next().value;
+		if (oldest === undefined) break;
+		cache.delete(oldest);
+	}
 	return p;
 }

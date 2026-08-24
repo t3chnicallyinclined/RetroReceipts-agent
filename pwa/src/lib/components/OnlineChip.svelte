@@ -8,7 +8,9 @@
 	$effect(() => presence.start());
 	const n = $derived(presence.online);
 	const who = $derived(
-		presence.players.length ? `On now: ${presence.players.slice(0, 12).join(', ')}` : 'Players on Marvel Collection right now'
+		presence.players.length
+			? `On now: ${presence.players.slice(0, 12).join(', ')}`
+			: 'Players in the Marvel vs Capcom Collection on Steam right now'
 	);
 </script>
 

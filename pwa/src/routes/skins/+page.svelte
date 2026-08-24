@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { api } from '$lib/config';
 	import { CHAR_NAME } from '$lib/chars';
@@ -105,6 +104,123 @@
 		if (selected == null) return;
 		edit = (loadout[selected] ?? STOCK_PALETTES[selected] ?? []).slice();
 	}
+
+	// ── STUDIO live preview: the animated sprite wearing your edit, debounced so a colour-drag doesn't
+	// remap the atlas on every tick (each distinct palette is one offscreen remap; see lib/palette.ts). ──
+	let previewPal = $state<string[] | null>(null);
+	$effect(() => {
+		const snap = edit.slice();
+		if (selected == null) { previewPal = null; return; }
+		const t = setTimeout(() => (previewPal = snap), 180);
+		return () => clearTimeout(t);
+	});
+
+	// ── CLOUD VAULT — named skins that follow your SteamID (the old Tauri studio's library, PWA-native).
+	// Contract read from the server source: POST /rr/skins/save {id?, cid, name, author, palette:int[]},
+	// GET /rr/skins/list -> {skins:[{id,cid,name,palette,author,...}]}, POST /rr/skins/delete {id}. ──
+	type VaultSkin = { id: string; cid: string; name: string; palette: number[]; author?: string; updated_ms?: number };
+	let vault = $state<VaultSkin[]>([]);
+	let vaultBusy = $state(false);
+	let saveName = $state('');
+	let savingVault = $state(false);
+	let toast = $state('');
+	function flash(msg: string) {
+		toast = msg;
+		setTimeout(() => { if (toast === msg) toast = ''; }, 2600);
+	}
+	async function loadVault() {
+		if (!auth.authed) return;
+		try {
+			const res = await fetch(api('/rr/skins/list'), { headers: { accept: 'application/json', ...auth.headers() } });
+			if (res.ok) {
+				const j = (await res.json()) as { skins?: VaultSkin[] };
+				vault = (j.skins ?? []).filter((x) => x && x.id);
+			}
+		} catch { /* keep last-good */ }
+	}
+	onMount(loadVault);
+	async function saveToVault() {
+		if (selected == null || !auth.authed || savingVault) return;
+		const name = saveName.trim() || `${curName} custom`;
+		savingVault = true;
+		try {
+			const res = await fetch(api('/rr/skins/save'), {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...auth.headers() },
+				body: JSON.stringify({ cid: String(selected), name, author: '', palette: edit.map(toInt) })
+			});
+			if (res.ok) { flash(`🗂 “${name}” saved to your vault`); saveName = ''; void loadVault(); }
+			else flash((await res.json().catch(() => null))?.error === 'vault is full' ? '⚠ Vault is full — delete one first' : '⚠ Could not save to vault');
+		} catch { flash('⚠ Could not save to vault'); }
+		savingVault = false;
+	}
+	async function applyVaultSkin(v: VaultSkin) {
+		const cid = Number(v.cid);
+		if (!Number.isFinite(cid) || vaultBusy) return;
+		vaultBusy = true;
+		try {
+			const res = await fetch(api('/rr/loadout'), {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...auth.headers() },
+				body: JSON.stringify({ cid, colors: v.palette.slice(0, 16) })
+			});
+			if (res.ok) {
+				loadout = { ...loadout, [cid]: v.palette.slice(0, 16).map(toHex) };
+				if (auth.steamid) loadouts.refresh(auth.steamid);
+				flash(`⚔ “${v.name}” equipped on ${CHAR_NAME[cid] ?? 'character'}`);
+			}
+		} catch { flash('⚠ Could not equip that skin'); }
+		vaultBusy = false;
+	}
+	async function deleteVaultSkin(v: VaultSkin) {
+		if (vaultBusy) return;
+		vaultBusy = true;
+		try {
+			const res = await fetch(api('/rr/skins/delete'), {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...auth.headers() },
+				body: JSON.stringify({ id: v.id })
+			});
+			if (res.ok) { vault = vault.filter((x) => x.id !== v.id); flash(`🗑 “${v.name}” deleted`); }
+		} catch { flash('⚠ Could not delete'); }
+		vaultBusy = false;
+	}
+
+	// ── SKIN SAFETY — one-tap durable backup of the whole loadout + restore (server skins_backup store). ──
+	async function backupAll() {
+		const entries = Object.entries(loadout);
+		if (!entries.length) { flash('Nothing custom to back up yet'); return; }
+		try {
+			const res = await fetch(api('/rr/skins/backup'), {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...auth.headers() },
+				body: JSON.stringify({ skins: entries.map(([cid, pal]) => ({ cid: String(cid), palette: pal.map(toInt), char_name: CHAR_NAME[Number(cid)] ?? '', author: '' })) })
+			});
+			if (res.ok) { const j = (await res.json()) as { count?: number }; flash(`🛟 Backed up ${j.count ?? entries.length} skin${entries.length === 1 ? '' : 's'} to the cloud`); }
+			else flash('⚠ Backup failed');
+		} catch { flash('⚠ Backup failed'); }
+	}
+	async function restoreAll() {
+		try {
+			const res = await fetch(api('/rr/skins/restore'), { headers: { accept: 'application/json', ...auth.headers() } });
+			if (!res.ok) { flash('⚠ Could not read your backup'); return; }
+			const j = (await res.json()) as { skins?: { cid?: string; palette?: number[] }[] };
+			const list = (j.skins ?? []).filter((x) => Number.isFinite(Number(x.cid)) && Array.isArray(x.palette));
+			if (!list.length) { flash('No cloud backup found'); return; }
+			let n = 0;
+			for (const sk of list) {
+				const cid = Number(sk.cid);
+				const ok = await fetch(api('/rr/loadout'), {
+					method: 'POST',
+					headers: { 'content-type': 'application/json', ...auth.headers() },
+					body: JSON.stringify({ cid, colors: (sk.palette ?? []).slice(0, 16) })
+				}).then((r) => r.ok).catch(() => false);
+				if (ok) { loadout = { ...loadout, [cid]: (sk.palette ?? []).slice(0, 16).map(toHex) }; n++; }
+			}
+			if (auth.steamid) loadouts.refresh(auth.steamid);
+			flash(`🛟 Restored ${n} skin${n === 1 ? '' : 's'} from your backup`);
+		} catch { flash('⚠ Restore failed'); }
+	}
 </script>
 
 <svelte:head><title>Skins · Retro Receipts</title></svelte:head>
@@ -138,6 +254,41 @@
 	</div>
 {/if}
 
+{#if auth.authed}
+	<!-- ── the VAULT: named skins saved to the cloud, equip/delete anytime ── -->
+	<section class="vault">
+		<div class="vhead">
+			<h2>Your vault</h2>
+			<div class="vacts">
+				<button class="btn ghost sm" onclick={backupAll}>🛟 Back up loadout</button>
+				<button class="btn ghost sm" onclick={restoreAll}>Restore backup</button>
+			</div>
+		</div>
+		{#if vault.length}
+			<div class="vgrid">
+				{#each vault as v (v.id)}
+					<div class="vcard">
+						<div class="vface"><CharSprite id={Number(v.cid)} still palette={v.palette.slice(0, 16).map(toHex)} /></div>
+						<div class="vinfo">
+							<div class="vnm">{v.name || 'Unnamed'}</div>
+							<div class="vsub">{CHAR_NAME[Number(v.cid)] ?? `#${v.cid}`}</div>
+							<div class="vswatch">{#each v.palette.slice(0, 16) as c, i (i)}<i style="background:{toHex(c)}"></i>{/each}</div>
+						</div>
+						<div class="vbtns">
+							<button class="btn save sm" onclick={() => applyVaultSkin(v)} disabled={vaultBusy}>Equip</button>
+							<button class="btn ghost sm danger" onclick={() => deleteVaultSkin(v)} disabled={vaultBusy}>Delete</button>
+						</div>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<p class="vempty">Nothing saved yet — open a character, make it yours, and “Save to vault”.</p>
+		{/if}
+	</section>
+{/if}
+
+{#if toast}<div class="toast" role="status">{toast}</div>{/if}
+
 {#if selected != null}
 	<!-- editor overlay -->
 	<div class="ovl" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) close(); }}>
@@ -152,7 +303,8 @@
 			</header>
 
 			<div class="preview" aria-hidden="true">
-				<img src="{base}/chars/{selected}.webp" alt="" onerror={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = 'hidden')} />
+				<!-- the STUDIO: the animated sprite wearing your edit, repainting as you pick colours -->
+				<div class="stage"><CharSprite id={selected} eager palette={previewPal} /></div>
 				<div class="strip">
 					{#each edit as c, i (i)}<span class="chip" style="background:{c}"></span>{/each}
 				</div>
@@ -172,7 +324,11 @@
 				<button class="btn ghost" onclick={resetStock} disabled={saving}>Reset to stock</button>
 				<button class="btn save" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save skin'}</button>
 			</footer>
-			<p class="note">Applies in your next match — your agent picks it up within a few seconds.</p>
+			<div class="vrow">
+				<input class="vname" type="text" placeholder="Name this skin…" bind:value={saveName} maxlength="60" />
+				<button class="btn ghost" onclick={saveToVault} disabled={savingVault}>{savingVault ? 'Saving…' : '🗂 Save to vault'}</button>
+			</div>
+			<p class="note">Save skin equips it for your matches — your agent picks it up within a few seconds. Vault skins follow your SteamID across devices.</p>
 		</div>
 	</div>
 {/if}
@@ -398,13 +554,6 @@
 		border-bottom: 1px solid var(--line-soft);
 		background: linear-gradient(180deg, var(--panel-2), transparent);
 	}
-	.preview img {
-		width: 66px;
-		height: 82px;
-		object-fit: contain;
-		image-rendering: pixelated;
-		flex: none;
-	}
 	.strip {
 		display: grid;
 		grid-template-columns: repeat(8, 1fr);
@@ -490,5 +639,128 @@
 		font-size: 11px;
 		color: var(--faint);
 		text-align: center;
+	}
+	/* ── studio additions ── */
+	.stage {
+		width: 132px;
+		height: 132px;
+		margin: 0 auto;
+	}
+	.vrow {
+		display: flex;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.vname {
+		flex: 1;
+		min-width: 0;
+		font: inherit;
+		font-size: 12.5px;
+		padding: 8px 12px;
+		border-radius: 9px;
+		border: 1px solid var(--line);
+		background: var(--panel-2);
+		color: var(--ink);
+	}
+	.vname:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--stream) 55%, var(--line));
+	}
+	.btn.sm {
+		font-size: 11.5px;
+		padding: 6px 11px;
+	}
+	.btn.danger {
+		color: var(--loss);
+	}
+	.vault {
+		margin-top: 26px;
+	}
+	.vhead {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		flex-wrap: wrap;
+		margin-bottom: 10px;
+	}
+	.vhead h2 {
+		font-size: 16px;
+		font-weight: 900;
+		font-style: italic;
+		text-transform: uppercase;
+	}
+	.vacts {
+		display: flex;
+		gap: 8px;
+	}
+	.vgrid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: 10px;
+	}
+	.vcard {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--panel);
+		padding: 10px 12px;
+	}
+	.vface {
+		flex: none;
+		width: 44px;
+		height: 44px;
+	}
+	.vinfo {
+		flex: 1;
+		min-width: 0;
+	}
+	.vnm {
+		font-weight: 800;
+		font-size: 13px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.vsub {
+		font-size: 11px;
+		color: var(--dim);
+	}
+	.vswatch {
+		display: flex;
+		gap: 1px;
+		margin-top: 4px;
+	}
+	.vswatch i {
+		width: 8px;
+		height: 8px;
+		border-radius: 2px;
+	}
+	.vbtns {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+	.vempty {
+		color: var(--dim);
+		font-size: 13px;
+	}
+	.toast {
+		position: fixed;
+		left: 50%;
+		bottom: 76px;
+		transform: translateX(-50%);
+		z-index: 95;
+		padding: 9px 16px;
+		border-radius: 10px;
+		border: 1px solid var(--line);
+		background: var(--panel-2);
+		color: var(--ink);
+		font-size: 12.5px;
+		font-weight: 600;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+		white-space: nowrap;
 	}
 </style>
