@@ -2052,9 +2052,17 @@ fn on_game_win(winner: u8, opp: &Option<(String, String)>, my_side: u8, ocv: boo
     let (opp_id, opp_name) = match opp { Some(o) => (o.0.clone(), o.1.clone()), None => return };
     // The SteamID scan is noisy — refuse to attribute a game to an opponent whose co-located name is clearly
     // memory junk (a real fix for the identity is still needed; this just stops the garbage getting recorded).
-    if !plausible_opponent_name(&opp_name) {
+    // ⚠ An EMPTY name is NOT junk: it means name resolution simply failed (seen live 2026-08-24 — a whole
+    // session vs a real opponent whose MemberInfo name never resolved, every game silently skipped, no elo,
+    // no receipts). Junk names signal the scan grabbed the WRONG region → id suspect; an empty name says
+    // nothing against the id, which stays stable across the whole session. The server resolves display
+    // names from its own Steam profile store, so an id-only report records fine.
+    if !opp_name.is_empty() && !plausible_opponent_name(&opp_name) {
         trace(&format!("[record] SKIP implausible opponent \"{}\" ({}) — not a gamertag", opp_name, opp_id));
         return;
+    }
+    if opp_name.is_empty() {
+        trace(&format!("[record] opponent name unresolved for {} — reporting id-only (server resolves the name)", opp_id));
     }
     let i_won = winner == my_side;
     record_result(&opp_id, &opp_name, i_won);                 // local per-opponent H2H (unchanged)
