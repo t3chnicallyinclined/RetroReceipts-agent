@@ -5,6 +5,7 @@
 	import { api } from '$lib/config';
 	import { CHAR_NAME } from '$lib/chars';
 	import { STOCK_PALETTES } from '$lib/stockPalettes';
+	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import CharSprite from '$lib/components/CharSprite.svelte';
 
 	// THE web skin picker (Phase 3). Pick a character → edit its 16-colour palette → Save. The palette is
@@ -71,7 +72,10 @@
 				headers: { 'content-type': 'application/json', ...auth.headers() },
 				body: JSON.stringify({ cid, colors: edit.map(toInt) })
 			});
-			if (res.ok) loadout = { ...loadout, [cid]: edit.slice() };
+			if (res.ok) {
+				loadout = { ...loadout, [cid]: edit.slice() };
+				if (auth.steamid) loadouts.refresh(auth.steamid); // receipts/boards repaint on next look
+			}
 		} catch {
 			// swallow — the swatch state stays as edited; user can retry
 		}
@@ -90,6 +94,7 @@
 				const { [cid]: _drop, ...rest } = loadout;
 				loadout = rest;
 				edit = (STOCK_PALETTES[cid] ?? []).slice();
+				if (auth.steamid) loadouts.refresh(auth.steamid);
 			}
 		} catch {
 			// keep-last-good
@@ -111,7 +116,7 @@
 		<span class="pill">LOADOUT</span>
 	</div>
 	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">Pick a character and set its 16-colour palette — it saves to your loadout and the agent paints it live in your matches. Reset any character back to stock anytime.</p>
+	<p class="mdesc">Pick a character and set its 16-colour palette — it saves to your loadout and the agent paints it live in your matches. Your skins also show anywhere your team appears: set receipts, live cards and the boards. Reset any character back to stock anytime.</p>
 </section>
 
 {#if !auth.authed}

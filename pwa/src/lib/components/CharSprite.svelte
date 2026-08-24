@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import { charName, charAbbr } from '$lib/chars';
+	import { isCustomPalette, remappedImage } from '$lib/palette';
 
 	// A character sprite with a graceful, three-step fallback chain:
 	//   1. idle-loop ANIMATION  → /chars-anim/<id>.webp (a horizontal frame strip) driven by
@@ -13,32 +14,51 @@
 	// <img> and the <canvas> render with `image-rendering: pixelated` and nearest-neighbour scaling.
 	// Fills its parent box (the caller sizes it, e.g. the 62×78 .cface); lazy by default — pass
 	// `eager` for the point character(s) that should load up front.
+	//
+	// CUSTOM SKINS: pass `palette` (the owner's 16-colour loadout entry) and the sprite renders in the
+	// owner's colors — the baked assets are remapped stock→custom pixel-for-pixel (see lib/palette.ts),
+	// animation strip included. No palette (or a stock one) costs nothing. `still` pins the chip to the
+	// static portrait — for dense surfaces (receipt rows, boards) where dozens of animated canvases
+	// would be wasteful.
 
 	let {
 		id,
 		eager = false,
+		still = false,
+		palette = null,
 		accent = 'var(--dim)',
 		alt: altProp
-	}: { id: number; eager?: boolean; accent?: string; alt?: string } = $props();
+	}: {
+		id: number;
+		eager?: boolean;
+		still?: boolean;
+		palette?: string[] | null;
+		accent?: string;
+		alt?: string;
+	} = $props();
 
 	type Timing = { w: number; h: number; n: number; fps: number; durations: number[]; loop: boolean };
 
 	const name = $derived(charName(id));
 	const alt = $derived(altProp ?? name);
+	const skinned = $derived(isCustomPalette(id, palette));
 
 	let host = $state<HTMLElement | null>(null);
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let staticFailed = $state(false); // static portrait 404 → abbreviation
-	let anim = $state<{ img: HTMLImageElement; t: Timing } | null>(null); // loaded animation
+	let anim = $state<{ img: CanvasImageSource; t: Timing } | null>(null); // loaded (maybe remapped) animation
+	let tintedSrc = $state<string | null>(null); // remapped static portrait, as a data URL
 	let visible = $state(false); // in/near viewport (gates the animation fetch); eager → true at once
 
-	// reset when the char id changes (MyMatch keys chips by slot index, so a chip's id can change
-	// in place without a remount) — drop the old animation + failure state so the new id reloads.
-	let prevId = $state<number | undefined>(undefined);
+	// reset when the char id or palette changes (MyMatch keys chips by slot index, so a chip's id can
+	// change in place without a remount) — drop the old art + failure state so the new look reloads.
+	let prevKey = $state('');
 	$effect(() => {
-		if (prevId !== id) {
-			prevId = id;
+		const key = `${id}|${skinned ? (palette ?? []).join(',') : ''}`;
+		if (prevKey !== key) {
+			prevKey = key;
 			anim = null;
+			tintedSrc = null;
 			staticFailed = false;
 		}
 	});
@@ -63,12 +83,33 @@
 		return () => io.disconnect();
 	});
 
-	// load the animation assets once visible (never under prefers-reduced-motion or after a static
-	// 404 — those stay on the portrait / abbreviation). Failure is silent: we just don't upgrade.
+	// custom skin on the static portrait: remap once (module-cached), swap in as a data URL. The stock
+	// portrait stays on screen until the remap lands, so a slow first remap never blanks the chip.
 	$effect(() => {
-		if (!visible || staticFailed) return;
+		if (!skinned || !visible || staticFailed) return;
+		const cid = id;
+		const pal = (palette ?? []).slice();
+		let cancelled = false;
+		void remappedImage(`${base}/chars/${cid}.webp`, cid, pal).then((cv) => {
+			if (cancelled || cid !== id || !cv) return;
+			try {
+				tintedSrc = cv.toDataURL();
+			} catch {
+				/* stock look survives */
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// load the animation assets once visible (never in `still` mode, under prefers-reduced-motion, or
+	// after a static 404 — those stay on the portrait / abbreviation). Failure is silent: no upgrade.
+	$effect(() => {
+		if (still || !visible || staticFailed) return;
 		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
 		const cid = id;
+		const pal = skinned ? (palette ?? []).slice() : null;
 		let cancelled = false;
 		(async () => {
 			try {
@@ -78,14 +119,33 @@
 				if (!res.ok) return;
 				const t = (await res.json()) as Timing;
 				if (!t || !t.n || !Array.isArray(t.durations)) return;
-				const img = new Image();
-				img.decoding = 'async';
-				await new Promise<void>((resolve, reject) => {
-					img.onload = () => resolve();
-					img.onerror = () => reject(new Error('sheet load failed'));
-					img.src = `${base}/chars-anim/${cid}.webp`;
-				});
-				if (!cancelled && cid === id) anim = { img, t };
+				const url = `${base}/chars-anim/${cid}.webp`;
+				let src: CanvasImageSource;
+				if (pal) {
+					// remap the WHOLE strip once — the player then draws frames from the recolored atlas
+					const cv = await remappedImage(url, cid, pal);
+					if (cv) src = cv;
+					else {
+						const img = new Image();
+						img.decoding = 'async';
+						await new Promise<void>((resolve, reject) => {
+							img.onload = () => resolve();
+							img.onerror = () => reject(new Error('sheet load failed'));
+							img.src = url;
+						});
+						src = img;
+					}
+				} else {
+					const img = new Image();
+					img.decoding = 'async';
+					await new Promise<void>((resolve, reject) => {
+						img.onload = () => resolve();
+						img.onerror = () => reject(new Error('sheet load failed'));
+						img.src = url;
+					});
+					src = img;
+				}
+				if (!cancelled && cid === id) anim = { img: src, t };
 			} catch {
 				/* stay on the static portrait */
 			}
@@ -154,7 +214,7 @@
 	{:else}
 		<img
 			class="spr"
-			src="{base}/chars/{id}.webp"
+			src={tintedSrc ?? `${base}/chars/${id}.webp`}
 			{alt}
 			draggable="false"
 			loading={eager ? 'eager' : 'lazy'}
@@ -165,6 +225,7 @@
 
 <style>
 	.cs {
+		position: relative; /* the sprite pins to this box — see .spr */
 		display: grid;
 		place-items: center;
 		width: 100%;
@@ -172,7 +233,12 @@
 		min-width: 0;
 		min-height: 0;
 	}
+	/* absolutely pinned to the host box: percentage heights on replaced grid items silently lose to the
+	   image's natural aspect (measured: a 38px box rendering its img at 38×52), so the sprite takes the
+	   box via inset instead — object-fit does the containing. */
 	.spr {
+		position: absolute;
+		inset: 0;
 		width: 100%;
 		height: 100%;
 		object-fit: contain;

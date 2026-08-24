@@ -4,6 +4,7 @@
 	import CharSprite from './CharSprite.svelte';
 	import { charTag } from '$lib/chars';
 	import { rankOf, RANK_TIERS } from '$lib/ranks';
+	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import { base } from '$app/paths';
 
 	// 🧾 THE TAPE — the one way a ranked set displays, everywhere. Renders GET /rr/session?id=<session_id>
@@ -125,6 +126,12 @@
 		l: games.length ? teamOf(games[0], left?.steamid ?? '') : [],
 		r: games.length ? teamOf(games[0], right?.steamid ?? '') : []
 	}));
+
+	// CUSTOM SKINS: each fighter renders in its OWNER's colors — the player's /skins loadout, fetched by
+	// steamid (own = live today; opponents' arrive when the public loadout read ships server-side; until
+	// then they stay stock, gracefully). null while loading → CharSprite paints stock, repaints on arrival.
+	const lLoadout = $derived(loadouts.of(left?.steamid));
+	const rLoadout = $derived(loadouts.of(right?.steamid));
 
 	// Per game: BOTH teams as char-id triples, plus whether each side changed from the previous game — an
 	// unchanged team prints dimmed, a counter-pick comes up to full strength the moment it happens.
@@ -249,11 +256,11 @@
 		{#if squads.l.length || squads.r.length}
 			<div class="cmp sq-row">
 				<span class="sq">
-					{#each squads.l as id, i (i)}<span class="sbox"><CharSprite {id} eager={i === 0} /></span>{/each}
+					{#each squads.l as id, i (i)}<span class="sbox"><CharSprite {id} eager={i === 0} palette={lLoadout?.[id] ?? null} /></span>{/each}
 				</span>
 				<span class="mid">TEAM</span>
 				<span class="sq r">
-					{#each squads.r as id, i (i)}<span class="sbox"><CharSprite {id} eager={i === 0} /></span>{/each}
+					{#each squads.r as id, i (i)}<span class="sbox"><CharSprite {id} eager={i === 0} palette={rLoadout?.[id] ?? null} /></span>{/each}
 				</span>
 			</div>
 		{/if}
@@ -275,7 +282,11 @@
 
 	<!-- ── the games plate: one line per game — time · result · matchup, nothing else ── -->
 	<div class="plate">
-		<div class="phd"><span>GAMES</span><span class="hd">THEM vs YOU</span></div>
+		<div class="phd">
+			<span>GAMES</span>
+			<!-- discoverability: fighters wear their owners' custom skins — tell people it's a thing -->
+			<a class="skhint" href="{base}/skins" title="Fighters wear their owners' custom skins — set yours in Skins">ⓘ CUSTOM SKINS ON · SET YOURS</a>
+		</div>
 		{#each games as g, i (g.match_index ?? i)}
 			{@const won = g.winner === (me ?? right?.steamid)}
 			{@const rw = rows[i]}
@@ -288,8 +299,8 @@
 				<span class="gi"><b>{pad((g.match_index ?? i) + 1)}</b><i>{hhmm(g.ts)}</i></span>
 				<span class="tm them" class:changed={rw?.theirsNew}>
 					{#each rw?.theirs ?? [] as id, k (k)}
-						<span class="cs" title={charTag(id)}>
-							<img class="ci" src="{base}/chars/{id}.webp" alt={charTag(id)} loading="lazy" />
+						<span class="chip" title={charTag(id)}>
+							<CharSprite {id} still palette={lLoadout?.[id] ?? null} alt={charTag(id)} />
 							{#if ASSIST[aThem[k]]}<i class="as">{ASSIST[aThem[k]]}</i>{/if}
 						</span>
 					{/each}
@@ -297,8 +308,8 @@
 				<span class="x">VS</span>
 				<span class="tm" class:changed={rw?.mineNew}>
 					{#each rw?.mine ?? [] as id, k (k)}
-						<span class="cs" title={charTag(id)}>
-							<img class="ci" src="{base}/chars/{id}.webp" alt={charTag(id)} loading="lazy" />
+						<span class="chip" title={charTag(id)}>
+							<CharSprite {id} still palette={rLoadout?.[id] ?? null} alt={charTag(id)} />
 							{#if ASSIST[aMine[k]]}<i class="as">{ASSIST[aMine[k]]}</i>{/if}
 						</span>
 					{/each}
@@ -525,10 +536,21 @@
 	.phd {
 		display: flex;
 		justify-content: space-between;
+		align-items: baseline;
 		font-size: 8.5px;
 		letter-spacing: 0.17em;
 		color: var(--faint);
 		margin-bottom: 5px;
+	}
+	.skhint {
+		font-size: 8px;
+		letter-spacing: 0.12em;
+		color: var(--faint);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.skhint:hover {
+		color: var(--gold);
 	}
 	.g {
 		display: grid;
@@ -573,22 +595,14 @@
 		justify-content: flex-end; /* both teams close on the center VS, like the versus screen */
 	}
 	/* sprite chip + (future) assist badge. Unchanged teams sit slightly dimmed so a counter-pick pops. */
-	.cs {
+	.chip {
 		position: relative;
 		display: block;
 		width: 38px;
 		height: 38px;
-	}
-	.ci {
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-		object-position: bottom;
-		image-rendering: pixelated;
-		display: block;
 		opacity: 0.82;
 	}
-	.tm.changed .ci {
+	.tm.changed .chip {
 		opacity: 1;
 		filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ink) 40%, transparent));
 	}
@@ -651,7 +665,7 @@
 		.g {
 			grid-template-columns: 32px 1fr 30px 1fr 52px;
 		}
-		.cs {
+		.chip {
 			width: 30px;
 			height: 30px;
 		}
