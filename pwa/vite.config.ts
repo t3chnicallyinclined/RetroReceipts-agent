@@ -51,9 +51,29 @@ export default defineConfig({
 				navigateFallback: SCOPE,
 				runtimeCaching: [
 					{
-						// NetworkFirst for API GETs; NEVER the SSE stream (/rt/) — that must stay live.
-						// Prefix is /rr/ post-rename; also match the legacy /skinsync/ so a client that has not
-						// yet re-cached the new shell still caches correctly during the drain window.
+						// SSOT sweep fix (2026-08-24): LIVE endpoints get a 60s fallback ceiling. Under the old
+						// single rule, any response >5s on a bad connection silently served a SIX-HOUR-old
+						// leaderboard/presence/wager body as if live. The in-memory stores already keep-last-good,
+						// so a long-lived SW fallback for these buys nothing online. Rule order matters: first
+						// match wins, so this must precede the general /rr/ rule.
+						urlPattern: ({ url, request }) =>
+							/^\/(?:rr|skinsync)\/(?:leaderboard|presence|notifications|coins|wager|challenges|matches)/.test(
+								url.pathname
+							) &&
+							!url.pathname.includes('/rt/') &&
+							request.method === 'GET',
+						handler: 'NetworkFirst',
+						options: {
+							cacheName: 'rr-api-live',
+							networkTimeoutSeconds: 5,
+							expiration: { maxEntries: 32, maxAgeSeconds: 60 },
+							cacheableResponse: { statuses: [0, 200] }
+						}
+					},
+					{
+						// NetworkFirst for the remaining API GETs; NEVER the SSE stream (/rt/) — that must stay
+						// live. Prefix is /rr/ post-rename; also match the legacy /skinsync/ so a client that has
+						// not yet re-cached the new shell still caches correctly during the drain window.
 						urlPattern: ({ url, request }) =>
 							(url.pathname.startsWith('/rr/') || url.pathname.startsWith('/skinsync/')) &&
 							!url.pathname.includes('/rt/') &&

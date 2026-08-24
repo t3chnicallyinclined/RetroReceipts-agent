@@ -80,10 +80,12 @@ class AnnounceStore {
 		return list.filter((a) => !this.#seen.includes(a.id) && (a.expires === 0 || a.expires > now));
 	}
 
-	/** Replace the set from a poll (`/rr/notifications` announcements[]). */
+	/** Merge the poll set (`/rr/notifications` announcements[]) — UNION by id, never replace: a live SSE
+	 *  broadcast the auth-only poll payload doesn't carry must survive the next poll tick. */
 	setAll(raw: unknown): void {
 		this.#boot();
 		const list = Array.isArray(raw) ? raw.map(normalize).filter((a): a is Announcement => !!a) : [];
+		for (const cur of this.items) if (!list.some((a) => a.id === cur.id)) list.push(cur);
 		this.items = this.#visible(list);
 	}
 

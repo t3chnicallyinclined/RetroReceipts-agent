@@ -1,4 +1,4 @@
-import { apiGet } from '$lib/net.svelte';
+import { apiGet, invalidate } from '$lib/net.svelte';
 import { getChannel } from '$lib/rt.svelte';
 import { auth } from '$lib/stores/auth.svelte';
 import type { SseFrame } from '$lib/types';
@@ -179,11 +179,14 @@ export class ProfileStore {
 			const opp = players.find((x) => x !== sid) ?? '';
 			const opp_name = (d.names && d.names[opp]) || 'opponent';
 			this.data = { ...cur, current_match: { opp, opp_name } };
-		} else if (
-			(type === 'match_end' && players.includes(sid)) ||
-			(type === 'match_result' && (String(d.winner) === sid || String(d.loser) === sid))
-		) {
+		} else if (type === 'match_end' && players.includes(sid)) {
 			if (cur.current_match) this.data = { ...cur, current_match: null };
+		} else if (type === 'match_result' && (String(d.winner) === sid || String(d.loser) === sid)) {
+			// SSOT sweep fix: a result changes the viewed player's rating/record/recent — reload the whole
+			// card, don't just clear the banner (the page used to freeze until tab-hide or nav).
+			if (cur.current_match) this.data = { ...cur, current_match: null };
+			invalidate('/rr/profile');
+			void this.load(sid);
 		}
 	}
 }

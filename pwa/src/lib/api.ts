@@ -1,4 +1,4 @@
-import { api } from './config';
+import { apiGet } from './net.svelte';
 import type { LeaderboardResponse, LeaderboardTab, LeaderboardPeriod } from './types';
 import type { LeaderboardScope } from './boards';
 
@@ -19,11 +19,12 @@ export async function fetchLeaderboard(
 	limit = 50,
 	signal?: AbortSignal
 ): Promise<ScopedLeaderboardResponse> {
-	const url = api(
+	// SSOT sweep fix: through apiGet, so the board shares the dedup layer and — critically — the
+	// app-wide invalidate('/rr/leaderboard') on match_result actually clears something (it was a dead
+	// no-op against a raw fetch). `signal` is accepted for API compatibility but unused: in-flight
+	// dedup makes an abort race harmless and the store already guards with a request id.
+	void signal;
+	return apiGet<ScopedLeaderboardResponse>(
 		`/rr/leaderboard?tab=${encodeURIComponent(tab)}&period=${encodeURIComponent(period)}&scope=${encodeURIComponent(scope)}&limit=${limit}`
 	);
-	const res = await fetch(url, { signal, headers: { accept: 'application/json' } });
-	if (!res.ok) throw new Error(`leaderboard ${res.status}`);
-	const json = (await res.json()) as ScopedLeaderboardResponse;
-	return json;
 }
