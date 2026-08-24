@@ -11,6 +11,7 @@
 // Results (including misses) cache for the session; a loadout changes rarely and repainting mid-session
 // is not worth per-render fetches. `refresh()` drops one player after their picker saves.
 import { apiGet } from '$lib/net.svelte';
+import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
 
 export type Loadout = Record<number, string[]>;
@@ -105,6 +106,48 @@ class LoadoutStore {
 			} finally {
 				chunk.forEach((s) => this.#pending.delete(s));
 			}
+		}
+	}
+
+	/** Equip a palette on one of MY characters — THE write path for "wearing" (locker/rack/editor all
+	 *  call this; the agent picks it up on its next loadout poll and paints it live in-game). */
+	async equipOwn(cid: number, palette: string[]): Promise<boolean> {
+		if (!auth.authed || !auth.steamid) return false;
+		try {
+			const colors = palette.slice(0, 16).map((h) => {
+				const v = parseInt(h.replace('#', ''), 16);
+				return v & 0xffffff;
+			});
+			const res = await fetch(api('/rr/loadout'), {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...auth.headers() },
+				body: JSON.stringify({ cid, colors })
+			});
+			if (res.ok) {
+				this.refresh(auth.steamid);
+				void this.#fetch(auth.steamid);
+			}
+			return res.ok;
+		} catch {
+			return false;
+		}
+	}
+
+	/** Reset one of MY characters to stock. */
+	async resetOwn(cid: number): Promise<boolean> {
+		if (!auth.authed || !auth.steamid) return false;
+		try {
+			const res = await fetch(api(`/rr/loadout?cid=${cid}`), {
+				method: 'DELETE',
+				headers: { ...auth.headers() }
+			});
+			if (res.ok) {
+				this.refresh(auth.steamid);
+				void this.#fetch(auth.steamid);
+			}
+			return res.ok;
+		} catch {
+			return false;
 		}
 	}
 
