@@ -48,8 +48,24 @@
 		users?: FleetUser[];
 	}
 
+	interface BugReport {
+		id: string;
+		steamid?: string;
+		name?: string;
+		ts?: number;
+		os?: string;
+		version?: string;
+		text?: string;
+		log_bytes?: number;
+		/** stringified JSON status snapshot (agent 0.3.15+; server stores it verbatim) */
+		meta?: string;
+	}
+
 	let stats = $state<AdminStats | null>(null);
 	let fleet = $state<AdminVersions | null>(null);
+	let reports = $state<BugReport[]>([]);
+	let openReport = $state<string | null>(null); // expanded report id
+	let logText = $state<Record<string, string>>({}); // fetched log bodies by report id
 	let loading = $state(false);
 	let forbidden = $state(false); // server said 403 despite the client gate → treat as not authorized
 	let err = $state<string | null>(null);
@@ -102,11 +118,81 @@
 		}
 	}
 
+	async function loadReports(): Promise<void> {
+		if (!auth.me?.admin) return;
+		try {
+			const res = await fetch(api('/rr/bugreports'), {
+				headers: { accept: 'application/json', ...auth.headers() }
+			});
+			if (res.status === 403) {
+				forbidden = true;
+				return;
+			}
+			if (!res.ok) throw new Error(`bugreports ${res.status}`);
+			const d = (await res.json()) as { reports?: BugReport[] };
+			reports = d.reports ?? [];
+		} catch (e) {
+			err = e instanceof Error ? e.message : 'error'; // keep-last-good
+		}
+	}
+
+	// Fetch one report's log text (admin route; decompressed server-side). Cached per id for the visit.
+	async function loadLog(id: string): Promise<void> {
+		if (logText[id] != null) return;
+		logText = { ...logText, [id]: '…loading' };
+		try {
+			const res = await fetch(api(`/rr/bugreport_log?id=${encodeURIComponent(id)}`), {
+				headers: { ...auth.headers() }
+			});
+			if (res.status === 404) {
+				logText = { ...logText, [id]: '(log fetch route not deployed yet — logs are on the server under bugreports/)' };
+				return;
+			}
+			if (!res.ok) throw new Error(`${res.status}`);
+			logText = { ...logText, [id]: await res.text() };
+		} catch (e) {
+			logText = { ...logText, [id]: `couldn't load the log (${e instanceof Error ? e.message : 'error'})` };
+		}
+	}
+
+	function toggleReport(id: string): void {
+		openReport = openReport === id ? null : id;
+		if (openReport) void loadLog(id);
+	}
+
+	/** the meta snapshot is a JSON *string* — parse defensively, show the facts that matter first */
+	function metaChips(m?: string): [string, string][] {
+		if (!m) return [];
+		try {
+			const o = JSON.parse(m) as Record<string, unknown>;
+			const out: [string, string][] = [];
+			const put = (k: string, label: string, fmt?: (v: unknown) => string) => {
+				if (o[k] === undefined) return;
+				out.push([label, fmt ? fmt(o[k]) : String(o[k])]);
+			};
+			put('uptime_s', 'uptime', (v) => uptimeLabel(Number(v) * 1000));
+			put('state', 'state');
+			put('game_running', 'game', (v) => (v ? 'running' : 'not running'));
+			put('ram_mb', 'ram', (v) => `${Math.round(Number(v) / 1024)} GB`);
+			put('host_mode', 'host', (v) => (v ? 'ON' : 'off'));
+			put('degraded', 'reader', (v) => (v ? '⚠ degraded' : 'ok'));
+			put('paused', 'reporting', (v) => (v ? 'paused' : 'on'));
+			return out;
+		} catch {
+			return [];
+		}
+	}
+
+	function kb(n?: number): string {
+		const v = Number(n) || 0;
+		return v >= 1024 ? `${(v / 1024).toFixed(0)} KB` : `${v} B`;
+	}
+
 	async function refresh(): Promise<void> {
 		if (!isAdmin || loading) return;
 		loading = true;
 		err = null;
-		await Promise.all([loadStats(), loadFleet()]);
+		await Promise.all([loadStats(), loadFleet(), loadReports()]);
 		loading = false;
 	}
 
@@ -266,6 +352,41 @@
 		</div>
 	</div>
 
+	<!-- ── Bug reports (tray "Send a bug report" / --bugreport) — meta list from GET /rr/bugreports;
+	     tap a row to expand its status snapshot + the log text (fetched on demand, cached per visit) ── -->
+	<div class="rail sec-hd">Bug reports ({reports.length})</div>
+	{#if reports.length}
+		<div class="brlist">
+			{#each reports as r (r.id)}
+				<div class="br" class:open={openReport === r.id}>
+					<button class="brhead" onclick={() => toggleReport(r.id)} aria-expanded={openReport === r.id}>
+						<span class="brwho">
+							<a href="{base}/u/{r.steamid}" class="ulink" onclick={(e) => e.stopPropagation()}>{r.name || r.steamid || '?'}</a>
+							<span class="brts">{timeAgo(r.ts) || '—'}</span>
+						</span>
+						<span class="brnote">{r.text || '(no note)'}</span>
+						<span class="brmeta mono">v{r.version || '?'} · {kb(r.log_bytes)} logs <i class="chev">{openReport === r.id ? '▾' : '▸'}</i></span>
+					</button>
+					{#if openReport === r.id}
+						<div class="brbody">
+							<div class="bros mono">{r.os || 'unknown system'}</div>
+							{#if metaChips(r.meta).length}
+								<div class="brchips">
+									{#each metaChips(r.meta) as [k, v] (k)}
+										<span class="brchip"><i>{k}</i> {v}</span>
+									{/each}
+								</div>
+							{/if}
+							<pre class="brlog">{logText[r.id] ?? '…'}</pre>
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<div class="empty">No bug reports yet — they arrive from the tray's “Send a bug report”.</div>
+	{/if}
+
 	<!-- user table — scrolls inside its own container, never the page -->
 	<div class="rail sec-hd">Users ({users.length})</div>
 	{#if users.length}
@@ -309,6 +430,116 @@
 {/if}
 
 <style>
+	/* ── bug reports ── */
+	.brlist {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.br {
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		overflow: hidden;
+	}
+	.br.open {
+		border-color: color-mix(in srgb, var(--gold) 35%, var(--line));
+	}
+	.brhead {
+		display: grid;
+		grid-template-columns: minmax(140px, auto) minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 12px;
+		width: 100%;
+		padding: 10px 12px;
+		font: inherit;
+		color: inherit;
+		background: transparent;
+		border: 0;
+		cursor: pointer;
+		text-align: left;
+	}
+	.brwho {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+	.brts {
+		font-family: ui-monospace, monospace;
+		font-size: 10px;
+		color: var(--faint);
+	}
+	.brnote {
+		font-size: 12.5px;
+		color: var(--dim);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.brmeta {
+		font-size: 11px;
+		color: var(--dim);
+		white-space: nowrap;
+	}
+	.brmeta .chev {
+		font-style: normal;
+		color: var(--faint);
+		margin-left: 4px;
+	}
+	.brbody {
+		border-top: 1px dashed var(--line);
+		padding: 10px 12px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.bros {
+		font-size: 11px;
+		color: var(--dim);
+	}
+	.brchips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.brchip {
+		font-family: ui-monospace, monospace;
+		font-size: 10.5px;
+		padding: 2px 8px;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--ink);
+	}
+	.brchip i {
+		font-style: normal;
+		color: var(--faint);
+		margin-right: 4px;
+	}
+	.brlog {
+		margin: 0;
+		max-height: 420px;
+		overflow: auto;
+		font-family: ui-monospace, monospace;
+		font-size: 10.5px;
+		line-height: 1.45;
+		white-space: pre-wrap;
+		word-break: break-word;
+		background: var(--panel-2);
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		padding: 10px;
+		color: var(--dim);
+	}
+	@media (max-width: 640px) {
+		.brhead {
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.brnote {
+			display: none;
+		}
+	}
+
 	.mast {
 		padding: 14px 4px 8px;
 	}
