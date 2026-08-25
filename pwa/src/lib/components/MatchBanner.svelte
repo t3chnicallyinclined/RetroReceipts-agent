@@ -249,10 +249,12 @@
 	.chev {
 		color: var(--faint);
 	}
-	/* mobile: fold at the VS axis — explicit grid areas; zone order preserved, never re-laid-out */
+	/* mobile: fold at the VS axis — explicit grid areas; zone order preserved, never re-laid-out.
+	   Steam names run to 32 chars — the name budget targets 20+ visible, so the avatar (usually a
+	   placeholder circle on feeds) yields its width and the meta rail tightens. */
 	@media (max-width: 640px) {
 		.mb {
-			grid-template-columns: 20px minmax(0, 1fr) 84px;
+			grid-template-columns: 20px minmax(0, 1fr) 76px;
 			grid-template-areas:
 				'ca sa meta'
 				'cb sb meta';
@@ -265,6 +267,9 @@
 			width: 18px;
 			height: 18px;
 			font-size: 10px;
+		}
+		.side :global(.av) {
+			display: none;
 		}
 		.ca {
 			grid-area: ca;
@@ -282,8 +287,8 @@
 			grid-area: meta;
 		}
 		.chip {
-			width: 36px;
-			height: 36px;
+			width: 34px;
+			height: 34px;
 		}
 	}
 </style>
