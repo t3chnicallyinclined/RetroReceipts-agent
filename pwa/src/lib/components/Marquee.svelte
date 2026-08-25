@@ -3,6 +3,8 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { wager } from '$lib/stores/wager.svelte';
 	import Avatar from './Avatar.svelte';
+	import Flag from './Flag.svelte';
+	import { apiGet } from '$lib/net.svelte';
 
 	// THE ARCADE — the open-challenge floor (WAGER-MATCH-SPEC): every quarter that's up for anyone to
 	// attempt, each an open cabinet. Reads wager.open (public, live off the `matches` channel). Signed-in → ⚔ Attempt matches the
@@ -13,6 +15,19 @@
 	const is17 = (sid: string) => /^\d{17}$/.test(sid);
 	const nameFor = (w: { challenger: string; challenger_name?: string }) =>
 		w.challenger_name || (w.challenger ? `…${w.challenger.slice(-5)}` : 'Player');
+
+	// real identities on the arcade floor — the audit found every row showed the placeholder because no
+	// avatar URL was ever passed. Resolve avatar+flag per unique challenger through the dedup layer.
+	let idm = $state<Record<string, { avatar?: string; cc?: string }>>({});
+	$effect(() => {
+		const ids = [...new Set(rows.map((w) => w.challenger).filter((x) => is17(x)))];
+		for (const id of ids) {
+			if (idm[id]) continue;
+			void apiGet<{ avatar?: string; cc?: string }>(`/rr/profile?steamid=${id}`, { ttl: 60_000 })
+				.then((j) => (idm = { ...idm, [id]: { avatar: j?.avatar, cc: j?.cc } }))
+				.catch(() => (idm = { ...idm, [id]: {} }));
+		}
+	});
 
 	let acting = $state('');
 	let notice = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
@@ -61,7 +76,8 @@
 				{@const mine = w.challenger === me}
 				<div class="mq" class:me={mine}>
 					<span class="who">
-						<Avatar size={24} alt={nm} />
+						<Avatar url={idm[w.challenger]?.avatar} size={24} alt={nm} />
+						{#if idm[w.challenger]?.cc}<Flag cc={idm[w.challenger]?.cc ?? ''} w={13} />{/if}
 						{#if is17(w.challenger)}
 							<a class="nm" href="{base}/u/{w.challenger}" title={nm}>{nm}</a>
 						{:else}
@@ -69,7 +85,7 @@
 						{/if}
 					</span>
 					<span class="stake" title="pot 🪙 {w.pot ?? w.stake * 2}">
-						🪙 {w.stake}<i>·</i>FT{w.ft ?? 2}<i>·</i><span class="pot">pot 🪙 {w.pot ?? w.stake * 2}</span>
+						🪙 {w.stake}<i>·</i>FT{w.ft ?? 3}<i>·</i><span class="pot">pot 🪙 {w.pot ?? w.stake * 2}</span>
 					</span>
 					{#if mine}
 						<button type="button" class="btn ghost" disabled={acting === w.id} onclick={() => cancel(w.id)}

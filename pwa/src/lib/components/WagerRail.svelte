@@ -55,7 +55,7 @@
 		if (acting || !w) return;
 		acting = true;
 		notice = null;
-		const r = await wager.offer({ stake: w.stake, ft: w.ft ?? 2 });
+		const r = await wager.offer({ stake: w.stake, ft: w.ft ?? 3 });
 		acting = false;
 		if (!r.ok) notice = { kind: 'err', text: r.error ?? 'Could not re-offer.' };
 	}
@@ -99,7 +99,7 @@
 			<!-- my quarter is up, waiting for a taker -->
 			<div class="body">
 				<span class="line"
-					>🪙 {w.stake} in the arcade · FT{w.ft ?? 2} for the pot —
+					>🪙 {w.stake} in the arcade · FT{w.ft ?? 3} for the pot —
 					{#if cabinet}<span class="secured">🎮 cabinet secured</span> · {/if}<span class="dim">waiting for a taker…</span></span
 				>
 				<div class="acts">
@@ -138,7 +138,7 @@
 					<span class="line"
 						>🪙 {pot} in the machine — <b>{w.challenger_name || '?'}</b>
 						<span class="score">{w.cw ?? 0}–{w.aw ?? 0}</span> <b>{w.acceptor_name || '?'}</b> · next game
-						decides it (FT{w.ft ?? 2}).</span
+						decides it (FT{w.ft ?? 3}).</span
 					>
 				{/if}
 				{#if cabinet}

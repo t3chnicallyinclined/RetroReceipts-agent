@@ -130,6 +130,18 @@ export type HostStatus = 'match' | 'standby' | 'available' | 'idle';
  *   • standby   — a player has joined and is waiting for a match (players ≥ 1, i.e. members > 1)
  *   • available — the host is refereeing an empty lobby, open for a money match (players === 0)
  */
+// ── ONE cabinet-status vocabulary (card-system step 6). Both the public floor (HostCard/HostBanner)
+// and the TO console read THESE words + colors — the audit found two parallel status functions whose
+// labels drifted ("Match live" vs "IN MATCH"). Add states here, never locally.
+export const HOST_STATUS_META: Record<string, { label: string; cls: string; accent: string }> = {
+	match: { label: 'Match live', cls: 'live', accent: 'var(--live)' },
+	standby: { label: 'Challenger in', cls: 'gold', accent: 'var(--gold)' },
+	available: { label: 'Open', cls: 'good', accent: 'var(--good)' },
+	hosting: { label: 'Hosting', cls: 'good', accent: 'var(--good)' },
+	idle: { label: 'Starting', cls: 'idle', accent: 'var(--faint)' },
+	offline: { label: 'Offline', cls: 'off', accent: 'var(--faint)' }
+};
+
 export function hostStatus(h: Host): HostStatus {
 	if (h.active === 1) return 'match';
 	if (!h.join) return 'idle';

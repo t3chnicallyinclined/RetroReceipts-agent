@@ -229,3 +229,21 @@ export function mdToSafeHtml(src?: string): string {
 	}
 	return out.join('\n');
 }
+
+// ── ONE bracket-match state-chip taxonomy (card-system step 7). The public event page and the TO
+// console each carried their own copy (stateChip vs runChip) — the guaranteed-drift surface the audit
+// flagged. `strict` = console mode: unknown/void states get explicit chips instead of null.
+export function bracketChip(
+	state: string | undefined,
+	score: string | undefined,
+	strict = false
+): { label: string; cls: string } | null {
+	const s = String(state ?? '').toLowerCase();
+	if (s === 'live') return { label: 'LIVE', cls: 'live' };
+	if (s === 'ready') return { label: 'READY', cls: 'ready' };
+	if (s === 'done') return { label: score || 'DONE', cls: 'done' };
+	if (s === 'bye') return { label: 'BYE', cls: 'muted' };
+	if (!strict) return null;
+	if (s === 'void') return { label: 'VOID', cls: 'muted' };
+	return { label: 'PENDING', cls: 'muted' };
+}

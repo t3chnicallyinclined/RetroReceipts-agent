@@ -6,6 +6,10 @@
 	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import { statValue, MAST } from '$lib/boards';
 	import Flag from '$lib/components/Flag.svelte';
+	import CharSprite from './CharSprite.svelte';
+	import ChallengeButton from './ChallengeButton.svelte';
+	import { charTag } from '$lib/chars';
+	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import type { Player, LeaderboardTab } from '$lib/types';
 
 	let {
@@ -19,6 +23,9 @@
 	// Scoped podiums (Lobby/Tournament) carry no rating → no tier badge and a neutral plate accent.
 	const acc = $derived(scoped ? RK_PLATE.civilian : (RK_PLATE[r.s] ?? RK_PLATE.civilian));
 	const crown = $derived(place === 1);
+	// the podium is the shop window: the top three stand WITH their most-played squads, worn skins on
+	const team = $derived(Array.isArray(player.top_team) ? player.top_team.slice(0, 3) : []);
+	const lo = $derived(team.length ? loadouts.peek(player.steamid) : null);
 </script>
 
 <div
@@ -42,8 +49,16 @@
 			<span class="rk-{r.s}" use:rankTitle={r.s}>{r.n}</span>
 		</span>
 	{/if}
+	{#if team.length}
+		<span class="squad" class:crown>
+			{#each team as id, i (i)}<span class="sq" title={charTag(id)}><CharSprite {id} still palette={lo?.[id] ?? null} alt={charTag(id)} /></span>{/each}
+		</span>
+	{/if}
 	<b class="prt">{statValue(player, tab)}</b>
 	<span class="pwl">{player.wins ?? 0}W · {player.losses ?? 0}L · {winrateOf(player)}%</span>
+	{#if player.steamid}
+		<span class="chall"><ChallengeButton steamid={player.steamid} name={player.name || 'this player'} compact /></span>
+	{/if}
 </div>
 
 <style>
@@ -76,6 +91,25 @@
 		border-left-color: var(--pa, var(--gold));
 		box-shadow: 0 0 24px rgba(232, 185, 60, 0.08);
 		padding-top: 18px;
+	}
+	.squad {
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 4px;
+		margin: 2px 0;
+	}
+	.squad .sq {
+		display: block;
+		width: 44px;
+		height: 44px;
+	}
+	.squad.crown .sq {
+		width: 56px;
+		height: 56px;
+	}
+	.chall {
+		margin-top: 4px;
 	}
 	.mark {
 		font-weight: 800;

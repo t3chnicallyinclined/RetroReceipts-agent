@@ -8,7 +8,7 @@
 	import { whenLabel } from '$lib/format';
 	import Flag from '$lib/components/Flag.svelte';
 	import { teamAbbr, CHAR_NAME } from '$lib/chars';
-	import {
+	import { bracketChip,
 		statusMeta,
 		formatLabel,
 		ftLabel,
@@ -18,7 +18,7 @@
 		shortId,
 		type BracketMatch,
 		type Registration
-	} from '$lib/tourney';
+	 } from '$lib/tourney';
 
 	const store = new TourneyStore();
 	const id = $derived(page.params.id ?? '');
@@ -108,14 +108,8 @@
 		return players[sid]?.name || shortId(sid);
 	}
 	// visible states only (pending seats show their provenance instead of a chip).
-	function stateChip(m: BracketMatch): { label: string; cls: string } | null {
-		const s = String(m?.state ?? '').toLowerCase();
-		if (s === 'live') return { label: 'LIVE', cls: 'live' };
-		if (s === 'ready') return { label: 'READY', cls: 'ready' };
-		if (s === 'done') return { label: m.score || 'DONE', cls: 'done' };
-		if (s === 'bye') return { label: 'BYE', cls: 'muted' };
-		return null;
-	}
+	// card-system step 7: one shared taxonomy — see bracketChip in lib/tourney.ts
+	const stateChip = (m: BracketMatch) => bracketChip(m?.state, m?.score);
 
 	const rulesHtml = $derived(mdToSafeHtml(doc?.rules_md));
 	const title = $derived(doc?.name || 'Tournament');

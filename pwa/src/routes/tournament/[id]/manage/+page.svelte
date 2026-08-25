@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { HOST_STATUS_META } from '$lib/stores/hosts.svelte';
 	// Tournament TO COMMAND-CENTER (Phase 2). Owner-gated build-the-field + launch surface, reusing the live
 	// TourneyStore (doc + SSE) so every panel reflects real-time deltas. Every write goes through auth.post
 	// (bearer = the acting SteamID server-side); every panel reads from store.doc — no cached/ad-hoc DOM, so a
@@ -13,7 +14,7 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Flag from '$lib/components/Flag.svelte';
 	import { teamAbbr } from '$lib/chars';
-	import { statusMeta, shortId, type Registration, type BracketMatch } from '$lib/tourney';
+	import { bracketChip, statusMeta, shortId, type Registration, type BracketMatch  } from '$lib/tourney';
 
 	// ── live store wiring (identical discipline to the detail route) ────────────────────────────────
 	const store = new TourneyStore();
@@ -123,11 +124,12 @@
 		const seen = h.last_seen_ms ?? 0;
 		return seen > 0 && now - seen < 45000; // HOST_ONLINE_MS
 	}
+	// card-system step 6: the console speaks the SAME status vocabulary as the public floor
 	function hostStat(h: TourneyHost): { label: string; cls: string } {
-		if (!isOnline(h)) return { label: 'OFFLINE', cls: 'off' };
-		if (h.active === 1) return { label: 'IN MATCH', cls: 'live' };
-		if (h.lobby_id) return { label: 'HOSTING', cls: 'good' };
-		return { label: 'ONLINE', cls: 'idle' };
+		if (!isOnline(h)) return { label: HOST_STATUS_META.offline.label.toUpperCase(), cls: 'off' };
+		if (h.active === 1) return { label: HOST_STATUS_META.match.label.toUpperCase(), cls: 'live' };
+		if (h.lobby_id) return { label: HOST_STATUS_META.hosting.label.toUpperCase(), cls: 'good' };
+		return { label: HOST_STATUS_META.idle.label.toUpperCase(), cls: 'idle' };
 	}
 	function assignedLabel(a?: string): string {
 		if (!a) return '';
@@ -254,22 +256,8 @@
 		const r = m?.round ?? 0;
 		return r ? `${pre}R${r}` : pre || '—';
 	}
-	function runChip(m: BracketMatch): { label: string; cls: string } {
-		switch (mstate(m)) {
-			case 'live':
-				return { label: 'LIVE', cls: 'live' };
-			case 'ready':
-				return { label: 'READY', cls: 'ready' };
-			case 'done':
-				return { label: m.score || 'DONE', cls: 'done' };
-			case 'bye':
-				return { label: 'BYE', cls: 'muted' };
-			case 'void':
-				return { label: 'VOID', cls: 'muted' };
-			default:
-				return { label: 'PENDING', cls: 'muted' };
-		}
-	}
+	// card-system step 7: one shared taxonomy — see bracketChip in lib/tourney.ts
+	const runChip = (m: BracketMatch) => bracketChip(mstate(m), m.score, true) ?? { label: 'PENDING', cls: 'muted' };
 
 	// The console match list: everything except structural bye/void, ordered live → ready → pending → done.
 	const runMatches = $derived(

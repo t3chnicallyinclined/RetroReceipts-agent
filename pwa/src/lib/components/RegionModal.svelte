@@ -353,15 +353,7 @@
 		margin: 0 2px;
 	}
 	/* tier colours (Marvel ladder) */
-	.rk-iron { color: #a7adb8; }
-	.rk-bronze { color: #d59a5f; }
-	.rk-silver { color: #cdd7e4; }
-	.rk-gold { color: #f2c74a; }
-	.rk-vibranium { color: #b98cff; }
-	.rk-adamantium { color: #9fd4ef; }
-	.rk-herald { color: #ffb35c; }
-	.rk-infinity { color: #ffe9b0; }
-	.rk-galactus { color: #ff7ae0; }
+	/* tier colors: global .rk-* palette (app.css) */
 	.rk-civilian { color: var(--dim); }
 
 	@media (max-width: 480px) {

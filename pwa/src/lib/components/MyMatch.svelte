@@ -363,17 +363,7 @@
 	.rec.first {
 		font-style: italic;
 	}
-	/* tier text colors (Marvel ladder) */
-	.rk-iron { color: #a7adb8; }
-	.rk-bronze { color: #d59a5f; }
-	.rk-silver { color: #cdd7e4; }
-	.rk-gold { color: #f2c74a; }
-	.rk-vibranium { color: #b98cff; }
-	.rk-adamantium { color: #9fd4ef; }
-	.rk-herald { color: #ffb35c; }
-	.rk-infinity { color: #ffe9b0; }
-	.rk-galactus { color: #ff7ae0; }
-	.rk-civilian { color: var(--dim); }
+	/* tier colors come from the global .rk-* palette (app.css) — no local copy */
 
 	/* center column */
 	.center {
@@ -427,17 +417,18 @@
 		text-transform: uppercase;
 		padding: 4px 10px;
 		border-radius: 999px;
-		color: var(--good);
-		border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line));
-		background: color-mix(in srgb, var(--good) 12%, var(--panel));
+		/* charter: a MATCH on air is the red broadcast — a PERSON online is green */
+		color: var(--live);
+		border: 1px solid color-mix(in srgb, var(--live) 45%, var(--line));
+		background: color-mix(in srgb, var(--live) 12%, var(--panel));
 		white-space: nowrap;
 	}
 	.livepill .dot {
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: var(--good);
-		box-shadow: 0 0 8px var(--good);
+		background: var(--live);
+		box-shadow: 0 0 8px var(--live);
 	}
 	@media (prefers-reduced-motion: no-preference) {
 		.livepill .dot {

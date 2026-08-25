@@ -3,7 +3,7 @@
 	import Avatar from './Avatar.svelte';
 	import QuarterUpModal from './QuarterUpModal.svelte';
 	import { timeAgo } from '$lib/format';
-	import { hostStatus, type Host, type HostStatus } from '$lib/stores/hosts.svelte';
+	import { hostStatus, type Host, type HostStatus , HOST_STATUS_META } from '$lib/stores/hosts.svelte';
 
 	// One node in the fleet map — a card carrying the host's identity, live status, lobby fill and a
 	// real Steam Join link. Shares the arena vocabulary (panel/pill/tokens); the status drives both the
@@ -43,10 +43,11 @@
 
 	// status → { label, pill-class, accent var } — one source for the pill + the accent edge + the dot.
 	const META: Record<HostStatus, { label: string; cls: string; accent: string }> = {
-		match: { label: 'Match live', cls: 'live', accent: 'var(--live)' },
-		standby: { label: 'Challenger in', cls: 'gold', accent: 'var(--gold)' },
-		available: { label: 'Open', cls: 'good', accent: 'var(--good)' },
-		idle: { label: 'Starting', cls: 'idle', accent: 'var(--faint)' }
+		// sourced from the shared vocabulary — do not fork labels here (HOST_STATUS_META is the SSOT)
+		match: HOST_STATUS_META.match,
+		standby: HOST_STATUS_META.standby,
+		available: HOST_STATUS_META.available,
+		idle: HOST_STATUS_META.idle
 	};
 	const meta = $derived(META[status]);
 
