@@ -8,7 +8,9 @@
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
-	import MatchRow from '$lib/components/MatchRow.svelte';
+	import MatchBanner from '$lib/components/MatchBanner.svelte';
+	import PlayerPlate from '$lib/components/PlayerPlate.svelte';
+	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import ChallengeButton from '$lib/components/ChallengeButton.svelte';
 	import RankProgress from '$lib/components/RankProgress.svelte';
 	import TeamBars from '$lib/components/TeamBars.svelte';
@@ -108,6 +110,17 @@
 	// ride the base profile (`teams`, most-played first).
 	const vs = $derived((sd?.vs?.length ? sd.vs : p?.vs) ?? []);
 	const teams = $derived(p?.teams ?? []);
+	// hero: the most-played team, worn large (card-system PlayerPlate hero density)
+	const heroTeam = $derived.by(() => {
+		const t = teams[0]?.team;
+		const ids = t ? String(t).split(',').map(Number).filter((n) => Number.isFinite(n)) : [];
+		return ids.length === 3 ? ids : null;
+	});
+	// custom skins for the hero squad + every banner's teams — one batched prime per profile view
+	$effect(() => {
+		const ids = [sid, ...recent.map((m) => m.opp_id ?? '')].filter(Boolean) as string[];
+		if (ids.length) void loadouts.prime(ids);
+	});
 	const hasRivalries = $derived(!!nemesis || !!victim || form.length > 0 || vs.length > 0);
 
 	// Opponent SteamID → name/flag/avatar map, harvested from everything the profile already resolved
@@ -143,14 +156,21 @@
 {:else if !found}
 	<div class="empty">No player found for that ID.</div>
 {:else}
-	<!-- Hero: avatar · name+flag+location · rank plate -->
+	<!-- Hero: PlayerPlate at hero density — identity + the preferred team standing large (card system) -->
 	<section class="hero" style="--pa:{acc[0]}; --pb:{acc[1]}">
 		<div class="id">
-			<Avatar url={p.avatar} size={64} alt={p.name} />
-			<div class="who">
-				<h1 class="nm">{#if p.cc}<span class="flag"><Flag cc={p.cc} w={20} /></span> {/if}{p.name || 'Player'}</h1>
-				{#if loc}<span class="loc">{loc}</span>{/if}
-			</div>
+			<PlayerPlate
+				steamid={sid}
+				name={p.name || 'Player'}
+				avatar={p.avatar}
+				cc={p.cc}
+				rating={rating}
+				games={gp}
+				team={heroTeam}
+				density="hero"
+				link={false}
+			/>
+			{#if loc}<span class="loc heroloc">{loc}</span>{/if}
 		</div>
 		<div class="rank">
 			<RankBadge rating={rating} games={gp} size={34} />
@@ -180,16 +200,16 @@
 
 	<!-- Stat tiles -->
 	<div class="tiles">
-		<StatTile label="Wins" value={p.wins ?? 0} accent="#4ade80" />
-		<StatTile label="Losses" value={p.losses ?? 0} accent="#f87171" />
+		<StatTile label="Wins" value={p.wins ?? 0} accent="var(--good)" />
+		<StatTile label="Losses" value={p.losses ?? 0} accent="var(--dim)" />
 		<StatTile label="Win %" value={`${wr}%`} accent={winrateColor(wr)} hint="{p.wins ?? 0}W · {p.losses ?? 0}L over {gp} games" />
-		<StatTile label="OCVs" value={p.ocvs ?? 0} accent="#ff7ae0" hint="One-character victories" />
-		<StatTile label="Comebacks" value={p.comebacks ?? 0} accent="#4ade80" />
-		<StatTile label="Perfects" value={p.perfects ?? 0} accent="#9fd4ef" />
-		<StatTile label="Best Streak" value={p.best_streak ?? 0} accent="#ffb35c" />
+		<StatTile label="OCVs" value={p.ocvs ?? 0} accent="var(--molten)" hint="One-character victories" />
+		<StatTile label="Comebacks" value={p.comebacks ?? 0} accent="var(--good)" />
+		<StatTile label="Perfects" value={p.perfects ?? 0} accent="var(--molten)" />
+		<StatTile label="Best Streak" value={p.best_streak ?? 0} accent="var(--gold)" />
 		<StatTile label="Best Combo" value={p.best_combo ?? 0} accent="var(--gold)" />
 		<StatTile label="Meters" value={p.meters ?? 0} />
-		<StatTile label="Verified Wins" value={p.verified_wins ?? 0} accent="var(--good)" hint="Wins confirmed by both players / replay" />
+		<StatTile label="Verified Wins" value={p.verified_wins ?? 0} accent="var(--gold)" hint="Wins confirmed by both players / replay" />
 	</div>
 
 	<!-- Per-mode records (only what the player has played; ranked is the tiles above) -->
@@ -296,7 +316,20 @@
 	{#if recent.length}
 		<div class="matches">
 			{#each recent.slice(0, 20) as m, i (m.mid ?? m.match_key ?? i)}
-				<MatchRow match={m} onOpen={(id) => (openSession = id)} />
+				<MatchBanner
+					a={{ steamid: sid, name: p.name || 'Player', avatar: p.avatar, cc: p.cc, rating, games: gp, team: m.my_team ?? null }}
+					b={{ steamid: m.opp_id ?? '', name: m.opp, team: m.opp_team ?? null }}
+					winner={m.won ? 'a' : 'b'}
+					mode={m.mode ?? ''}
+					ts={m.ts ?? 0}
+					delta={m.elo != null ? (m.won ? m.elo : -m.elo) : null}
+					ocv={m.ocv ?? false}
+					perfect={m.perfect ?? false}
+					comeback={m.comeback ?? false}
+					verified={m.verified ?? false}
+					confirmed={m.confirmed ?? false}
+					onOpen={m.session_id ? () => (openSession = m.session_id ?? null) : null}
+				/>
 			{/each}
 		</div>
 	{:else}
@@ -309,6 +342,10 @@
 {/if}
 
 <style>
+	.heroloc {
+		display: block;
+		margin-top: 6px;
+	}
 	.hero {
 		display: flex;
 		align-items: center;
@@ -346,9 +383,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.nm .flag {
-		font-style: normal;
 	}
 	.loc {
 		font-size: 12px;
@@ -754,9 +788,10 @@
 		background: var(--line);
 	}
 	.pip.win {
-		background: #4ade80;
+		background: var(--good);
 	}
 	.pip.loss {
-		background: #f87171;
+		background: transparent;
+		border: 1.5px solid var(--line);
 	}
 </style>

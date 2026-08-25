@@ -349,11 +349,11 @@
 		letter-spacing: 0.02em;
 	}
 	.rec .w {
-		color: #3ddc84;
+		color: var(--good);
 		font-size: 1.12em;
 	}
 	.rec .l {
-		color: #ff6b6b;
+		color: var(--dim);
 		font-size: 1.12em;
 	}
 	.rec .d {

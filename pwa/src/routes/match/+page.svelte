@@ -4,7 +4,7 @@
 	import { matchfeed, type FeedMode } from '$lib/stores/matchfeed.svelte';
 	import { wager } from '$lib/stores/wager.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import MatchBanner from '$lib/components/MatchBanner.svelte';
+	import MatchBanner from '$lib/components/LegacyMatchBanner.svelte';
 	import MyMatch from '$lib/components/MyMatch.svelte';
 	import WagerRail from '$lib/components/WagerRail.svelte';
 	import Marquee from '$lib/components/Marquee.svelte';

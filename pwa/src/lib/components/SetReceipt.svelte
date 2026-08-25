@@ -409,7 +409,7 @@
 		text-overflow: ellipsis;
 	}
 	.lv {
-		color: var(--loss);
+		color: var(--live);
 		letter-spacing: 0.12em;
 		margin-right: 6px;
 	}
@@ -701,10 +701,10 @@
 	}
 	/* OCV is the violence stat — it takes the molten accent, bright when yours, cooled when eaten */
 	.fl.ocv {
-		color: color-mix(in srgb, #ff5c2c 55%, var(--faint));
+		color: color-mix(in srgb, var(--molten) 55%, var(--faint));
 	}
 	.fl.ocv.mine {
-		color: #ff5c2c;
+		color: var(--molten);
 	}
 	@media (max-width: 480px) {
 		.g {

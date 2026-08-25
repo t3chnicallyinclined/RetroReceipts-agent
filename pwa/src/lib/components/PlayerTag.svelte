@@ -53,12 +53,12 @@
 	/* winner → green, loser → red: reads the result at a glance (pairs with the gold W badge). */
 	.pt.win .pn {
 		font-weight: 800;
-		color: var(--good);
+		color: var(--gold);
 	}
 	.pt.lose .pn {
 		font-weight: 700;
 		font-size: 13px;
-		color: var(--loss);
+		color: var(--dim);
 	}
 	.pt.live .pn,
 	.pt.neutral .pn {
@@ -74,7 +74,7 @@
 		filter: brightness(1.18);
 	}
 	.pt.lose a.pn:hover {
-		color: var(--loss);
+		color: var(--dim);
 		filter: brightness(1.18);
 	}
 	.rt {

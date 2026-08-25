@@ -44,6 +44,17 @@ def render(entry):
     return img.crop(bbox) if bbox else img
 
 
+def tron_from_atlas():
+    """Portrait for id 16 from chars-anim/16.webp frame 0 (the atlas is the correct Tron source)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    anim_dir = os.path.normpath(os.path.join(here, "..", "static", "chars-anim"))
+    t = json.load(open(os.path.join(anim_dir, "16.json")))
+    img = Image.open(os.path.join(anim_dir, "16.webp")).convert("RGBA")
+    f0 = img.crop((0, 0, t["w"], t["h"]))
+    bbox = f0.getbbox()
+    return f0.crop(bbox) if bbox else f0
+
+
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SRC
     data = json.load(open(src))
@@ -51,7 +62,12 @@ def main():
     n = total = 0
     for cid, entry in data.items():
         try:
-            img = render(entry)
+            # id 16 (Tron Bonne): idle_frames.json carries the WRONG shape here (Servbot's frame colored
+            # through Tron's bank) — render her portrait from frame 0 of the CORRECT animated atlas instead.
+            if cid == "16":
+                img = tron_from_atlas()
+            else:
+                img = render(entry)
             path = os.path.join(OUT_DIR, f"{cid}.webp")
             img.save(path, "WEBP", lossless=True, quality=100)
             n += 1

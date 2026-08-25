@@ -109,10 +109,12 @@
 		color: #0b0d12;
 	}
 	.won .wl {
-		background: #4ade80;
+		background: var(--good);
 	}
 	.lost .wl {
-		background: #f87171;
+		background: transparent;
+		border: 1.5px solid var(--line);
+		color: var(--dim);
 	}
 	.mid {
 		min-width: 0;
@@ -205,19 +207,19 @@
 		color: var(--dim);
 	}
 	.chip.ocv {
-		color: #ff7ae0;
-		border-color: color-mix(in srgb, #ff7ae0 40%, var(--line));
-		background: color-mix(in srgb, #ff7ae0 12%, transparent);
+		color: var(--molten);
+		border-color: color-mix(in srgb, var(--molten) 40%, var(--line));
+		background: color-mix(in srgb, var(--molten) 12%, transparent);
 	}
 	.chip.perf {
-		color: #9fd4ef;
-		border-color: color-mix(in srgb, #9fd4ef 40%, var(--line));
-		background: color-mix(in srgb, #9fd4ef 12%, transparent);
+		color: var(--molten);
+		border-color: color-mix(in srgb, var(--molten) 40%, var(--line));
+		background: color-mix(in srgb, var(--molten) 12%, transparent);
 	}
 	.chip.cb {
-		color: #4ade80;
-		border-color: color-mix(in srgb, #4ade80 40%, var(--line));
-		background: color-mix(in srgb, #4ade80 12%, transparent);
+		color: var(--molten);
+		border-color: color-mix(in srgb, var(--molten) 40%, var(--line));
+		background: color-mix(in srgb, var(--molten) 12%, transparent);
 	}
 	.chip.combo {
 		color: var(--gold);
@@ -236,10 +238,10 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.elo.up {
-		color: #4ade80;
+		color: var(--gold);
 	}
 	.elo.down {
-		color: #f87171;
+		color: var(--dim);
 	}
 	.ago {
 		font-size: 10px;

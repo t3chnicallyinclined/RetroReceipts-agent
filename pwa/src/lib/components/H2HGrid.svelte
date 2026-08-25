@@ -91,10 +91,10 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.hr .w {
-		color: #4ade80;
+		color: var(--good);
 	}
 	.hr .l {
-		color: #f87171;
+		color: var(--dim);
 	}
 	.hr i {
 		font-style: normal;

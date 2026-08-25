@@ -77,6 +77,6 @@
 	}
 	/* warn — molten, the existing accent for "something is wrong", not a new colour */
 	.ann.warn {
-		border-color: color-mix(in srgb, #ff5c2c 45%, var(--line));
+		border-color: color-mix(in srgb, var(--molten) 45%, var(--line));
 	}
 </style>

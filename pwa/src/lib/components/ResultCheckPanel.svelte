@@ -337,7 +337,8 @@
 	}
 	.st.lost {
 		color: #fff;
-		background: var(--live);
+		background: transparent;
+		border: 1px solid var(--line);
 	}
 	.empty {
 		border: 1px dashed var(--line);

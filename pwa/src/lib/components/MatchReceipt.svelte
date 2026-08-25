@@ -335,7 +335,7 @@
 		color: var(--faint);
 	}
 	.warn {
-		color: #ff5c2c;
+		color: var(--molten);
 		font-weight: 700;
 	}
 	.big {
