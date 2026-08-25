@@ -62,6 +62,12 @@
 	const games = $derived((r.games ?? []).slice().sort((a, b) => (a.match_index ?? 0) - (b.match_index ?? 0)));
 	const players = $derived(r.players ?? []);
 
+	// ⚠ THE SEAT MUST BELONG TO A PARTICIPANT. `me` arrives as ?p= or the signed-in viewer — but a
+	// spectator opening someone else's set is NOT in it, and comparing every game's winner against a
+	// non-participant made all nine rows of a 9–0 sweep render L (seen live: Maddrooo's clean sweep
+	// showed no W anywhere). A non-participant seat collapses to null → winner-reads-right default.
+	const seat = $derived(me && players.some((p) => p.steamid === me) ? me : null);
+
 	// Set score is DERIVED from the games rather than trusted from a field — the payload has no set-score
 	// total, and counting wins is the same thing the scoreboard does.
 	const tally = $derived.by(() => {
@@ -73,7 +79,7 @@
 	const ordered = $derived.by(() => {
 		if (players.length < 2) return players;
 		const [a, b] = players;
-		if (me) return a.steamid === me ? [b, a] : [a, b];
+		if (seat) return a.steamid === seat ? [b, a] : [a, b];
 		return (tally[a.steamid] ?? 0) > (tally[b.steamid] ?? 0) ? [b, a] : [a, b];
 	});
 	const left = $derived(ordered[0]);
@@ -85,7 +91,7 @@
 
 	// Net ELO across the set, from the viewer's side when known.
 	const netElo = $derived.by(() => {
-		const who = me ?? right?.steamid;
+		const who = seat ?? right?.steamid;
 		if (!who) return null;
 		let n = 0;
 		let any = false;
@@ -196,7 +202,7 @@
 		return segs;
 	};
 	// the run BAR stays from the viewer's seat, like the rows above it
-	const runs = $derived(runsFor(me ?? right?.steamid));
+	const runs = $derived(runsFor(seat ?? right?.steamid));
 
 	// Rank tiers + the gap — this is what turns "I lost 2-8" into "I took two off an Adamantium".
 	const lRank = $derived(left?.rating != null ? rankOf(left.rating, left.games ?? 999) : null);
@@ -292,7 +298,7 @@
 			<a class="skhint" href="{base}/skins" title="Fighters wear their owners' custom skins — set yours in Skins">ⓘ CUSTOM SKINS ON · SET YOURS</a>
 		</div>
 		{#each games as g, i (g.match_index ?? i)}
-			{@const won = g.winner === (me ?? right?.steamid)}
+			{@const won = g.winner === (seat ?? right?.steamid)}
 			{@const rw = rows[i]}
 			{@const aThem = assistOf(g, left?.steamid ?? '')}
 			{@const aMine = assistOf(g, right?.steamid ?? '')}
