@@ -7,6 +7,7 @@
 	import { STOCK_PALETTES } from '$lib/stockPalettes';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { vault } from '$lib/stores/vault.svelte';
+	import { teams } from '$lib/stores/teams.svelte';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import { apiGet } from '$lib/net.svelte';
 	import { decodeSkin } from '$lib/skincodes';
@@ -22,8 +23,29 @@
 	);
 
 	$effect(() => {
-		if (auth.authed) void vault.load();
+		if (auth.authed) {
+			void vault.load();
+			void teams.load();
+		}
 	});
+	let teamName = $state('');
+	let teamMsg = $state('');
+	function tflash(m: string) {
+		teamMsg = m;
+		setTimeout(() => { if (teamMsg === m) teamMsg = ''; }, 2600);
+	}
+	async function saveTeam() {
+		const nm = teamName.trim();
+		if (!nm) { tflash('name your team first'); return; }
+		tflash((await teams.saveCurrent(nm)) ? `🗂 “${nm}” saved — your whole current loadout` : '⚠ could not save (dress someone first?)');
+		teamName = '';
+	}
+	async function wearTeam(id: string) {
+		const t = teams.teams.find((x) => x.id === id);
+		if (!t) return;
+		const n = await teams.apply(t);
+		tflash(n ? `⚔ “${t.name}” — ${n} fighter${n === 1 ? '' : 's'} dressed` : '⚠ could not apply');
+	}
 	const mine = $derived(loadouts.of(auth.steamid));
 	const dressed = $derived(mine ? Object.keys(mine).length : 0);
 
@@ -105,6 +127,22 @@
 			{/each}
 		</div>
 		<div class="mirror">this is what the arena sees — live cards · receipts · boards render from this exact view</div>
+		{#if teams.available}
+			<!-- TEAMS: whole-loadout presets, MvC2's team-naming ritual as one-tap wardrobe swaps -->
+			<div class="teams">
+				{#each teams.teams as t (t.id)}
+					<span class="tp">
+						<button class="tpn" onclick={() => wearTeam(t.id)} disabled={teams.busy} title="{t.entries.length} fighters">● {t.name}</button>
+						<button class="tpx" onclick={() => teams.remove(t.id)} aria-label="Delete {t.name}">✕</button>
+					</span>
+				{/each}
+				<span class="tsave">
+					<input class="tin" type="text" placeholder="save team as…" bind:value={teamName} maxlength="40" />
+					<button class="tgo" onclick={saveTeam} disabled={teams.busy}>+ SAVE TEAM</button>
+				</span>
+			</div>
+			{#if teamMsg}<div class="tmsg">{teamMsg}</div>{/if}
+		{/if}
 	</div>
 
 	<!-- ── the roster shelf ── -->
@@ -261,6 +299,80 @@
 		letter-spacing: 0.24em;
 		color: var(--faint);
 		margin-top: 3px;
+	}
+	.teams {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 12px 10px;
+		font-family: ui-monospace, monospace;
+		font-size: 10px;
+	}
+	.tp {
+		display: inline-flex;
+		align-items: center;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		overflow: hidden;
+	}
+	.tpn {
+		font: inherit;
+		padding: 5px 6px 5px 12px;
+		background: transparent;
+		border: none;
+		color: var(--dim);
+		cursor: pointer;
+	}
+	.tpn:hover {
+		color: var(--stream);
+	}
+	.tpx {
+		font: inherit;
+		font-size: 9px;
+		padding: 5px 9px 5px 4px;
+		background: transparent;
+		border: none;
+		color: var(--faint);
+		cursor: pointer;
+	}
+	.tpx:hover {
+		color: var(--molten, #ff5c2c);
+	}
+	.tsave {
+		display: inline-flex;
+		gap: 6px;
+	}
+	.tin {
+		font: inherit;
+		width: 130px;
+		padding: 5px 10px;
+		border-radius: 999px;
+		border: 1px solid var(--line);
+		background: var(--panel-2);
+		color: var(--ink);
+	}
+	.tin:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--stream) 50%, var(--line));
+	}
+	.tgo {
+		font: inherit;
+		padding: 5px 12px;
+		border-radius: 999px;
+		border: 1px solid color-mix(in srgb, var(--stream) 45%, var(--line));
+		background: transparent;
+		color: var(--stream);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.tmsg {
+		text-align: center;
+		font-family: ui-monospace, monospace;
+		font-size: 9.5px;
+		color: var(--dim);
+		padding-bottom: 8px;
 	}
 	.mirror {
 		text-align: center;

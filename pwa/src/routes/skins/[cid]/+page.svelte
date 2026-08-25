@@ -84,6 +84,32 @@
 		flash('📋 share code copied — paste it anywhere');
 	}
 
+	// ── COMMUNITY LIBRARY — the legacy studio's 8,936-skin collection, per character, with the creator
+	// credited under every palette (the PalMod-scene tradition, structural). Static per-char JSON
+	// ({a: author, p: [16 ints]}), lazy-fetched when the rack opens. Tap = the same free try-on as any card.
+	type CommunitySkin = { a: string; p: number[] };
+	let community = $state<CommunitySkin[]>([]);
+	let commQ = $state('');
+	let commShow = $state(24);
+	$effect(() => {
+		const c = cid;
+		community = [];
+		commQ = '';
+		commShow = 24;
+		void fetch(`${base}/community/${c}.json`)
+			.then((r) => (r.ok ? r.json() : []))
+			.then((j) => {
+				if (c === cid && Array.isArray(j)) community = j;
+			})
+			.catch(() => {});
+	});
+	const commHex = (p: number[]): string[] =>
+		p.slice(0, 16).map((n) => '#' + (n & 0xffffff).toString(16).padStart(6, '0'));
+	const commFiltered = $derived.by(() => {
+		const q = commQ.trim().toLowerCase();
+		return q ? community.filter((s) => s.a.toLowerCase().includes(q)) : community;
+	});
+
 	// ── editor launch ──
 	let editing = $state<{ seed: string[]; name: string; vaultId: string | null } | null>(null);
 	const openNew = () => (editing = { seed: (stagePal ?? stock).slice(), name: '', vaultId: null });
@@ -168,7 +194,27 @@
 		{#if auth.authed}
 			<button class="newbtn" onclick={openNew}>+ NEW SKIN — open the dye station</button>
 		{/if}
-		<p class="note">Try-on is free — only WEAR IT changes what the arena sees. Share codes carry your name with the colors.</p>
+
+		{#if community.length}
+			<div class="chd">
+				<span>COMMUNITY · {community.length} SKINS — after the PalMod scene</span>
+				<input class="cq" type="search" placeholder="search creators…" bind:value={commQ} />
+			</div>
+			<div class="cgrid">
+				{#each commFiltered.slice(0, commShow) as cs, i (i)}
+					{@const pal = commHex(cs.p)}
+					<button class="ck" onclick={() => tryOn(pal, cs.a ? `by ${cs.a}` : 'Community skin', cs.a)} title={cs.a}>
+						<span class="cbar">{#each pal.slice(1) as c, k (k)}<i style="background:{c}"></i>{/each}</span>
+						<span class="cby">{cs.a || 'unknown'}</span>
+					</button>
+				{/each}
+			</div>
+			{#if commFiltered.length > commShow}
+				<button class="more" onclick={() => (commShow += 48)}>show more · {commFiltered.length - commShow} left</button>
+			{/if}
+		{/if}
+
+		<p class="note">Try-on is free — only WEAR IT changes what the arena sees. Share codes carry your name with the colors. Community palettes are credited to their creators.</p>
 	</div>
 </div>
 
@@ -404,6 +450,88 @@
 		font-size: 11.5px;
 		color: var(--faint);
 		margin-top: 10px;
+	}
+	.chd {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		font-family: ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.16em;
+		color: var(--faint);
+		margin: 16px 0 8px;
+	}
+	.cq {
+		font: inherit;
+		font-size: 11px;
+		letter-spacing: 0.02em;
+		padding: 5px 10px;
+		width: 150px;
+		border-radius: 8px;
+		border: 1px solid var(--line);
+		background: var(--panel-2);
+		color: var(--ink);
+	}
+	.cq:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--stream) 55%, var(--line));
+	}
+	.cgrid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+		gap: 7px;
+	}
+	.ck {
+		font: inherit;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--panel-2);
+		padding: 7px 8px 6px;
+		cursor: pointer;
+		text-align: left;
+	}
+	.ck:hover {
+		border-color: color-mix(in srgb, var(--stream) 55%, var(--line));
+		transform: translateY(-1px);
+	}
+	.cbar {
+		display: flex;
+		height: 16px;
+		border-radius: 4px;
+		overflow: hidden;
+		border: 1px solid rgba(0, 0, 0, 0.35);
+	}
+	.cbar i {
+		flex: 1;
+	}
+	.cby {
+		display: block;
+		font-family: ui-monospace, monospace;
+		font-size: 8.5px;
+		color: var(--dim);
+		margin-top: 4px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.more {
+		font: inherit;
+		width: 100%;
+		font-family: ui-monospace, monospace;
+		font-size: 9.5px;
+		letter-spacing: 0.1em;
+		padding: 9px 0;
+		margin-top: 8px;
+		border: 1px dashed var(--line);
+		border-radius: 9px;
+		background: transparent;
+		color: var(--dim);
+		cursor: pointer;
+	}
+	.more:hover {
+		color: var(--stream);
+		border-color: color-mix(in srgb, var(--stream) 45%, var(--line));
 	}
 	.toast {
 		position: fixed;
