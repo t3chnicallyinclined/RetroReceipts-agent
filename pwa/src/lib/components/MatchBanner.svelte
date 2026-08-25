@@ -31,6 +31,7 @@
 		comeback = false,
 		verified = false,
 		confirmed = false,
+		dur = null,
 		gameNo = null,
 		onOpen = null
 	}: {
@@ -47,6 +48,8 @@
 		comeback?: boolean;
 		verified?: boolean;
 		confirmed?: boolean;
+		/** match length in seconds (tape-derived) — renders m:ss in the meta rail */
+		dur?: number | null;
 		/** receipt density: game number replaces the timestamp */
 		gameNo?: number | null;
 		onOpen?: (() => void) | null;
@@ -104,7 +107,7 @@
 		</span>
 		<span class="r2">
 			{#if delta != null && delta !== 0}<span class="delta" class:neg={delta < 0}>{delta > 0 ? '+' : ''}{delta}</span>{/if}
-			{#if gameNo != null}<span>G{gameNo}</span>{:else if ts}<span>{timeAgo(ts)}</span>{/if}
+			{#if dur}<span>{Math.floor(dur / 60)}:{String(dur % 60).padStart(2, '0')}</span>{/if}{#if gameNo != null}<span>G{gameNo}</span>{:else if ts}<span>{timeAgo(ts)}</span>{/if}
 			<span class="chev">›</span>
 		</span>
 	</span>

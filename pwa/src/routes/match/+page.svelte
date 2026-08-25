@@ -4,7 +4,9 @@
 	import { matchfeed, type FeedMode } from '$lib/stores/matchfeed.svelte';
 	import { wager } from '$lib/stores/wager.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import MatchBanner from '$lib/components/LegacyMatchBanner.svelte';
+	import MatchBanner from '$lib/components/MatchBanner.svelte';
+	import VersusCard from '$lib/components/VersusCard.svelte';
+	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import MyMatch from '$lib/components/MyMatch.svelte';
 	import WagerRail from '$lib/components/WagerRail.svelte';
 	import Marquee from '$lib/components/Marquee.svelte';
@@ -126,6 +128,14 @@
 
 	// ── Session ("set") modal — a result OR live row opens the game-by-game set view for its session_id. ──
 	let openSession = $state<string | null>(null);
+	// custom skins for every sprite on the feed — one batched prime per snapshot change
+	$effect(() => {
+		const ids = [
+			...nowPlaying.flatMap((p) => [p.a, p.b]),
+			...results.flatMap((r) => [r.winner, r.loser])
+		];
+		if (ids.length) void loadouts.prime(ids);
+	});
 	function openSet(id: string) {
 		openSession = id;
 	}
@@ -230,15 +240,17 @@
 	{:else}
 		<div class="panel">
 			{#each nowPlaying as p (p.key)}
-				<MatchBanner
-					variant="live"
-					left={{ sid: p.a, name: nameFor(p.a, p.names), rating: p.ratings?.[p.a], wins: p.wins?.[p.a] }}
-					right={{ sid: p.b, name: nameFor(p.b, p.names), rating: p.ratings?.[p.b], wins: p.wins?.[p.b] }}
+				<VersusCard
+					a={p.a}
+					b={p.b}
+					names={p.names}
+					ratings={p.ratings}
+					wins={p.wins}
+					chars={p.chars}
 					mode={p.mode ?? ''}
-					sessionId={p.session_id}
 					joinLink={p.join_link ?? ''}
 					mine={involvesMe(p.a, p.b)}
-					onOpen={openSet}
+					onOpen={p.session_id ? () => openSet(p.session_id ?? '') : null}
 				/>
 			{/each}
 		</div>
@@ -274,21 +286,18 @@
 			{#each pageResults as r (r.key)}
 				{@const ranked = isRanked(r.mode)}
 				<MatchBanner
-					variant="result"
-					left={{ sid: r.winner, name: r.winner_name, rating: ranked ? r.winner_rating : undefined, team: r.winner_team }}
-					right={{ sid: r.loser, name: r.loser_name, rating: ranked ? r.loser_rating : undefined, team: r.loser_team }}
-					{ranked}
+					a={{ steamid: r.winner, name: r.winner_name, rating: ranked ? (r.winner_rating ?? null) : null, team: r.winner_team ?? null }}
+					b={{ steamid: r.loser, name: r.loser_name, rating: ranked ? (r.loser_rating ?? null) : null, team: r.loser_team ?? null }}
+					winner="a"
 					mode={r.mode ?? ''}
-					elo={r.elo}
 					ts={r.ts}
-					ocv={r.ocv}
-					perfect={r.perfect}
-					comeback={r.comeback}
-					combo={r.combo ?? 0}
+					delta={ranked && r.elo ? r.elo : null}
+					dur={r.duration_s ?? null}
+					ocv={r.ocv ?? false}
+					perfect={r.perfect ?? false}
+					comeback={r.comeback ?? false}
 					verified={r.verified}
-					sessionId={r.session_id}
-					mine={involvesMe(r.winner, r.loser)}
-					onOpen={openSet}
+					onOpen={r.session_id ? () => openSet(r.session_id ?? '') : null}
 				/>
 			{/each}
 		</div>

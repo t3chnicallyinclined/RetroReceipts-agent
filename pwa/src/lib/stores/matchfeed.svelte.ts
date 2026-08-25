@@ -44,6 +44,8 @@ export interface MatchResult {
 	/** char-id triples for the arena matchup line (via teamAbbr); undefined until the seed carries them. */
 	winner_team?: number[];
 	loser_team?: number[];
+	/** match length in seconds from the tape (server 73ee151); 0/undefined = unknown. */
+	duration_s?: number;
 	/** biggest combo landed in the set (hit count); undefined/0 → no callout. */
 	combo?: number;
 	/** highlight flags — one-character victory, flawless game, last-character comeback. */
@@ -333,6 +335,7 @@ export class MatchFeedStore {
 		const winner_name = String(d.winner_name ?? '') || winner;
 		const loser_name = String(d.loser_name ?? '') || loser;
 		const mode = typeof d.mode === 'string' && d.mode ? d.mode : undefined;
+		const duration_s = Number((d as { duration_s?: unknown }).duration_s) || undefined;
 		// elo = the winner's rating gain; 0/absent for non-ranked → treat as "no delta" (undefined).
 		const eloN = Number(d.elo);
 		const elo = Number.isFinite(eloN) && eloN !== 0 ? Math.abs(eloN) : undefined;
@@ -348,6 +351,7 @@ export class MatchFeedStore {
 			verified: d.verified === true,
 			ts,
 			mode,
+			duration_s,
 			elo,
 			session_id,
 			winner_rating: toRating(d.winner_rating),
