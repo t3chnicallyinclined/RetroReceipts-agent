@@ -167,6 +167,7 @@ struct MenuHandles {
     pause_id: MenuId,
     host_id: MenuId,
     updates_id: MenuId,
+    report_id: MenuId,
     logs_id: MenuId,
     autostart_id: MenuId,
     quit_id: MenuId,
@@ -238,6 +239,7 @@ fn build_menu() -> (Menu, MenuHandles) {
     let sep2 = PredefinedMenuItem::separator();
 
     let updates = MenuItem::new("Check for updates", true, None);
+    let report = MenuItem::new("Send a bug report", true, None);
     let logs = MenuItem::new("Open logs folder", true, None);
     let autostart_item = CheckMenuItem::new("Start with Windows", true, autostart::is_enabled(), None);
     let sep3 = PredefinedMenuItem::separator();
@@ -258,6 +260,7 @@ fn build_menu() -> (Menu, MenuHandles) {
         &host_toggle,
         &sep2,
         &updates,
+        &report,
         &logs,
         &autostart_item,
         &sep3,
@@ -270,6 +273,7 @@ fn build_menu() -> (Menu, MenuHandles) {
         pause_id: pause.id().clone(),
         host_id: host_toggle.id().clone(),
         updates_id: updates.id().clone(),
+        report_id: report.id().clone(),
         logs_id: logs.id().clone(),
         autostart_id: autostart_item.id().clone(),
         quit_id: quit.id().clone(),
@@ -432,6 +436,17 @@ pub fn run() -> ! {
                     }
                     // Reflect the HOST MODE banner immediately rather than waiting for the 1s tick.
                     refresh_dynamic(&handles, &tray, updates_busy_until);
+                } else if ev.id == handles.report_id {
+                    // Collect + send OFF-THREAD (log reads + gzip + a 30s-timeout POST must never block the
+                    // event loop). Feedback is toasts both ways — non-modal, safe mid-match. Rate limiting
+                    // (2 min) lives in send_bug_report so a double-click can't double-send.
+                    updater::toast("Sending bug report…", "Bundling logs + system info for the team.");
+                    std::thread::spawn(|| {
+                        match reader::send_bug_report("Sent from the tray menu (no note attached).") {
+                            Ok(id) => updater::toast("Bug report sent — thank you!", &format!("Report {id} is with the team.")),
+                            Err(e) => updater::toast("Bug report not sent", &e),
+                        }
+                    });
                 } else if ev.id == handles.updates_id {
                     // Check off-thread, then INSTALL if an update is offered and it's safe (no game running).
                     // Feedback comes back via UpdateResult (the menu item is Rc-backed → can't cross threads).

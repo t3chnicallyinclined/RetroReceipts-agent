@@ -2389,7 +2389,13 @@ pub fn report_live_match(opp: String, my_chars: Vec<i64>, opp_chars: Vec<i64>,
 fn trace(msg: &str) {
     use std::io::Write;
     let path = crate::runtime_dir().join("suite_trace.log");
-    if std::fs::metadata(&path).map(|m| m.len() > 1_000_000).unwrap_or(false) { let _ = std::fs::write(&path, b""); }
+    // ROTATE (not wipe) at the cap: the displaced chunk becomes .1 so a bug report always has history —
+    // a wipe right before a crash used to destroy exactly the evidence the report exists to carry.
+    if std::fs::metadata(&path).map(|m| m.len() > 1_000_000).unwrap_or(false) {
+        let bak = crate::runtime_dir().join("suite_trace.log.1");
+        let _ = std::fs::remove_file(&bak);
+        let _ = std::fs::rename(&path, &bak);
+    }
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
         let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
         let _ = writeln!(f, "{:.3} {}", t, msg);
@@ -2547,6 +2553,7 @@ pub fn start_reader() {
     // start_inputdec_detector) were REMOVED — the +0x4fc field is side-agnostic so inputdec always locked P1,
     // which inverted the stats. Side now comes DETERMINISTICALLY from the session-struct pairing (P1's SteamID
     // is stored above P2's), set in the reader loop.
+    let _ = STARTED_AT.set(std::time::Instant::now());   // uptime anchor for bug reports
     load_share_setting();            // restore the gameplay-data sharing consent (beta default = on)
     load_auth();                     // restore the registration token (attached to every write request)
     // silent auto-registration: the moment the local SteamID is readable (Steam registry, no game needed),
@@ -3289,6 +3296,186 @@ pub fn status_line() -> String {
         _ => "Retro Receipts — MvC2 running".into(),
     };
     if a.reporting { format!("{}  ● reporting", base) } else { base }
+}
+
+// ── 🐛 BUG REPORT ("Send a bug report" tray item) ───────────────────────────────────────────────────────
+// Bundles system info + a live status snapshot + log tails from the CURRENT **and PREVIOUS** run (after a
+// PC crash / silent death, the evidence is in the previous tail — that's the whole reason .1 files exist)
+// and POSTs to /rr/bugreport. Server contract (routes.rs 546813a): token-auth; {os ≤160, version ≤40,
+// text ≤2000, logs_gz = base64(gzip(text)) ≤2MB decoded, meta = a JSON *string* ≤4000 stored verbatim};
+// reports land under <workdir>/bugreports/ (200 cap), admin list at GET /rr/bugreports.
+
+/// Process start (set once by start_reader) — powers the report's uptime_s.
+static STARTED_AT: OnceLock<std::time::Instant> = OnceLock::new();
+/// Last successful/attempted send (ms) — rate-limits the tray item to one report per 2 minutes.
+static LAST_BUG_REPORT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Lossy tail of a file (last `max` bytes) — "" when absent. Logs only; a split UTF-8 char is fine.
+fn tail_of(path: &std::path::Path, max: usize) -> String {
+    match std::fs::read(path) {
+        Ok(b) => String::from_utf8_lossy(&b[b.len().saturating_sub(max)..]).into_owned(),
+        Err(_) => String::new(),
+    }
+}
+
+/// One-line human OS + hardware description (the report's `os` field, server-capped at 160).
+#[cfg(windows)]
+fn os_descr() -> String {
+    // reg_string reads HKCU; the OS identity lives in HKLM → a local mirror with the other hive.
+    fn hklm(subkey: &str, value: &str) -> Option<String> {
+        use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+        use windows::core::HSTRING;
+        unsafe {
+            let (sub, val) = (HSTRING::from(subkey), HSTRING::from(value));
+            let mut sz = 0u32;
+            if RegGetValueW(HKEY_LOCAL_MACHINE, &sub, &val, RRF_RT_REG_SZ, None, None, Some(&mut sz)).is_err() || sz == 0 { return None; }
+            let mut buf = vec![0u16; sz as usize / 2 + 1];
+            let mut sz2 = (buf.len() * 2) as u32;
+            if RegGetValueW(HKEY_LOCAL_MACHINE, &sub, &val, RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut c_void), Some(&mut sz2)).is_err() { return None; }
+            let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            Some(String::from_utf16_lossy(&buf[..n]))
+        }
+    }
+    let k = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+    let prod = hklm(k, "ProductName").unwrap_or_else(|| "Windows".into());
+    let disp = hklm(k, "DisplayVersion").unwrap_or_default();
+    let build = hklm(k, "CurrentBuildNumber").unwrap_or_default();
+    let cpu = std::env::var("PROCESSOR_IDENTIFIER").unwrap_or_default();
+    format!("{prod} {disp} build {build} · {cpu}")
+}
+#[cfg(not(windows))]
+fn os_descr() -> String {
+    let pretty = std::fs::read_to_string("/etc/os-release").ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("PRETTY_NAME="))
+            .map(|l| l.trim_start_matches("PRETTY_NAME=").trim_matches('"').to_string()))
+        .unwrap_or_else(|| "Linux".into());
+    let kern = std::fs::read_to_string("/proc/version").unwrap_or_default()
+        .split_whitespace().take(3).collect::<Vec<_>>().join(" ");
+    let cpu = std::fs::read_to_string("/proc/cpuinfo").ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("model name"))
+            .map(|l| l.splitn(2, ':').nth(1).unwrap_or("").trim().to_string()))
+        .unwrap_or_default();
+    format!("{pretty} · {kern} · {cpu}")
+}
+
+/// Total physical RAM in MB (0 = unknown) — into `meta`, it's the first question on any "PC crashed" report.
+#[cfg(windows)]
+fn total_ram_mb() -> u64 {
+    use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    unsafe {
+        let mut m = MEMORYSTATUSEX { dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
+        if GlobalMemoryStatusEx(&mut m).is_ok() { m.ullTotalPhys / 1_048_576 } else { 0 }
+    }
+}
+#[cfg(not(windows))]
+fn total_ram_mb() -> u64 {
+    std::fs::read_to_string("/proc/meminfo").ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("MemTotal:"))
+            .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok())))
+        .map(|kb| kb / 1024).unwrap_or(0)
+}
+
+/// The gzipped log blob: status header + current/previous trace tails + (Windows) current/previous stderr
+/// tails or (Linux) journald tails for this boot and the one before. ~≤900KB raw — well under the server's
+/// 2MB decoded cap even before gzip's ~10x on log text.
+fn build_bug_logs() -> String {
+    let dir = crate::runtime_dir();
+    let mut out = String::with_capacity(256 * 1024);
+    let mut section = |name: &str, body: String| {
+        out.push_str(&format!("\n═══════════ {} ═══════════\n", name));
+        out.push_str(if body.trim().is_empty() { "(empty)\n" } else { &body });
+        if !out.ends_with('\n') { out.push('\n'); }
+    };
+    section("trace — current run", tail_of(&dir.join("suite_trace.log"), 400_000));
+    section("trace — previous chunk", tail_of(&dir.join("suite_trace.log.1"), 200_000));
+    #[cfg(windows)]
+    {
+        section("stderr — current run", tail_of(&dir.join("stderr.log"), 120_000));
+        section("stderr — previous run", tail_of(&dir.join("stderr.log.1"), 120_000));
+    }
+    #[cfg(not(windows))]
+    {
+        // journald owns stderr under the systemd --user unit; -b -1 is the previous boot (PC-crash evidence).
+        // Unit name is still the legacy one on installed fleets; try both. Absent journalctl/unit ⇒ "".
+        let jctl = |args: &[&str]| -> String {
+            for unit in ["metasync-agent.service", "rr-agent.service"] {
+                let mut cmd = std::process::Command::new("journalctl");
+                cmd.args(["--user", "-u", unit, "--no-pager", "-o", "short-iso"]).args(args);
+                if let Ok(o) = cmd.output() {
+                    let s = String::from_utf8_lossy(&o.stdout).into_owned();
+                    if s.lines().count() > 2 { return s; }
+                }
+            }
+            String::new()
+        };
+        let cur = jctl(&["-n", "1200"]);
+        section("journal — current boot", cur.chars().rev().take(200_000).collect::<String>().chars().rev().collect());
+        let prev = jctl(&["-b", "-1", "-n", "600"]);
+        section("journal — previous boot", prev.chars().rev().take(120_000).collect::<String>().chars().rev().collect());
+    }
+    out
+}
+
+/// `agent --bugreport`: the no-tray path (support tool for "the tray itself is broken/crashing" — and the
+/// release-time smoke test). Loads auth, sends, reports the outcome on stderr (→ stderr.log / journald).
+pub fn cli_bug_report() -> i32 {
+    load_auth();
+    match send_bug_report("Sent via --bugreport (command line).") {
+        Ok(id) => { eprintln!("[bugreport] sent: {id}"); 0 }
+        Err(e) => { eprintln!("[bugreport] FAILED: {e}"); 1 }
+    }
+}
+
+/// Collect + POST one bug report. Returns the server's report id. Called from the tray (off-thread).
+pub fn send_bug_report(note: &str) -> Result<String, String> {
+    let now = gs_now_ms();
+    let last = LAST_BUG_REPORT.load(std::sync::atomic::Ordering::Relaxed);
+    if last != 0 && now.saturating_sub(last) < 120_000 {
+        return Err("A report just went out — wait a couple of minutes before sending another.".into());
+    }
+    LAST_BUG_REPORT.store(now, std::sync::atomic::Ordering::Relaxed);
+
+    let meta = {
+        let a = agent_status().lock().unwrap();
+        serde_json::json!({
+            "uptime_s": STARTED_AT.get().map(|t| t.elapsed().as_secs()).unwrap_or(0),
+            "game_running": a.game_running,
+            "state": a.state,
+            "opp_held": a.opponent.is_some(),
+            "in_session": a.in_session,
+            "score": [a.score.0, a.score.1],
+            "reporting": a.reporting,
+            "paused": PAUSED.load(Ordering::Relaxed),
+            "degraded": READER_DEGRADED.load(std::sync::atomic::Ordering::SeqCst),
+            "host_mode": crate::host::HOST_MODE.load(Ordering::Relaxed),
+            "ram_mb": total_ram_mb(),
+        }).to_string()
+    };
+    let mut os = os_descr();
+    os.truncate(160);
+    let gz = gzip_bytes(build_bug_logs().as_bytes());
+    let body = serde_json::json!({
+        "os": os,
+        "version": crate::config::VERSION,
+        "text": note,
+        "logs_gz": b64_encode(&gz),
+        "meta": meta,
+    });
+    match auth_post(&format!("{}/bugreport", RR))
+        .timeout(std::time::Duration::from_secs(30))
+        .send_json(body)
+    {
+        Ok(r) => {
+            let v: serde_json::Value = r.into_json().map_err(|e| format!("bad reply: {e}"))?;
+            if v.get("ok").and_then(|x| x.as_bool()) == Some(true) {
+                Ok(v.get("id").and_then(|x| x.as_str()).unwrap_or("sent").to_string())
+            } else {
+                Err(v.get("error").and_then(|x| x.as_str()).unwrap_or("server refused the report").to_string())
+            }
+        }
+        Err(ureq::Error::Status(401, _)) => Err("Sign in first (open Retro Receipts and link Steam), then try again.".into()),
+        Err(e) => Err(format!("couldn't reach the server: {e}")),
+    }
 }
 
 

@@ -108,6 +108,24 @@ fn migrate_legacy_state_dir() {
     }
 }
 
+/// See the call site in main() for the why. The opened File is deliberately leaked — the OS handle must
+/// outlive every future write to stderr.
+#[cfg(windows)]
+fn capture_stderr_to_file() {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{SetStdHandle, STD_ERROR_HANDLE};
+    let dir = runtime_dir();
+    let cur = dir.join("stderr.log");
+    let prev = dir.join("stderr.log.1");
+    let _ = std::fs::remove_file(&prev);
+    let _ = std::fs::rename(&cur, &prev);
+    if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(&cur) {
+        unsafe { let _ = SetStdHandle(STD_ERROR_HANDLE, HANDLE(f.as_raw_handle())); }
+        std::mem::forget(f);
+    }
+}
+
 fn main() {
     // If the self-updater relaunched us (`--updated`), give the OLD process a moment to exit and release the
     // machine-wide single-instance mutex before we claim it — else the guard sees it held and exits us.
@@ -120,6 +138,24 @@ fn main() {
     // the user's auth.json / result-outbox / gs-cache across the rename. Runs after the --updated wait so a
     // relaunching old process has released the old dir first.
     migrate_legacy_state_dir();
+
+    // Windows: the tray build has NO console (windows_subsystem="windows"), so every eprintln — updater,
+    // migration, panics — was silently DISCARDED, which made "why did it crash?" unanswerable. Point stderr
+    // at runtime_dir()/stderr.log instead; rotate the last run to .1 first, because after a crash the
+    // evidence is in the PREVIOUS run's tail (both tails ship in tray bug reports). Linux keeps stderr as-is:
+    // journald under the systemd --user unit already captures + timestamps it. Runs AFTER the legacy-dir
+    // migration (runtime_dir() creates the dir, which would break the whole-dir move) and BEFORE anything
+    // that logs. Rust's Windows stderr resolves the handle per write, so SetStdHandle here catches all of it.
+    // `--bugreport`: send one bug report and exit — BEFORE the single-instance guard on purpose (it must work
+    // while the real agent is running: "something's wrong, send the team your logs"), and BEFORE the stderr
+    // capture below (whose startup rotation would steal the RUNNING agent's stderr.log — Rust opens files
+    // share-delete on Windows, so the rename would succeed and strand the live agent writing into .1).
+    if std::env::args().any(|a| a == "--bugreport") {
+        std::process::exit(reader::cli_bug_report());
+    }
+
+    #[cfg(windows)]
+    capture_stderr_to_file();
 
     // FIRST: ensure only ONE agent runs machine-wide. If another instance already holds the lock, this logs
     // and exit(0)s here — before any reader/painter/tray starts — so two agents can't double-report matches.

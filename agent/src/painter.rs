@@ -49,8 +49,11 @@ use crate::reader::{
 fn trace(msg: &str) {
     use std::io::Write;
     let path = crate::runtime_dir().join("suite_trace.log");
+    // rotate-not-wipe at the cap (same as reader::trace) — the .1 chunk feeds bug reports
     if std::fs::metadata(&path).map(|m| m.len() > 1_000_000).unwrap_or(false) {
-        let _ = std::fs::write(&path, b"");
+        let bak = crate::runtime_dir().join("suite_trace.log.1");
+        let _ = std::fs::remove_file(&bak);
+        let _ = std::fs::rename(&path, &bak);
     }
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
         let t = std::time::SystemTime::now()
