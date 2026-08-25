@@ -171,7 +171,6 @@ export class MatchFeedStore {
 
 	#unsub: (() => void) | null = null;
 	#ch: SseChannel | null = null;
-	#npSeeded = false; // now-playing is all-mode → seed once, then let the stream maintain it
 	#reqId = 0;
 
 	/** Whether the underlying stream is open + handshaken (rune-reactive via the channel). */
@@ -229,11 +228,26 @@ export class MatchFeedStore {
 			const carry = this.results.filter((r) => (r.mode ?? 'ranked') === mode && !seen.has(r.key));
 			this.results = [...carry, ...seeded].slice(0, RESULTS_CAP);
 
-			if (!this.#npSeeded) {
-				const np = Array.isArray(snap.now_playing) ? snap.now_playing : [];
-				for (let i = np.length - 1; i >= 0; i--) this.#onStart(np[i]); // oldest-first (prepends)
-				this.#npSeeded = true;
-			}
+			// SSOT fix (2026-08-24, live-vs-LurKMan incident): seed/reconcile now-playing from EVERY
+			// snapshot, not once. The old #npSeeded flag meant: open the page before your match, play
+			// fullscreen (tab hidden → SSE closed → match_start missed), come back — results refresh from
+			// this same response while the VS card ignores the now_playing rows sitting right next to them.
+			// One endpoint, consume all of it. #onStart merges by pair-key, so re-seeding is idempotent;
+			// and the snapshot is also the server's live-set truth (rows TTL out server-side), so pairs we
+			// hold that it no longer carries ended while we weren't listening — prune them, sparing rows
+			// younger than 20s (a start delta that raced this fetch must not be eaten).
+			const np = Array.isArray(snap.now_playing) ? snap.now_playing : [];
+			for (let i = np.length - 1; i >= 0; i--) this.#onStart(np[i]); // oldest-first (prepends)
+			const liveKeys = new Set(
+				np
+					.map((d) => {
+						const ps = Array.isArray(d.players) ? d.players.map(String).filter(Boolean) : [];
+						return ps.length >= 2 ? pairKey(ps[0], ps[1]) : '';
+					})
+					.filter(Boolean)
+			);
+			const now = Date.now();
+			this.nowPlaying = this.nowPlaying.filter((r) => liveKeys.has(r.key) || now - r.since < 20_000);
 		} catch {
 			// transient — keep last-good; the next connect/switch retries.
 		} finally {
