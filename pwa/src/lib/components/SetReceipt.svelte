@@ -477,12 +477,11 @@
 	.side.r {
 		justify-content: flex-end;
 	}
+	/* names are standard modern text — real names run long; the italic voice stays on scores/marks */
 	.nm {
-		font-weight: 800;
-		font-style: italic;
-		text-transform: uppercase;
+		font-weight: 700;
 		font-size: 15px;
-		line-height: 1.1;
+		line-height: 1.2;
 		color: var(--ink);
 		text-decoration: none;
 		overflow: hidden;

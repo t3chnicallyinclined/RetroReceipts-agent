@@ -381,9 +381,7 @@
 		text-align: right;
 	}
 	.fighter .nm {
-		font-weight: 800;
-		font-style: italic;
-		text-transform: uppercase;
+		font-weight: 700;
 		font-size: 14px;
 		line-height: 1.1;
 		color: var(--dim);

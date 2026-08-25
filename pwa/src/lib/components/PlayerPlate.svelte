@@ -111,12 +111,11 @@
 		align-items: flex-end;
 		text-align: right;
 	}
+	/* names are standard modern text — real names run long; the heavy italic voice is for scores/marks */
 	.nm {
-		font-style: italic;
-		font-weight: 900;
-		text-transform: uppercase;
-		font-size: 15px;
-		line-height: 1.1;
+		font-weight: 700;
+		font-size: 14px;
+		line-height: 1.2;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -126,7 +125,8 @@
 		color: var(--gold);
 	}
 	.nm.big {
-		font-size: 21px;
+		font-size: 18px;
+		font-weight: 800;
 	}
 	/* charter: gold marks the winner — never green names, never red losers */
 	.nm.won {
@@ -134,7 +134,7 @@
 	}
 	.tagnm {
 		font-size: 13px;
-		font-weight: 800;
+		font-weight: 700;
 	}
 	.sub {
 		display: inline-flex;

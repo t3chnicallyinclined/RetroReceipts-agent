@@ -51,7 +51,9 @@ A new component takes one of these suffixes or amends this doc first.
 5. Every finished match anywhere is a MatchBanner and links to its receipt.
 6. Identity renders through PlayerPlate; names resolve from SSOT fields at render time — never cached strings.
 7. Two text voices: mono = record language (ids, counts, timestamps, deltas, stakes); heavy condensed
-   italic = names and scores.
+   italic = scores, marks, and titles (VS, W/L, set scores, mastheads) — NEVER player names.
+   Names are standard modern text (weight 700, no italic, no forced caps, 13–18px by density):
+   real names run long and the arena voice made them unreadable (calmed 2026-08-25 at Tris's call).
 8. Density never changes structure — zones scale or shed from the edges inward.
 9. Sides are stable; the winner is marked (gold name + chip), never re-sorted.
 10. The suffix grammar is law.
