@@ -116,7 +116,12 @@
 html,
 body {
 	margin: 0;
+	/* ⚠ hidden-then-clip cascade: `overflow-x: hidden` on body makes it a SCROLL CONTAINER, which silently
+	   kills every viewport-relative position:sticky in the app (found via the skins-rack sticky stage —
+	   probed live: sticky top stayed −449 under hidden, pinned to 0 under clip). `clip` blocks horizontal
+	   scroll WITHOUT creating a scroll container; the hidden line stays as the fallback for old engines. */
 	overflow-x: hidden;
+	overflow-x: clip;
 	/* Stop iOS from inflating text in landscape, and kill the grey tap-flash on touch. */
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
