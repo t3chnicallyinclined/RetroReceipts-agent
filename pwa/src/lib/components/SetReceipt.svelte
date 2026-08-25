@@ -278,8 +278,8 @@
 	const sparkPts = (sw: number[]) =>
 		sw.map((v, i) => `${((i / (sw.length - 1)) * 64).toFixed(1)},${(8 - (Math.max(-432, Math.min(432, v)) / 432) * 7).toFixed(1)}`).join(' ');
 
-	// THE LINE's stat totals (columns appear only when at least one game carries stats)
-	const hasStats = $derived(gstats.some((s) => s.has));
+	// THE LINE's stat totals — each column appears only when it has REAL data (an all-zero DMG column
+	// reads as broken, not as zero; damage only flows on 0.3.13+ tapes)
 	const lineStats = (sid: string | undefined) => {
 		let dmg = 0, kos = 0;
 		for (const g of games) {
@@ -291,6 +291,8 @@
 	};
 	const lStat = $derived(lineStats(left?.steamid));
 	const rStat = $derived(lineStats(right?.steamid));
+	const showDmg = $derived(lStat.dmg + rStat.dmg > 0);
+	const showKos = $derived(lStat.kos + rStat.kos > 0);
 
 	// Rank tiers + the gap — this is what turns "I lost 2-8" into "I took two off an Adamantium".
 	const lRank = $derived(left?.rating != null ? rankOf(left.rating, left.games ?? 999) : null);
@@ -459,20 +461,20 @@
 	<div class="tots">
 		<table class="ln">
 			<thead>
-				<tr><th class="nm2">THE LINE</th><th>W</th><th>L</th>{#if hasStats}<th>DMG</th><th>KOs</th>{/if}<th>TAKEN</th><th>GIVEN</th><th class="netc">NET</th></tr>
+				<tr><th class="nm2">THE LINE</th><th>W</th><th>L</th>{#if showDmg}<th>DMG</th>{/if}{#if showKos}<th>KOs</th>{/if}<th>TAKEN</th><th>GIVEN</th><th class="netc">NET</th></tr>
 			</thead>
 			<tbody>
 				<tr>
 					<td class="nm2">{left?.name ?? 'Player'}</td>
 					<td>{lLine.w}</td><td>{lLine.l}</td>
-					{#if hasStats}<td>{lStat.dmg}</td><td>{lStat.kos}</td>{/if}
+					{#if showDmg}<td>{lStat.dmg}</td>{/if}{#if showKos}<td>{lStat.kos}</td>{/if}
 					<td>+{lLine.taken}</td><td>−{lLine.given}</td>
 					<td class="netc" class:up={lLine.net > 0}>{lLine.net > 0 ? '+' : ''}{lLine.net}</td>
 				</tr>
 				<tr>
 					<td class="nm2">{right?.name ?? 'Player'}</td>
 					<td>{rLine.w}</td><td>{rLine.l}</td>
-					{#if hasStats}<td>{rStat.dmg}</td><td>{rStat.kos}</td>{/if}
+					{#if showDmg}<td>{rStat.dmg}</td>{/if}{#if showKos}<td>{rStat.kos}</td>{/if}
 					<td>+{rLine.taken}</td><td>−{rLine.given}</td>
 					<td class="netc" class:up={rLine.net > 0}>{rLine.net > 0 ? '+' : ''}{rLine.net}</td>
 				</tr>
@@ -787,8 +789,9 @@
 		grid-column: 1 / 5;
 		grid-row: 2;
 		display: flex;
+		flex-wrap: wrap; /* a full stat strip wraps rather than hard-clipping mid-word ("23 HIT · STOR") */
 		align-items: baseline;
-		gap: 12px;
+		gap: 2px 12px;
 		margin-top: 4px;
 		padding-top: 3px;
 		border-top: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
@@ -796,7 +799,6 @@
 		letter-spacing: 0.11em;
 		color: var(--dim);
 		white-space: nowrap;
-		overflow: hidden;
 	}
 	.gs .vf {
 		margin-left: auto;
