@@ -4,6 +4,7 @@
 	import { regions, type Region } from '$lib/stores/regions.svelte';
 	import { TABS, PERIODS, SCOPES, MAST, STAT_DESC, PERIOD_LABEL, podiumOn, buildBoardItems } from '$lib/boards';
 	import Board from '$lib/components/Board.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import RegionRow from '$lib/components/RegionRow.svelte';
 	import RegionModal from '$lib/components/RegionModal.svelte';
 	import PodiumPlate from '$lib/components/PodiumPlate.svelte';
@@ -129,19 +130,15 @@
 <svelte:head><title>Ranks · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (adapts for the Regions board mode) -->
-<section class="mast" style="--acc:{heroAcc}">
-	<div class="ghost" aria-hidden="true">{heroGhost}</div>
-	<div class="mrow">
-		<h1 class="mtitle">{heroTitle}</h1>
+<Masthead title={heroTitle} ghost={heroGhost} accent={heroAcc} desc={heroDesc}>
+	{#snippet pills()}
 		{#if (regionView ? regions.error && regionList.length : leaderboard.error && players.length)}
 			<span class="pill live" title={regionView ? regions.error : leaderboard.error}>RECONNECTING…</span>
 		{:else}
 			<span class="pill good">LIVE</span>
 		{/if}
-	</div>
-	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">{heroDesc}</p>
-</section>
+	{/snippet}
+</Masthead>
 
 <!-- Board control area (ONE grouped masthead row — DESIGN-SYSTEM hard-rule #1: never a second
      control row). Scope · stat tabs · period · search. Stays one row from ~900px up; wraps on phones. -->
@@ -281,52 +278,6 @@
 {/if}
 
 <style>
-	.mast {
-		position: relative;
-		overflow: hidden;
-		padding: 14px 4px 10px;
-		margin-bottom: 4px;
-	}
-	.ghost {
-		position: absolute;
-		right: 0;
-		top: -6px;
-		font-size: clamp(46px, 12vw, 96px);
-		font-style: italic;
-		font-weight: 900;
-		letter-spacing: -0.03em;
-		color: var(--ink);
-		opacity: 0.045;
-		pointer-events: none;
-		user-select: none;
-		white-space: nowrap;
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-		letter-spacing: 0.01em;
-	}
-	.seam {
-		height: 3px;
-		width: 120px;
-		margin: 8px 0 9px;
-		transform: skewX(-14deg);
-		background: linear-gradient(90deg, var(--acc), transparent);
-	}
-	.mdesc {
-		margin: 0;
-		max-width: 720px;
-		color: var(--dim);
-		font-size: 12.5px;
-		line-height: 1.5;
-	}
-
 	.controls {
 		display: flex;
 		align-items: center;

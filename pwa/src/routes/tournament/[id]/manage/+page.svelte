@@ -8,11 +8,12 @@
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import { api } from '$lib/config';
+	import { apiGet } from '$lib/net.svelte';
 	import { TourneyStore } from '$lib/stores/tourney.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Flag from '$lib/components/Flag.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import { teamAbbr } from '$lib/chars';
 	import { bracketChip, statusMeta, shortId, type Registration, type BracketMatch  } from '$lib/tourney';
 
@@ -166,13 +167,14 @@
 	let fleet = $state<FleetHost[]>([]);
 	async function toggleFleet(): Promise<void> {
 		fleetOpen = !fleetOpen;
-		if (fleetOpen && fleet.length === 0) await loadFleet();
+		// refresh on EVERY open (SSOT audit: the once-forever gate served a TO a stale fleet — hosts flip
+		// between online/hosting/offline constantly; the dedup layer's TTL keeps rapid toggles cheap).
+		if (fleetOpen) await loadFleet();
 	}
 	async function loadFleet(): Promise<void> {
 		fleetLoading = true;
 		try {
-			const r = await fetch(api('/rr/arcade/hosts'), { headers: { accept: 'application/json' } });
-			const j = (await r.json()) as { hosts?: FleetHost[] };
+			const j = await apiGet<{ hosts?: FleetHost[] }>('/rr/arcade/hosts', { ttl: 15_000 });
 			fleet = j.hosts ?? [];
 		} catch {
 			fleet = [];
@@ -349,15 +351,16 @@
 
 <svelte:head><title>Manage · {doc?.name || 'Tournament'} · Retro Receipts</title></svelte:head>
 
-<section class="mast" style="--acc:#8b6dff">
-	<div class="ghost" aria-hidden="true">COMMAND</div>
-	<div class="mrow">
-		<h1 class="mtitle">MANAGE</h1>
+<Masthead
+	title="MANAGE"
+	ghost="COMMAND"
+	accent="#8b6dff"
+	desc="Build the field, register hosts, and launch the bracket. Everything here is live."
+>
+	{#snippet pills()}
 		<a class="pill back" href="{base}/tournament/{id}">← Event</a>
-	</div>
-	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">Build the field, register hosts, and launch the bracket. Everything here is live.</p>
-</section>
+	{/snippet}
+</Masthead>
 
 {#if !auth.authed}
 	<div class="signin">
@@ -727,37 +730,6 @@
 {/if}
 
 <style>
-	.mast {
-		position: relative;
-		overflow: hidden;
-		padding: 14px 4px 10px;
-		margin-bottom: 6px;
-	}
-	.ghost {
-		position: absolute;
-		right: 0;
-		top: -6px;
-		font-size: clamp(42px, 12vw, 96px);
-		font-style: italic;
-		font-weight: 900;
-		letter-spacing: -0.03em;
-		color: var(--ink);
-		opacity: 0.045;
-		pointer-events: none;
-		user-select: none;
-		white-space: nowrap;
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-		letter-spacing: 0.01em;
-	}
 	.pill.back {
 		font-size: 10.5px;
 		font-weight: 800;
@@ -772,20 +744,6 @@
 	.pill.back:hover {
 		color: var(--ink);
 		border-color: var(--gold-soft);
-	}
-	.seam {
-		height: 3px;
-		width: 120px;
-		margin: 8px 0 9px;
-		transform: skewX(-14deg);
-		background: linear-gradient(90deg, var(--acc), transparent);
-	}
-	.mdesc {
-		margin: 0;
-		max-width: 720px;
-		color: var(--dim);
-		font-size: 12.5px;
-		line-height: 1.5;
 	}
 	.empty {
 		margin: 14px 0;

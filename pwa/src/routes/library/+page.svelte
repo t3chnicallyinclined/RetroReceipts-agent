@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { tierlist } from '$lib/stores/tierlist.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import { teamAbbr } from '$lib/chars';
 	import { winrateColor } from '$lib/ranks';
 
@@ -30,19 +31,20 @@
 <svelte:head><title>Tier List · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions) -->
-<section class="mast" style="--acc:#b98cff">
-	<div class="ghost" aria-hidden="true">META</div>
-	<div class="mrow">
-		<h1 class="mtitle">TIER LIST</h1>
+<Masthead
+	title="TIER LIST"
+	ghost="META"
+	accent="#b98cff"
+	desc="Which teams actually win — every 3-character composition ranked by win rate across all recorded matches. Low-game teams are gated below so a one-and-done 100% doesn’t top the list."
+>
+	{#snippet pills()}
 		{#if tierlist.error && all.length}
 			<span class="pill live" title={tierlist.error}>RECONNECTING…</span>
 		{:else}
 			<span class="pill gold">TEAMS</span>
 		{/if}
-	</div>
-	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">Which teams actually win — every 3-character composition ranked by win rate across all recorded matches. Low-game teams are gated below so a one-and-done 100% doesn’t top the list.</p>
-</section>
+	{/snippet}
+</Masthead>
 
 <!-- min-games gate -->
 <div class="controls">
@@ -99,52 +101,6 @@
 {/if}
 
 <style>
-	.mast {
-		position: relative;
-		overflow: hidden;
-		padding: 14px 4px 10px;
-		margin-bottom: 4px;
-	}
-	.ghost {
-		position: absolute;
-		right: 0;
-		top: -6px;
-		font-size: clamp(46px, 12vw, 96px);
-		font-style: italic;
-		font-weight: 900;
-		letter-spacing: -0.03em;
-		color: var(--ink);
-		opacity: 0.045;
-		pointer-events: none;
-		user-select: none;
-		white-space: nowrap;
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-		letter-spacing: 0.01em;
-	}
-	.seam {
-		height: 3px;
-		width: 120px;
-		margin: 8px 0 9px;
-		transform: skewX(-14deg);
-		background: linear-gradient(90deg, var(--acc), transparent);
-	}
-	.mdesc {
-		margin: 0;
-		max-width: 720px;
-		color: var(--dim);
-		font-size: 12.5px;
-		line-height: 1.5;
-	}
-
 	.controls {
 		display: flex;
 		align-items: center;

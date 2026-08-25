@@ -96,17 +96,24 @@
 		</div>
 	{:else if showState && w}
 		{#if st === 'open' && iAmChallenger}
-			<!-- my quarter is up, waiting for a taker -->
+			<!-- my quarter is up, waiting for a taker. Cabinet presence (challenger_here, from the host's
+			     heartbeat members[]) flips the priority: not seated yet → JOIN is the move; seated → you're
+			     set, SHARING is the move. -->
 			<div class="body">
 				<span class="line"
 					>🪙 {w.stake} in the arcade · FT{w.ft ?? 3} for the pot —
-					{#if cabinet}<span class="secured">🎮 cabinet secured</span> · {/if}<span class="dim">waiting for a taker…</span></span
+					{#if cabinet && w.challenger_here}<span class="secured">🎮 you're in the cabinet</span> · <span class="dim">share the link, warm up, and hold your seat</span>{:else}{#if cabinet}<span class="secured">🎮 cabinet secured</span> · {/if}<span class="dim">waiting for a taker…</span>{/if}</span
 				>
 				<div class="acts">
-					{#if cabinet}
-						<a class="gold join" href={cabinet}>▶ Join your cabinet</a>
+					{#if cabinet && w.challenger_here}
+						<button type="button" class="gold" disabled={acting} onclick={copyLink}>⧉ Share the link</button>
+						<a class="ghost join" href={cabinet}>▶ Rejoin cabinet</a>
+					{:else}
+						{#if cabinet}
+							<a class="gold join" href={cabinet}>▶ Join your cabinet</a>
+						{/if}
+						<button type="button" class="ghost" disabled={acting} onclick={copyLink}>⧉ Copy link</button>
 					{/if}
-					<button type="button" class="ghost" disabled={acting} onclick={copyLink}>⧉ Copy link</button>
 					<button type="button" class="ghost warn" disabled={acting} onclick={cancel}>Cancel</button>
 				</div>
 			</div>
@@ -140,10 +147,20 @@
 						<span class="score">{w.cw ?? 0}–{w.aw ?? 0}</span> <b>{w.acceptor_name || '?'}</b> · next game
 						decides it (FT{w.ft ?? 3}).</span
 					>
+					<!-- cabinet presence while locked-but-not-fighting: who are we waiting on? -->
+					{#if w.arcade}
+						{@const meHere = iAmChallenger ? w.challenger_here : w.acceptor_here}
+						{@const themHere = iAmChallenger ? w.acceptor_here : w.challenger_here}
+						{#if meHere && !themHere}
+							<span class="line dim">🎮 you're seated — waiting for <b>{oppName}</b> at the cabinet…</span>
+						{:else if !meHere}
+							<span class="line dim">🎮 {themHere ? `${oppName} is seated — ` : ''}join the cabinet to start.</span>
+						{/if}
+					{/if}
 				{/if}
 				{#if cabinet}
 					<div class="acts">
-						<a class="gold join" href={cabinet}>▶ Join your cabinet</a>
+						<a class="gold join" href={cabinet}>▶ {(iAmChallenger ? w.challenger_here : w.acceptor_here) ? 'Rejoin' : 'Join your'} cabinet</a>
 					</div>
 				{/if}
 			</div>

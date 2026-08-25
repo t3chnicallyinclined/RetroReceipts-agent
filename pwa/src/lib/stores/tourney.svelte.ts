@@ -1,4 +1,5 @@
 import { api } from '$lib/config';
+import { apiGet } from '$lib/net.svelte';
 import type { Registration, TournamentDoc } from '$lib/tourney';
 
 // Tournament DETAIL store. Two live inputs, mirroring the discipline of SseChannel but with its OWN
@@ -244,10 +245,11 @@ export class TourneyStore {
 		for (const sid of sids) {
 			if (!sid || this.players[sid] || this.#resolving.has(sid)) continue;
 			this.#resolving.add(sid);
-			fetch(api(`/rr/profile?steamid=${encodeURIComponent(sid)}`), {
-				headers: { accept: 'application/json' }
-			})
-				.then((r) => (r.ok ? (r.json() as Promise<ProfileLite>) : null))
+			// via the app-wide dedup layer (SSOT audit): profile reads share one in-flight request + TTL with
+			// every other surface, so a bracket full of seats can't stampede /rr/profile, and names here go
+			// stale/fresh on the SAME clock as everywhere else instead of freezing in a store-local cache.
+			apiGet<ProfileLite>(`/rr/profile?steamid=${encodeURIComponent(sid)}`)
+				.catch(() => null)
 				.then((p) => {
 					const lite: PlayerLite =
 						p && p.found

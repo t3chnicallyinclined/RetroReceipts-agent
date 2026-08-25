@@ -8,6 +8,7 @@
 	import { theme, type ThemeChoice } from '$lib/stores/theme.svelte';
 	import { APP_VERSION, api } from '$lib/config';
 	import Avatar from '$lib/components/Avatar.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import LocationEditor from '$lib/components/LocationEditor.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
@@ -98,10 +99,7 @@
 
 <svelte:head><title>Settings · Retro Receipts</title></svelte:head>
 
-<section class="mast">
-	<h1 class="mtitle">SETTINGS</h1>
-	<div class="seam" aria-hidden="true"></div>
-</section>
+<Masthead title="SETTINGS" />
 
 <!-- Account -->
 <div class="rail sec-hd">Account</div>
@@ -271,22 +269,6 @@
 {/if}
 
 <style>
-	.mast {
-		padding: 14px 4px 8px;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-		letter-spacing: 0.01em;
-	}
-	.seam {
-		height: 3px;
-		width: 120px;
-		margin-top: 8px;
-		transform: skewX(-14deg);
-		background: linear-gradient(90deg, var(--gold), transparent);
-	}
 	.sec-hd {
 		display: block;
 		margin: 18px 2px 8px;

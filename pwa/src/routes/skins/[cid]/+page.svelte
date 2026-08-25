@@ -240,18 +240,28 @@
 		gap: 0;
 		border: 1px solid var(--line);
 		border-radius: 14px;
-		overflow: hidden;
+		/* NO overflow:hidden — it disables position:sticky on the stage (the whole fix). The corner
+		   clipping moves to per-column radii below. */
 		margin: 10px 0 30px;
 		background: var(--panel);
 	}
+	/* ★ THE STICKY STAGE (Tris, 2026-08-25): browsing a long rack scrolled the character out of view, so
+	   applying a skin gave zero feedback. The stage now pins while the rack scrolls under it — every
+	   TRY ON is visible the instant it lands, on every screen size. */
 	.stage-col {
-		position: relative;
+		position: sticky;
+		top: 10px;
+		align-self: start;
 		padding: 16px;
 		background: radial-gradient(110% 90% at 50% 20%, #141826 0%, var(--bg) 70%);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		border-right: 1px solid var(--line);
+		border-radius: 13px 0 0 13px;
+	}
+	.rack-col {
+		border-radius: 0 13px 13px 0;
 	}
 	.back {
 		align-self: flex-start;
@@ -553,12 +563,48 @@
 		.rk {
 			grid-template-columns: 1fr;
 		}
+		/* stacked layout: the stage becomes a COMPACT sticky bar — sprite + name + WEAR in one row that
+		   rides the top of the screen while the rack scrolls. An opaque ground is load-bearing (cards
+		   scroll UNDER it); z-index sits above the card stack. */
 		.stage-col {
+			top: 0;
+			z-index: 5;
+			flex-direction: row;
+			align-items: center;
+			gap: 12px;
+			padding: 8px 12px;
 			border-right: 0;
 			border-bottom: 1px solid var(--line);
+			border-radius: 13px 13px 0 0;
+			background: radial-gradient(140% 160% at 30% 20%, #141826 0%, var(--bg) 75%), var(--bg);
+		}
+		.back {
+			align-self: center;
+			flex: none;
 		}
 		.stage {
-			height: 40vh;
+			width: 76px;
+			height: 76px;
+			margin: 0;
+			flex: none;
+		}
+		.meta {
+			text-align: left;
+			margin: 0;
+			flex: 1 1 auto;
+			min-width: 0;
+		}
+		.snm {
+			font-size: 13px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		.wear {
+			margin: 0;
+			padding: 9px 14px;
+			font-size: 12px;
+			flex: none;
 		}
 	}
 </style>

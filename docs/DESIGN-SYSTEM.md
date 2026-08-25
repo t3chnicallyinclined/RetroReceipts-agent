@@ -32,15 +32,15 @@ A new component takes one of these suffixes or amends this doc first.
 | Type | Component | Status |
 |---|---|---|
 | PlayerPlate | `lib/components/PlayerPlate.svelte` — densities tag 20 / plate 28 / hero 56 (+68px team sprites); flag-before-name; bare mono rating; client-derived tier; skinned team sprites | SHIPPED — adopted: profile hero, MatchBanner, VersusCard. Remaining hand-rolled clusters migrate opportunistically |
-| MatchBanner | `lib/components/MatchBanner.svelte` — frozen zones [chip][team][plate] VS [plate][team][chip][meta]; 48px skinned sprites; two-channel chips; gold VS; mode/flair/seal/delta/duration/time meta; whole banner opens its set; grid-area mobile fold | SHIPPED — adopted: profile recents, Live Results. Receipt game rows still bespoke (SetReceipt predates; visually aligned) |
+| MatchBanner | `lib/components/MatchBanner.svelte` — frozen zones [chip][team][plate] VS [plate][team][chip][meta]; 48px skinned sprites; two-channel chips; gold VS; mode/flair/seal/delta/duration/time meta; whole banner opens its set; grid-area mobile fold | SHIPPED — adopted: profile recents, Live Results. Receipt game rows stay bespoke BY DESIGN (2026-08-25: the tape's stats layer — momentum sparklines, owned combos, first-blood markers — outgrew what a banner density could host; visually aligned via the shared vocabulary) |
 | VersusCard | `lib/components/VersusCard.svelte` — live pairing; silhouettes → picks pop in → set score center-stage; red broadcast LIVE; spectate on stream | SHIPPED — adopted: Now Playing. MyMatch keeps its intel-strip layout (charter-compliant) |
 | BoardRow | `Board.svelte`/`BoardRow.svelte` + `PodiumPlate.svelte` = hero density (squads ON the podium at 44/56px + challenge affordance) | SHIPPED |
 | Receipt | `SetReceipt` (THE TAPE) / `SessionReceipt` / `MatchReceipt` on `ReceiptPaper`; money direction = gold-vs-dim | SHIPPED (MoneyH2H's green/red fork deleted) |
-| StakeCard | grammar live in Marquee (real avatars + flags, FT3, gold terms) / ChallengeStrip (molten urgency) / WagerRail (FT3) | GRAMMAR SHIPPED — single-component consolidation pending |
-| CabinetCard | `HOST_STATUS_META` in `lib/stores/hosts.svelte.ts` = the ONE status vocabulary (HostCard + TO console consume it) | VOCAB SHIPPED — HostCard/HostBanner merge pending |
+| StakeCard | grammar live in Marquee (real avatars + flags, FT3, gold terms) / ChallengeStrip (molten urgency) / WagerRail (FT3 + cabinet presence: challenger_here/acceptor_here drive "Join" → "You're in — share the link" → "waiting for X at the cabinet") | RESOLVED 2026-08-25: no single component BY DESIGN — the three surfaces are different moments (browse / urgency / owner lifecycle) with deliberate per-context voice; the drift-prone parts (FT default, gold charter, stake vocabulary) are already unified. Re-open only if a FOURTH stake surface appears |
+| CabinetCard | `HOST_STATUS_META` + `hostStatus()` + `pingClass()` in `lib/stores/hosts.svelte.ts` = the shared status vocabulary + ping thresholds (HostCard + HostBanner + TO console consume all three) | RESOLVED 2026-08-25: Card and Banner stay SEPARATE by the suffix grammar's own law (Card = browse object w/ seats+rules+CTA; Banner = live status strip) — merging them conflates two jobs. All shared LOGIC hoisted; the duplicated pill/dot CSS is scoped-style idiom, not drift |
 | StatTile | `StatTile.svelte`, accents from the charter | SHIPPED |
-| BracketMatch | `bracketChip()` in `lib/tourney.ts` = the ONE state taxonomy (public page + TO console consume it) | TAXONOMY SHIPPED — shared card component pending |
-| Masthead | `lib/components/Masthead.svelte` | SHIPPED — adopt on routes as touched (10 inline copies exist) |
+| BracketMatch | `bracketChip()` in `lib/tourney.ts` = the ONE state taxonomy (public page + TO console consume it) | RESOLVED 2026-08-25: no shared card — public page renders a read-only card, the console an admin form; the taxonomy WAS the drift surface and it's consolidated. Re-open if a third bracket renderer appears |
+| Masthead | `lib/components/Masthead.svelte` | SHIPPED — all 10 inline copies migrated 2026-08-25 |
 
 ## The commandments (all checkable)
 

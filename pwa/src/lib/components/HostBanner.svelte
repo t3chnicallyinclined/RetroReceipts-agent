@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { hosts, hostStatus } from '$lib/stores/hosts.svelte';
+	import { hosts, hostStatus, pingClass } from '$lib/stores/hosts.svelte';
 	import { timeAgo } from '$lib/format';
 
 	// 🎛 Cabinet-status banner — "what this host node is doing right now", MODE-AWARE (money / tournament /
@@ -36,7 +36,7 @@
 
 	const ping = $derived(host?.steam_ping_ms);
 	const showPing = $derived(ping != null && ping >= 0);
-	const pingCls = $derived(ping == null ? '' : ping < 60 ? 'good' : ping < 150 ? 'warn' : 'bad');
+	const pingCls = $derived(pingClass(ping)); // thresholds shared with HostCard (hosts store)
 	const ftLabel = $derived(host?.ft && host.ft > 0 ? `FT${host.ft}` : '');
 	const canJoin = $derived(!!host?.join && host.join.startsWith('steam://joinlobby/'));
 	const ago = $derived(host ? timeAgo(host.last_seen_ms) : '');

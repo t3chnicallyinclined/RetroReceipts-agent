@@ -4,6 +4,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { api } from '$lib/config';
 	import StatTile from '$lib/components/StatTile.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import { timeAgo } from '$lib/format';
 
 	// ── Site-admin dashboard ─────────────────────────────────────────────────────────────────────────
@@ -241,16 +242,13 @@
 
 <svelte:head><title>Admin · Retro Receipts</title></svelte:head>
 
-<section class="mast">
-	<div class="mrow">
-		<h1 class="mtitle">ADMIN</h1>
+<Masthead title="ADMIN" desc="Operator telemetry — live fleet, installs, and who’s on old builds.">
+	{#snippet right()}
 		{#if isAdmin && !forbidden}
 			<button class="refresh" onclick={refresh} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
 		{/if}
-	</div>
-	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">Operator telemetry — live fleet, installs, and who’s on old builds.</p>
-</section>
+	{/snippet}
+</Masthead>
 
 {#if !auth.authed}
 	<div class="empty gate">
@@ -540,21 +538,6 @@
 		}
 	}
 
-	.mast {
-		padding: 14px 4px 8px;
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-		letter-spacing: 0.01em;
-	}
 	.refresh {
 		font: inherit;
 		font-size: 12px;
@@ -576,20 +559,6 @@
 	.refresh:disabled {
 		opacity: 0.55;
 		cursor: default;
-	}
-	.seam {
-		height: 3px;
-		width: 120px;
-		margin: 8px 0 9px;
-		transform: skewX(-14deg);
-		background: linear-gradient(90deg, var(--gold), transparent);
-	}
-	.mdesc {
-		margin: 0;
-		max-width: 720px;
-		color: var(--dim);
-		font-size: 12.5px;
-		line-height: 1.5;
 	}
 	.sec-hd {
 		display: block;

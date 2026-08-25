@@ -3,7 +3,7 @@
 	import Avatar from './Avatar.svelte';
 	import QuarterUpModal from './QuarterUpModal.svelte';
 	import { timeAgo } from '$lib/format';
-	import { hostStatus, type Host, type HostStatus , HOST_STATUS_META } from '$lib/stores/hosts.svelte';
+	import { hostStatus, pingClass, type Host, type HostStatus , HOST_STATUS_META } from '$lib/stores/hosts.svelte';
 
 	// One node in the fleet map — a card carrying the host's identity, live status, lobby fill and a
 	// real Steam Join link. Shares the arena vocabulary (panel/pill/tokens); the status drives both the
@@ -33,10 +33,10 @@
 	let qopen = $state(false);
 
 	// Per-node telemetry (all optional; a node with no report yet degrades to nothing shown).
-	//   • ping chip hides on unknown (-1/absent); colour thresholds: <60 green, <150 amber, else red.
+	//   • ping chip hides on unknown (-1/absent); thresholds live in ONE place (pingClass, hosts store).
 	const ping = $derived(host.steam_ping_ms);
 	const showPing = $derived(ping != null && ping >= 0);
-	const pingCls = $derived(ping == null ? '' : ping < 60 ? 'good' : ping < 150 ? 'warn' : 'bad');
+	const pingCls = $derived(pingClass(ping));
 	const hasTele = $derived(!!host.os || showPing || host.matches_hosted != null);
 	// 17-digit steamid → deep-link the node's owner to their profile (mirrors PlayerTag).
 	const is17 = $derived(/^\d{17}$/.test(host.steamid));

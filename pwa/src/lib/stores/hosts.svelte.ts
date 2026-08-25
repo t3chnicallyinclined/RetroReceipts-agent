@@ -142,6 +142,13 @@ export const HOST_STATUS_META: Record<string, { label: string; cls: string; acce
 	offline: { label: 'Offline', cls: 'off', accent: 'var(--faint)' }
 };
 
+/** Ping → semantic class ('' unknown, good <60ms, warn <150ms, bad above) — ONE set of thresholds for
+ *  every surface that colors a ping chip (HostCard + HostBanner each carried a copy; card-system step). */
+export function pingClass(ping: number | null | undefined): '' | 'good' | 'warn' | 'bad' {
+	if (ping == null || ping < 0) return '';
+	return ping < 60 ? 'good' : ping < 150 ? 'warn' : 'bad';
+}
+
 export function hostStatus(h: Host): HostStatus {
 	if (h.active === 1) return 'match';
 	if (!h.join) return 'idle';

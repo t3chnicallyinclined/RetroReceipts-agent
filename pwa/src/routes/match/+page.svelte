@@ -5,6 +5,7 @@
 	import { wager } from '$lib/stores/wager.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import MatchBanner from '$lib/components/MatchBanner.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import VersusCard from '$lib/components/VersusCard.svelte';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import MyMatch from '$lib/components/MyMatch.svelte';
@@ -154,15 +155,16 @@
 <svelte:head><title>Match · Retro Receipts</title></svelte:head>
 
 <!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions) -->
-<section class="mast" style="--acc:var(--live)">
-	<div class="ghost" aria-hidden="true">LIVE</div>
-	<div class="mrow">
-		<h1 class="mtitle">MATCH</h1>
+<Masthead
+	title="MATCH"
+	ghost="LIVE"
+	accent="var(--live)"
+	desc="The live match center — games in progress and results as they land, pushed the moment they happen. Leave it open and watch the scene play out."
+>
+	{#snippet pills()}
 		<span class="pill live"><span class="dot" aria-hidden="true"></span>LIVE</span>
-	</div>
-	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">The live match center — games in progress and results as they land, pushed the moment they happen. Leave it open and watch the scene play out.</p>
-</section>
+	{/snippet}
+</Masthead>
 
 <!-- Result Check honest-beta banner — the reserved amber surface (DESIGN §gold budget) -->
 <ResultCheckBanner />
@@ -321,52 +323,6 @@
 {/if}
 
 <style>
-	.mast {
-		position: relative;
-		overflow: hidden;
-		padding: 14px 4px 10px;
-		margin-bottom: 4px;
-	}
-	.ghost {
-		position: absolute;
-		right: 0;
-		top: -6px;
-		font-size: clamp(46px, 12vw, 96px);
-		font-style: italic;
-		font-weight: 900;
-		letter-spacing: -0.03em;
-		color: var(--ink);
-		opacity: 0.045;
-		pointer-events: none;
-		user-select: none;
-		white-space: nowrap;
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-		letter-spacing: 0.01em;
-	}
-	.seam {
-		height: 3px;
-		width: 120px;
-		margin: 8px 0 9px;
-		transform: skewX(-14deg);
-		background: linear-gradient(90deg, var(--acc), transparent);
-	}
-	.mdesc {
-		margin: 0;
-		max-width: 720px;
-		color: var(--dim);
-		font-size: 12.5px;
-		line-height: 1.5;
-	}
-
 	/* 🪙 one-tap accept funnel card — the share-link hero. Gold-cut arena panel, same button vocabulary as
 	   the WagerRail so the two read as one system. */
 	.invite {

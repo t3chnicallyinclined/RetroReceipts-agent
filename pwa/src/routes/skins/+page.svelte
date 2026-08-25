@@ -3,6 +3,7 @@
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import CharSprite from '$lib/components/CharSprite.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import { CHAR_NAME } from '$lib/chars';
 	import { STOCK_PALETTES } from '$lib/stockPalettes';
 	import { auth } from '$lib/stores/auth.svelte';
@@ -96,16 +97,17 @@
 
 <svelte:head><title>The Locker · Retro Receipts</title></svelte:head>
 
-<section class="mast" style="--acc:#8b6dff">
-	<div class="ghost" aria-hidden="true">LOCKER</div>
-	<div class="mrow">
-		<h1 class="mtitle">THE LOCKER</h1>
+<Masthead
+	title="THE LOCKER"
+	ghost="LOCKER"
+	accent="#8b6dff"
+	desc="Your fighters, your colors — painted live in the real game and worn on every receipt, board and live card. Tap a character to open their rack: try skins on free, wear one in one tap, or make your own in the dye station."
+>
+	{#snippet pills()}
 		<span class="pill">SKINS</span>
 		{#if auth.authed}<span class="dressed">DRESSED {dressed}/{roster.length}</span>{/if}
-	</div>
-	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">Your fighters, your colors — painted live in the real game and worn on every receipt, board and live card. Tap a character to open their rack: try skins on free, wear one in one tap, or make your own in the dye station.</p>
-</section>
+	{/snippet}
+</Masthead>
 
 {#if !auth.authed}
 	<div class="signin">
@@ -159,36 +161,6 @@
 {/if}
 
 <style>
-	.mast {
-		position: relative;
-		overflow: hidden;
-		padding: 14px 4px 10px;
-		margin-bottom: 6px;
-	}
-	.ghost {
-		position: absolute;
-		right: 0;
-		top: -6px;
-		font-size: clamp(46px, 12vw, 96px);
-		font-style: italic;
-		font-weight: 900;
-		letter-spacing: -0.03em;
-		color: var(--ink);
-		opacity: 0.045;
-		pointer-events: none;
-		user-select: none;
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		flex-wrap: wrap;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-	}
 	.pill {
 		font-size: 10px;
 		font-weight: 800;
@@ -204,17 +176,6 @@
 		font-size: 10px;
 		letter-spacing: 0.14em;
 		color: var(--dim);
-	}
-	.seam {
-		height: 2px;
-		width: 130px;
-		margin: 8px 0 10px;
-		background: linear-gradient(90deg, var(--acc), transparent);
-	}
-	.mdesc {
-		max-width: 66ch;
-		color: var(--dim);
-		font-size: 13.5px;
 	}
 	.signin {
 		border: 1px dashed var(--line);

@@ -33,6 +33,10 @@ export interface Wager {
 	has_lobby?: boolean;
 	arcade?: boolean; // 🕹 a neutral pool/bot cabinet (safe to surface while OPEN); false = challenger's P2P lobby
 	live?: boolean; // 🔴 a game is being fought right now
+	// 🕹 cabinet PRESENCE (arcade wagers; from the host's heartbeat members[]): who's physically seated.
+	// Drives "Join your cabinet" → "You're in — share the link" and "waiting for X at the cabinet".
+	challenger_here?: boolean;
+	acceptor_here?: boolean;
 }
 
 type WagerFrame = SseFrame & Partial<Wager>;

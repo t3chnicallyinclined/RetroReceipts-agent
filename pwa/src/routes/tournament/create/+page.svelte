@@ -11,6 +11,7 @@
 	import { base } from '$app/paths';
 	import { api } from '$lib/config';
 	import { auth } from '$lib/stores/auth.svelte';
+	import Masthead from '$lib/components/Masthead.svelte';
 	import { COUNTRIES, US_REGIONS, CC_NAME } from '$lib/represent';
 	import { flagEmoji } from '$lib/format';
 	import type { TournamentDoc } from '$lib/tourney';
@@ -335,19 +336,18 @@
 
 <svelte:head><title>{isEdit ? 'Edit' : 'Create'} tournament · Retro Receipts</title></svelte:head>
 
-<section class="mast" style="--acc:#8b6dff">
-	<div class="ghost" aria-hidden="true">ORGANIZE</div>
-	<div class="mrow">
-		<h1 class="mtitle">{heading}</h1>
+<Masthead
+	title={heading}
+	ghost="ORGANIZE"
+	accent="#8b6dff"
+	desc={isEdit
+		? 'Update your event. Structural settings lock once the bracket starts.'
+		: 'Open a bracket that runs itself — seeded by real ELO, live on every phone.'}
+>
+	{#snippet pills()}
 		<a class="pill back" href="{base}/tournament">← Tournaments</a>
-	</div>
-	<div class="seam" aria-hidden="true"></div>
-	<p class="mdesc">
-		{isEdit
-			? 'Update your event. Structural settings lock once the bracket starts.'
-			: 'Open a bracket that runs itself — seeded by real ELO, live on every phone.'}
-	</p>
-</section>
+	{/snippet}
+</Masthead>
 
 {#if !auth.authed}
 	<div class="signin">
@@ -567,37 +567,6 @@
 {/if}
 
 <style>
-	.mast {
-		position: relative;
-		overflow: hidden;
-		padding: 14px 4px 10px;
-		margin-bottom: 6px;
-	}
-	.ghost {
-		position: absolute;
-		right: 0;
-		top: -6px;
-		font-size: clamp(42px, 12vw, 96px);
-		font-style: italic;
-		font-weight: 900;
-		letter-spacing: -0.03em;
-		color: var(--ink);
-		opacity: 0.045;
-		pointer-events: none;
-		user-select: none;
-		white-space: nowrap;
-	}
-	.mrow {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-	}
-	.mtitle {
-		font-size: clamp(20px, 5.5vw, 27px);
-		font-weight: 900;
-		font-style: italic;
-		letter-spacing: 0.01em;
-	}
 	.pill.back {
 		font-size: 10.5px;
 		font-weight: 800;
@@ -613,21 +582,6 @@
 		color: var(--ink);
 		border-color: var(--gold-soft);
 	}
-	.seam {
-		height: 3px;
-		width: 120px;
-		margin: 8px 0 9px;
-		transform: skewX(-14deg);
-		background: linear-gradient(90deg, var(--acc), transparent);
-	}
-	.mdesc {
-		margin: 0;
-		max-width: 720px;
-		color: var(--dim);
-		font-size: 12.5px;
-		line-height: 1.5;
-	}
-
 	.empty {
 		margin: 14px 0;
 		padding: 22px 16px;
