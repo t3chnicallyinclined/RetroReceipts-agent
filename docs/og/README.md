@@ -16,7 +16,7 @@ no shipping). All user text is substituted as literal strings — ESCAPE EVERYTH
 | `{{LRANK}} {{LRATING}}` etc. | tier name + rating (from the session players' rating; tier via the same rankOf thresholds the PWA uses — or just the rating if tier is a bother) | mono, dim |
 | `{{DATE}}` | `YYYY-MM-DD` of game 1 ts | |
 | `{{GAMES}}` | games.length | |
-| `{{DUR}}` | sum duration_s → `Nm SSs`, or last ts − first ts fallback; empty → omit segment | |
+| `{{DUR}}` | **wall-clock span: last game ts − first game ts** → `Nm SSs` (⚠ NOT the duration_s sum — tapes are per-game and often partial, a 10-game set rendered "1m 46s" from its one taped game); empty → omit segment AND its `·` separator | |
 | `{{SEAL}}` | `● N/N VERIFIED` (verified\|\|confirmed count) — `LIVE SET` while unsettled | |
 | `{{SEALCOLOR}}` | `#ffb020` when ALL games verified, else `#8a92ab`; `#ff3d68` for LIVE | |
 
@@ -33,7 +33,12 @@ PNG's aspect (`w = 140 * png_w / png_h`). Slot x anchors — left seat: `48, 188
 ```xml
 <image x="48" y="365" width="{w}" height="140" xlink:href="file:///var/www/metasync-app/app/chars-png/26.png"/>
 ```
-(resvg accepts plain relative/absolute paths too — whatever your loader prefers; base64 data URIs also fine.)
+⚠ **hrefs must be PLAIN ABSOLUTE PATHS** (`/var/www/...`), NOT `file://` URLs — usvg's default resolver
+treats href as a filesystem path and a `file://` prefix silently renders ZERO portraits (found live at
+first deploy: the card looked fine, squad rows empty). Base64 data URIs also work.
+
+> STATUS 2026-08-25: LIVE (server 4248bce). The template is VENDORED into the server repo
+> (`server/assets/`) and compiled in — design changes here need a peer re-copy + rebuild, ping them.
 
 ## Notes
 
