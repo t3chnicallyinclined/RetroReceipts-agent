@@ -560,8 +560,11 @@
 		white-space: nowrap;
 	}
 	@media (max-width: 700px) {
+		/* ⚠ BLOCK, not a 1-col grid: a sticky grid item can only travel within its own grid AREA, which in
+		   a stacked layout is exactly its own height — it never sticks (verified live). As a block child it
+		   rides the full container. */
 		.rk {
-			grid-template-columns: 1fr;
+			display: block;
 		}
 		/* stacked layout: the stage becomes a COMPACT sticky bar — sprite + name + WEAR in one row that
 		   rides the top of the screen while the rack scrolls. An opaque ground is load-bearing (cards
