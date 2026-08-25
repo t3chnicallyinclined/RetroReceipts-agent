@@ -25,6 +25,7 @@
 	--good: #35d07f;
 	--live: #ff3d68;
 	--loss: #ff6b6b;
+	--molten: #ff5c2c; /* violence/urgency accent (OCV, challenge) — was referenced but never defined */
 	--stream: #8b6dff;
 	--r: 14px;
 	--shadow: 0 18px 50px -22px rgba(0, 0, 0, 0.8);
@@ -54,6 +55,7 @@
 		--good: #12a05a;
 		--live: #e11d54;
 	--loss: #d92d3f;
+	--molten: #d24818; /* violence/urgency accent (OCV, challenge) — was referenced but never defined */
 		--board: #dfe2ec;
 		--shadow: 0 18px 44px -24px rgba(30, 40, 70, 0.4);
 		color-scheme: light;
@@ -81,6 +83,7 @@
 	--good: #12a05a;
 	--live: #e11d54;
 	--loss: #d92d3f;
+	--molten: #d24818; /* violence/urgency accent (OCV, challenge) — was referenced but never defined */
 	--board: #dfe2ec;
 	--shadow: 0 18px 44px -24px rgba(30, 40, 70, 0.4);
 	color-scheme: light;
@@ -101,6 +104,7 @@
 	--good: #35d07f;
 	--live: #ff3d68;
 	--loss: #ff6b6b;
+	--molten: #ff5c2c; /* violence/urgency accent (OCV, challenge) — was referenced but never defined */
 	--board: #0d1017;
 	--shadow: 0 18px 50px -22px rgba(0, 0, 0, 0.8);
 	color-scheme: dark;
