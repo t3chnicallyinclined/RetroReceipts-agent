@@ -2080,8 +2080,14 @@ fn on_game_win(winner: u8, opp: &Option<(String, String)>, my_side: u8, ocv: boo
     if my_id_num == 0 { return; }
     let my_id = my_id_num.to_string();
     let reporter = my_id.clone();   // consensus: we report as OURSELVES; server counts only when BOTH sides do
+    // ⚠ THE OPPONENT'S NAME IS NEVER TRANSMITTED (Tris directive, 2026-08-25). The scraped name exists only
+    // to VALIDATE the id scan (a name-shaped run beside a candidate id proves a real player record) and to
+    // label the local tray/H2H — it is a lossy memory read and polluted server name records twice ("OMEN"
+    // empty-gate 0.3.13, mojibake 0.3.16). The report is id-only for the opponent; the server resolves every
+    // display name itself (records → Steam Web API). Our OWN name is file-sourced (loginusers.vdf, not
+    // memory) and keeps the server's name freshness — it still rides along.
     let (winner_id, winner_name, loser_id, loser_name) =
-        if i_won { (my_id, my_name, opp_id, opp_name) } else { (opp_id, opp_name, my_id, my_name) };
+        if i_won { (my_id, my_name, opp_id, String::new()) } else { (opp_id, String::new(), my_id, my_name) };
     // teams + combat stats always describe the WINNER's side (symmetric, credited correctly whether we won or lost)
     let (winner_team, loser_team, winner_combo, winner_met) = if winner == 1 {
         (rich.p1_team.clone(), rich.p2_team.clone(), rich.p1_combo, rich.p1_met)
