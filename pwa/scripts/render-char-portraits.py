@@ -31,6 +31,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # env var, with a layout-agnostic default (three dirs up from scripts/ → the projects-root sibling mvc-live-skins).
 DEFAULT_SRC = os.environ.get("IDLE_FRAMES") or os.path.normpath(os.path.join(HERE, "..", "..", "..", "mvc-live-skins", "web", "idle_frames.json"))
 OUT_DIR = os.path.normpath(os.path.join(HERE, "..", "static", "chars"))
+# PNG twins for the server-side OG fight-card render: resvg (the rr-server rasterizer) reads PNG, not
+# webp. Deployed at /app/chars-png/<id>.png; the server embeds them from its local disk when composing
+# the 1200x630 share image. Same gitignore posture as chars/ (ROM-derived, regenerated every build).
+PNG_DIR = os.path.normpath(os.path.join(HERE, "..", "static", "chars-png"))
 
 
 def render(entry):
@@ -59,6 +63,7 @@ def main():
     src = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SRC
     data = json.load(open(src))
     os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(PNG_DIR, exist_ok=True)
     n = total = 0
     for cid, entry in data.items():
         try:
@@ -70,11 +75,12 @@ def main():
                 img = render(entry)
             path = os.path.join(OUT_DIR, f"{cid}.webp")
             img.save(path, "WEBP", lossless=True, quality=100)
+            img.save(os.path.join(PNG_DIR, f"{cid}.png"), "PNG", optimize=True)
             n += 1
             total += os.path.getsize(path)
         except Exception as e:  # noqa: BLE001 — a bad entry shouldn't abort the batch
             print(f"  skip {cid}: {e}")
-    print(f"rendered {n} portraits → {OUT_DIR} ({total // 1024} KB total)")
+    print(f"rendered {n} portraits (webp + png twins) → {OUT_DIR} ({total // 1024} KB total)")
 
 
 if __name__ == "__main__":

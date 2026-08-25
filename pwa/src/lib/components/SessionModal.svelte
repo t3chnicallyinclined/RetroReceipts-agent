@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import SetReceipt from './SetReceipt.svelte';
 	import type { SetReceiptData } from './SetReceipt.svelte';
+	import { shortSetLink } from '$lib/share';
 
 	// The SET modal — an overlay around THE TAPE (SetReceipt). Opened with a session_id from a result OR a
 	// Now Playing card. This component owns ONLY the modal mechanics: fetch + live re-poll, focus trap,
@@ -18,6 +19,18 @@
 	}: { sessionId: string; onClose: () => void; live?: boolean } = $props();
 
 	const LIVE_POLL_MS = 5000; // silent refresh cadence while a live set is open
+
+	// ⧉ short share link (nobd.net/s/<tail>), the viewer's seat baked in so the recipient reads THEIR slip
+	let copied = $state(false);
+	async function copyShort(): Promise<void> {
+		try {
+			await navigator.clipboard.writeText(shortSetLink(sessionId, auth.steamid));
+			copied = true;
+			setTimeout(() => (copied = false), 1600);
+		} catch {
+			/* clipboard blocked */
+		}
+	}
 
 	let loading = $state(false);
 	let error = $state<string | null>(null);
@@ -136,7 +149,10 @@
 		{:else if data}
 			<!-- the viewer reads the tape from THEIR seat, exactly like the share page -->
 			<SetReceipt r={data} me={auth.steamid ?? null} {live} />
-			<a class="open" href="{base}/r/set/{encodeURIComponent(sessionId)}">Open receipt page →</a>
+			<div class="row">
+				<button type="button" class="open" onclick={copyShort}>{copied ? '✓ Link copied' : '⧉ Copy link'}</button>
+				<a class="open" href="{base}/r/set/{encodeURIComponent(sessionId)}">Open receipt page →</a>
+			</div>
 		{/if}
 	</div>
 </div>
@@ -192,7 +208,13 @@
 	.note.err {
 		color: var(--loss);
 	}
+	.row {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+	}
 	.open {
+		font: inherit;
 		font-size: 11.5px;
 		font-weight: 700;
 		letter-spacing: 0.04em;
@@ -202,6 +224,7 @@
 		border: 1px solid var(--line);
 		border-radius: 8px;
 		background: var(--panel-2);
+		cursor: pointer;
 	}
 	.open:hover {
 		color: var(--gold);

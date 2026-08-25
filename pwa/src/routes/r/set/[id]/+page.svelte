@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import SetReceipt from '$lib/components/SetReceipt.svelte';
 	import type { SetReceiptData } from '$lib/components/SetReceipt.svelte';
+	import { shortSetLink } from '$lib/share';
 
 	// 🧾 /r/set/<session_id> — the RANKED counterpart to /r/<wager_id>. Public + read-only so a set is
 	// shareable to anyone, same as the money slip. Reads the same /rr/session?id= payload SessionModal uses,
@@ -50,10 +51,8 @@
 	let copied = $state(false);
 	async function copyLink() {
 		try {
-			// Bake the current seat into the shared URL so the recipient sees the slip the SHARER sees.
-			const u = new URL(location.href);
-			if (perspective) u.searchParams.set('p', perspective);
-			await navigator.clipboard.writeText(u.toString());
+			// SHORT form (nobd.net/s/<tail>), seat baked in so the recipient sees the slip the SHARER sees.
+			await navigator.clipboard.writeText(shortSetLink(id, perspective));
 			copied = true;
 			setTimeout(() => (copied = false), 1600);
 		} catch {
