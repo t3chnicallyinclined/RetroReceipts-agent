@@ -603,6 +603,12 @@
 			text-overflow: ellipsis;
 			white-space: nowrap;
 		}
+		.prov {
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			max-width: 100%;
+		}
 		.wear {
 			margin: 0;
 			padding: 9px 14px;
