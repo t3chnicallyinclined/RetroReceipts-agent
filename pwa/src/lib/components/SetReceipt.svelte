@@ -29,6 +29,19 @@
 		losses?: number;
 		games?: number;
 	};
+	type GameStats = {
+		wchipd?: number;
+		lchipd?: number;
+		wkos?: number;
+		lkos?: number;
+		wmeter?: number;
+		lmeter?: number;
+		first_hit?: string; // "w" | "l" | ""
+		deaths?: number[]; // per-slot, interleaved (P1=0/2/4, P2=1/3/5)
+		bc_slot?: number; // slot that DEALT the biggest combo (0-5)
+		bc_hits?: number;
+		swing?: number[]; // ≤48-pt P1−P2 team-health momentum line
+	};
 	type Game = {
 		match_index?: number;
 		ts?: number;
@@ -40,6 +53,10 @@
 		lteam?: number[];
 		elo?: number;
 		combo?: number;
+		duration_s?: number;
+		wdmg?: number;
+		ldmg?: number;
+		stats?: GameStats | null;
 		ocv?: boolean;
 		perfect?: boolean;
 		comeback?: boolean;
@@ -204,6 +221,77 @@
 	// the run BAR stays from the viewer's seat, like the rows above it
 	const runs = $derived(runsFor(seat ?? right?.steamid));
 
+	// ── gs-110 STATS LAYER (agent 0.3.13+ games; older games gracefully keep the legacy combo line) ──
+	// Most stats are winner/loser-keyed and re-key to the row's left/right seats through g.winner. The
+	// P1/P2-keyed pieces (deaths/swing/bc_slot) need the winner's PHYSICAL side, which the payload doesn't
+	// carry — but the deaths array yields it: a game ends when a team's three characters die, so the side
+	// whose interleaved slots sum to 3 deaths is the LOSER (timeout games don't sum to 3 → unknown → those
+	// pieces just don't render). Self-checking: the sample game's loser-side sum matched wkos exactly.
+	const wsideOf = (s?: GameStats | null): 0 | 1 | 2 => {
+		const d = s?.deaths;
+		if (!Array.isArray(d) || d.length !== 6) return 0;
+		const p1 = (d[0] ?? 0) + (d[2] ?? 0) + (d[4] ?? 0);
+		const p2 = (d[1] ?? 0) + (d[3] ?? 0) + (d[5] ?? 0);
+		if (p1 >= 3 && p2 < 3) return 2; // P1's team wiped → P2 won
+		if (p2 >= 3 && p1 < 3) return 1;
+		return 0;
+	};
+	// One resolved bundle per game, in ROW orientation (left = `them`, right = the viewer's seat).
+	const statOf = (g: Game) => {
+		const s = g.stats;
+		const rightWon = g.winner === right?.steamid;
+		const pick = <T,>(w: T, l: T): { l: T; r: T } => (rightWon ? { l, r: w } : { l: w, r: l });
+		const dmg = g.wdmg || g.ldmg ? pick(g.wdmg ?? 0, g.ldmg ?? 0) : null;
+		const chip = s && (s.wchipd || s.lchipd) ? pick(s.wchipd ?? 0, s.lchipd ?? 0) : null;
+		const kos = s && (s.wkos || s.lkos) ? pick(s.wkos ?? 0, s.lkos ?? 0) : null;
+		// first blood: "w"/"l" → which SEAT drew it
+		const fb = s?.first_hit === 'w' ? (rightWon ? 'r' : 'l') : s?.first_hit === 'l' ? (rightWon ? 'l' : 'r') : '';
+		// biggest combo + its owner: slot parity gives the dealer's physical side; wside maps that to
+		// winner/loser, the seat map finishes the job; the char comes from the dealer's team in slot order.
+		const wside = wsideOf(s);
+		let combo: { hits: number; seat: 'l' | 'r' | ''; char: number } | null = null;
+		if (s?.bc_hits && s.bc_hits > 1) {
+			let seatSide: 'l' | 'r' | '' = '';
+			let char = -1;
+			if (wside && s.bc_slot != null && s.bc_slot >= 0) {
+				const dealerP1 = s.bc_slot % 2 === 0;
+				const dealerWon = (wside === 1) === dealerP1;
+				seatSide = dealerWon === rightWon ? 'r' : 'l';
+				const team = dealerWon ? (g.wteam ?? []) : (g.lteam ?? []);
+				char = team[Math.floor(s.bc_slot / 2)] ?? -1;
+			}
+			combo = { hits: s.bc_hits, seat: seatSide, char };
+		} else if (g.combo && g.combo > 1) {
+			combo = { hits: g.combo, seat: '', char: -1 };
+		}
+		// momentum, re-signed so UP = the RIGHT seat (the viewer) ahead; unknown side → no line.
+		let spark: number[] | null = null;
+		if (s?.swing && s.swing.length >= 8 && wside) {
+			const rightP1 = (wside === 1) === rightWon;
+			spark = rightP1 ? s.swing : s.swing.map((v) => -v);
+		}
+		return { dmg, chip, kos, fb, combo, spark, dur: g.duration_s ?? 0, has: !!(dmg || chip || kos || s) };
+	};
+	const gstats = $derived(games.map(statOf));
+	const mss = (sec: number) => `${Math.floor(sec / 60)}:${pad(sec % 60)}`;
+	// sparkline path: swing spans ±432 (3 chars × 144hp); midline = even, up = viewer ahead
+	const sparkPts = (sw: number[]) =>
+		sw.map((v, i) => `${((i / (sw.length - 1)) * 64).toFixed(1)},${(8 - (Math.max(-432, Math.min(432, v)) / 432) * 7).toFixed(1)}`).join(' ');
+
+	// THE LINE's stat totals (columns appear only when at least one game carries stats)
+	const hasStats = $derived(gstats.some((s) => s.has));
+	const lineStats = (sid: string | undefined) => {
+		let dmg = 0, kos = 0;
+		for (const g of games) {
+			const won = g.winner === sid;
+			dmg += (won ? g.wdmg : g.ldmg) ?? 0;
+			kos += (won ? g.stats?.wkos : g.stats?.lkos) ?? 0;
+		}
+		return { dmg, kos };
+	};
+	const lStat = $derived(lineStats(left?.steamid));
+	const rStat = $derived(lineStats(right?.steamid));
+
 	// Rank tiers + the gap — this is what turns "I lost 2-8" into "I took two off an Adamantium".
 	const lRank = $derived(left?.rating != null ? rankOf(left.rating, left.games ?? 999) : null);
 	const rRank = $derived(right?.rating != null ? rankOf(right.rating, right.games ?? 999) : null);
@@ -302,6 +390,7 @@
 			{@const rw = rows[i]}
 			{@const aThem = assistOf(g, left?.steamid ?? '')}
 			{@const aMine = assistOf(g, right?.steamid ?? '')}
+			{@const gs2 = gstats[i]}
 			<!-- each game is a full-width VS plate — the matchup IN SPRITES, teams flanking a center VS the
 			     way the game's own versus screen does. Won rows carry a good edge + a wash from YOUR side;
 			     losses stay quiet (never red). Static portraits here; the animated squads live in the tape. -->
@@ -314,6 +403,7 @@
 							{#if ASSIST[aThem[k]]}<i class="as">{ASSIST[aThem[k]]}</i>{/if}
 						</span>
 					{/each}
+					{#if gs2?.fb === 'l'}<i class="fb" title="First blood">⚡</i>{/if}
 				</span>
 				<!-- the VS mark — the match screen's gold vs-hero, at row scale -->
 				<span class="x" aria-hidden="true">VS</span>
@@ -324,15 +414,30 @@
 							{#if ASSIST[aMine[k]]}<i class="as">{ASSIST[aMine[k]]}</i>{/if}
 						</span>
 					{/each}
+					{#if gs2?.fb === 'r'}<i class="fb" title="First blood">⚡</i>{/if}
 				</span>
 				<b class="wl" class:w={won}>{won ? 'W' : 'L'}</b>
-				<!-- deck two: the game's stats. Combo is match-level (no owner in the payload) so it reads
-				     neutral; an OCV/perfect/comeback is the winner's, so it reads directional. -->
+				<!-- deck two: the game's TRUE stats (tape-derived, agent 0.3.13+), left–right in row order;
+				     older games keep the legacy neutral combo line. Flair is the winner's, so it reads
+				     directional; the momentum line is re-signed so UP = the viewer's seat ahead. -->
 				<span class="gs">
-					{#if g.combo && g.combo > 1}<span class="st">{g.combo} HIT COMBO</span>{/if}
+					{#if gs2?.dur}<span class="st">{mss(gs2.dur)}</span>{/if}
+					{#if gs2?.dmg}<span class="st">DMG {gs2.dmg.l}–{gs2.dmg.r}</span>{/if}
+					{#if gs2?.chip}<span class="st dim2">CHIP {gs2.chip.l}–{gs2.chip.r}</span>{/if}
+					{#if gs2?.kos}<span class="st dim2">KO {gs2.kos.l}–{gs2.kos.r}</span>{/if}
+					{#if gs2?.combo}
+						<span class="st">{gs2.combo.hits} HIT{gs2.combo.char >= 0 ? ` · ${charTag(gs2.combo.char)}` : ' COMBO'}</span>
+					{/if}
 					{#if g.ocv}<span class="st fl ocv" class:mine={won}>{won ? 'OCV' : "OCV'D"}</span>{/if}
 					{#if g.perfect}<span class="st fl" class:mine={won}>{won ? 'PERFECT' : "PERF'D"}</span>{/if}
 					{#if g.comeback}<span class="st fl" class:mine={won}>{won ? 'COMEBACK' : 'REVERSED'}</span>{/if}
+					{#if gs2?.spark}
+						<svg class="spark" viewBox="0 0 64 16" aria-hidden="true">
+							<line x1="0" y1="8" x2="64" y2="8" class="mid" />
+							<polyline points={sparkPts(gs2.spark)} class="ln2" />
+							<circle cx="64" cy={8 - (Math.max(-432, Math.min(432, gs2.spark[gs2.spark.length - 1])) / 432) * 7} r="1.6" class="dot" class:w={won} />
+						</svg>
+					{/if}
 					<span class="st vf" class:ok={g.verified || g.confirmed}>{g.verified || g.confirmed ? '✓ VERIFIED' : 'UNVERIFIED'}</span>
 				</span>
 			</div>
@@ -354,18 +459,20 @@
 	<div class="tots">
 		<table class="ln">
 			<thead>
-				<tr><th class="nm2">THE LINE</th><th>W</th><th>L</th><th>TAKEN</th><th>GIVEN</th><th class="netc">NET</th></tr>
+				<tr><th class="nm2">THE LINE</th><th>W</th><th>L</th>{#if hasStats}<th>DMG</th><th>KOs</th>{/if}<th>TAKEN</th><th>GIVEN</th><th class="netc">NET</th></tr>
 			</thead>
 			<tbody>
 				<tr>
 					<td class="nm2">{left?.name ?? 'Player'}</td>
 					<td>{lLine.w}</td><td>{lLine.l}</td>
+					{#if hasStats}<td>{lStat.dmg}</td><td>{lStat.kos}</td>{/if}
 					<td>+{lLine.taken}</td><td>−{lLine.given}</td>
 					<td class="netc" class:up={lLine.net > 0}>{lLine.net > 0 ? '+' : ''}{lLine.net}</td>
 				</tr>
 				<tr>
 					<td class="nm2">{right?.name ?? 'Player'}</td>
 					<td>{rLine.w}</td><td>{rLine.l}</td>
+					{#if hasStats}<td>{rStat.dmg}</td><td>{rStat.kos}</td>{/if}
 					<td>+{rLine.taken}</td><td>−{rLine.given}</td>
 					<td class="netc" class:up={rLine.net > 0}>{rLine.net > 0 ? '+' : ''}{rLine.net}</td>
 				</tr>
@@ -711,6 +818,42 @@
 	.fl.ocv.mine {
 		color: var(--molten);
 	}
+	/* secondary stats sit a step quieter than DMG/combo so the strip keeps a reading order */
+	.st.dim2 {
+		color: var(--faint);
+	}
+	/* first blood — a bolt at the trailing edge of the side that drew it (molten: it's a violence marker) */
+	.fb {
+		font-style: normal;
+		font-size: 10px;
+		align-self: center;
+		color: var(--molten);
+		filter: drop-shadow(0 0 4px color-mix(in srgb, var(--molten) 50%, transparent));
+	}
+	/* momentum sparkline — the game's health swing; midline = even, UP = the viewer's seat ahead */
+	.spark {
+		width: 64px;
+		height: 16px;
+		flex: none;
+		align-self: center;
+	}
+	.spark .mid {
+		stroke: color-mix(in srgb, var(--line) 70%, transparent);
+		stroke-width: 0.5;
+		stroke-dasharray: 2 2;
+	}
+	.spark .ln2 {
+		fill: none;
+		stroke: var(--dim);
+		stroke-width: 1;
+		stroke-linejoin: round;
+	}
+	.spark .dot {
+		fill: var(--faint);
+	}
+	.spark .dot.w {
+		fill: var(--good);
+	}
 	@media (max-width: 480px) {
 		.g {
 			grid-template-columns: 32px 1fr 30px 1fr 34px;
@@ -728,6 +871,10 @@
 		}
 		.gs {
 			gap: 8px;
+		}
+		/* tight phones: shed the quiet stats from the edges inward; DMG + combo + spark keep the story */
+		.st.dim2 {
+			display: none;
 		}
 	}
 	.none {
