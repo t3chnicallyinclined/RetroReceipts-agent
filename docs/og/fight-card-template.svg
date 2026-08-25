@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- RETRO RECEIPTS — OG fight card (1200x630). Server-side render via resvg; see README.md beside this
+       file for the token mapping + constraints. Fonts: DejaVu Sans / DejaVu Sans Mono (system fontdb on
+       the VPS — no font shipping). Sprites: file hrefs into /var/www/metasync-app/app/chars-png/. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="-10%" r="120%">
+      <stop offset="0%" stop-color="#ffb020" stop-opacity="0.10"/>
+      <stop offset="55%" stop-color="#ffb020" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="goldseam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffb020"/>
+      <stop offset="100%" stop-color="#ffb020" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="vsgold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff3c0"/>
+      <stop offset="45%" stop-color="#ffb020"/>
+      <stop offset="100%" stop-color="#a3670a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ground -->
+  <rect width="1200" height="630" fill="#0a0c12"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="14" y="14" width="1172" height="602" fill="none" stroke="#232838" stroke-width="2"/>
+
+  <!-- header rail -->
+  <text x="48" y="72" font-family="DejaVu Sans Mono" font-size="22" letter-spacing="6" fill="#8a92ab">RETRO RECEIPTS · THE TAPE</text>
+  <text x="1152" y="72" text-anchor="end" font-family="DejaVu Sans Mono" font-size="22" letter-spacing="4" fill="#5a6178">NO. {{TAIL}}</text>
+  <rect x="48" y="92" width="220" height="3" fill="url(#goldseam)"/>
+
+  <!-- the score — winner digit gold, loser ink; server substitutes the two fills -->
+  <text x="600" y="205" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-style="italic" font-size="128">
+    <tspan fill="{{LCOLOR}}">{{LSCORE}}</tspan><tspan fill="#3a4056" dx="18" dy="-8" font-size="72">–</tspan><tspan fill="{{RCOLOR}}" dx="18" dy="8">{{RSCORE}}</tspan>
+  </text>
+
+  <!-- names (max width 430 each; server ellipsizes past ~18 chars at this size) -->
+  <text x="48" y="290" font-family="DejaVu Sans" font-weight="bold" font-size="46" fill="#e8ecf4">{{LNAME}}</text>
+  <text x="1152" y="290" text-anchor="end" font-family="DejaVu Sans" font-weight="bold" font-size="46" fill="#e8ecf4">{{RNAME}}</text>
+  <!-- ratings under the names, mono record voice -->
+  <text x="48" y="326" font-family="DejaVu Sans Mono" font-size="24" fill="#8a92ab">{{LRANK}} {{LRATING}}</text>
+  <text x="1152" y="326" text-anchor="end" font-family="DejaVu Sans Mono" font-size="24" fill="#8a92ab">{{RRATING}} {{RRANK}}</text>
+
+  <!-- squads: 3 sprites per side at 140px cell height, bottom-aligned on y=505. The server writes the
+       actual <image> hrefs + per-sprite width from the PNG's aspect (height fixed at 140). Slots left:
+       x=48/188/328 · right: x=1012/872/732 (mirror order, anchored from the outer edge). -->
+  {{LSPRITE1}}{{LSPRITE2}}{{LSPRITE3}}
+  {{RSPRITE1}}{{RSPRITE2}}{{RSPRITE3}}
+
+  <!-- the VS mark, skewed gold — the app's versus hero at card scale -->
+  <g transform="translate(600 462) skewX(-8)">
+    <text x="0" y="0" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-style="italic" font-size="86" fill="url(#vsgold)">VS</text>
+  </g>
+
+  <!-- record line -->
+  <text x="600" y="545" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="24" letter-spacing="3" fill="#8a92ab">{{DATE}} · {{GAMES}} GAMES · {{DUR}}</text>
+
+  <!-- cert band -->
+  <rect x="14" y="572" width="1172" height="44" fill="#0d1017"/>
+  <rect x="14" y="572" width="1172" height="1" fill="#232838"/>
+  <text x="600" y="601" text-anchor="middle" font-family="DejaVu Sans Mono" font-size="20" letter-spacing="5" fill="{{SEALCOLOR}}">{{SEAL}}</text>
+</svg>
