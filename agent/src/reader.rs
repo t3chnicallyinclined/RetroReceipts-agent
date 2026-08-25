@@ -369,9 +369,16 @@ fn steam_persona_name(id64: u64) -> Option<String> {
 // (HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser = 32-bit account id; SteamID64 = 0x110000100000000 + it),
 // which Steam keeps current, + persona name from Steam's own loginusers.vdf. The hook's legacy steam_self.txt
 // is only a last-resort fallback. CACHED once resolved (our id/name don't change during a session).
+static SELF_IDENT: OnceLock<Mutex<Option<(u64, String)>>> = OnceLock::new();
+/// Forget the cached identity. Called when a NEW game pid appears — the one realistic moment the signed-in
+/// Steam account can have changed under a long-lived agent (relaunch after an account switch; SSOT audit:
+/// the forever-cache reported the OLD account's games as the old user). Mid-set the pid never changes, so
+/// this can never flap an identity inside a set.
+fn self_ident_reset() {
+    if let Some(m) = SELF_IDENT.get() { *m.lock().unwrap() = None; }
+}
 fn self_ident() -> (u64, String) {
-    static CACHE: OnceLock<Mutex<Option<(u64, String)>>> = OnceLock::new();
-    let m = CACHE.get_or_init(|| Mutex::new(None));
+    let m = SELF_IDENT.get_or_init(|| Mutex::new(None));
     let mut g = m.lock().unwrap();
     if let Some(v) = g.as_ref() { return v.clone(); }
     // PRIMARY: Steam's own record of the signed-in user (platform-split, see active_user_ident).
@@ -541,7 +548,10 @@ fn best_pair(my_addrs: &[usize], cand: &HashMap<u64, Vec<usize>>) -> Option<(u64
     for (sid, addrs) in cand {
         let (mut pair, mut na) = (0usize, 0usize);
         for &a in addrs { if my_addrs.iter().any(|&m| (a as isize - m as isize).abs() < 0x400) { pair += 1; na = a; } }
-        if pair >= 2 && best.map_or(true, |b| pair > b.1) { best = Some((*sid, pair, na)); }
+        // ⚠ DETERMINISTIC tie-break (SSOT audit): cand is a HashMap, so equal pairing counts used to resolve
+        // by hash-iteration order — a different winner per scan, which is what made a two-candidate lock flap
+        // (the anti-flip layer then fought the flapping source instead of never seeing it). Tie → smaller sid.
+        if pair >= 2 && best.map_or(true, |b| pair > b.1 || (pair == b.1 && *sid < b.0)) { best = Some((*sid, pair, na)); }
     }
     best.map(|(sid, _p, na)| (sid, na))
 }
@@ -563,7 +573,8 @@ fn detect_side(my_addrs: &[usize], opp_addrs: &[usize]) -> u8 {
 unsafe fn name_of_opp(h: &mem::Proc, opp_addrs: &[usize]) -> String {
     let mut counts: HashMap<String, u32> = HashMap::new();
     for &a in opp_addrs { let nm = name_near_rpm(h, a); if !nm.is_empty() { *counts.entry(nm).or_insert(0) += 1; } }
-    counts.into_iter().max_by_key(|(_, c)| *c).map(|(n, _)| n).unwrap_or_default()
+    // deterministic mode: equal counts resolve lexicographically, not by hash order (SSOT audit)
+    counts.into_iter().max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0))).map(|(n, _)| n).unwrap_or_default()
 }
 // Turn a completed scan (my id addresses + candidate opp ids) into (opp_id, name, side) + refresh the caches.
 unsafe fn finish_opp(h: &mem::Proc, my_addrs: &[usize], cand: &HashMap<u64, Vec<usize>>,
@@ -2175,6 +2186,17 @@ fn report_result_server(reporter: String, winner: String, winner_name: String, l
             }
             (wchip.min(432), lchip.min(432), comeback.max(0) as u8)
         }).unwrap_or((0, 0, 0));
+        // ⚠ SIDE CROSS-CHECK (SSOT audit "side read at two moments"): the verdict side (`side`, the reader's
+        // debounced localPlayerNum) and the tape's one-shot local_pn are the SAME pointer read at different
+        // times — they must agree. We LOG divergence rather than "unify" by fiat: silently preferring either
+        // one without field evidence is exactly how the Duc-class W/L inversion shipped. The trace (and the
+        // recording's local_pn) give the server + offline validation the data to pick a winner if it ever fires.
+        if let Some(g) = gs.as_ref() {
+            if g.local_pn <= 1 && (side == 1 || side == 2) && g.local_pn + 1 != side {
+                trace(&format!("[side] ⚠ tape local_pn={} vs verdict side={} DISAGREE (session {} g{})",
+                    g.local_pn, side, session_id, match_index));
+            }
+        }
         // gs-110: the TRUE per-game stats layer (see compute_game_stats). P1/P2-oriented values are re-keyed
         // to winner/loser here so the server can store them symmetrically no matter which player reports.
         let stats = gs.as_ref().and_then(|g| compute_game_stats(&g.frames));
@@ -2330,11 +2352,16 @@ fn update_score(st: &mut ScoreState, game: &Option<GameSt>, opp: &Option<(String
                 if took_dmg(2) { st.g2_dmg = true; }
                 if alive_ct(1) == 1 && alive_ct(2) == 3 { st.g1_low = true; }
                 if alive_ct(2) == 1 && alive_ct(1) == 3 { st.g2_low = true; }
-                // capture teams + combat stats live (for rich per-game logging)
-                if st.teams.is_none() {
+                // capture teams live. ⚠ NOT freeze-on-first (SSOT audit): the first cycle of a game can read
+                // a PARTIAL or stale roster (slots still loading / last game's chars) and freezing it shipped
+                // phantom teams in /result while /match/live showed the corrected one. Teams can't change
+                // mid-game, so a FULL 3v3 read is truth and refreshes freely (self-correcting); a partial
+                // read only ever fills an empty slot as the fallback-of-last-resort.
+                {
                     let p1t: Vec<u8> = g.slots.iter().filter(|s| s.player == 1).map(|s| s.char_id).collect();
                     let p2t: Vec<u8> = g.slots.iter().filter(|s| s.player == 2).map(|s| s.char_id).collect();
-                    if !p1t.is_empty() && !p2t.is_empty() { st.teams = Some((p1t, p2t)); }
+                    if p1t.len() == 3 && p2t.len() == 3 { st.teams = Some((p1t, p2t)); }
+                    else if st.teams.is_none() && !p1t.is_empty() && !p2t.is_empty() { st.teams = Some((p1t, p2t)); }
                 }
                 let mc1 = g.slots.iter().filter(|s| s.player == 1).map(|s| s.combo).max().unwrap_or(0);
                 let mc2 = g.slots.iter().filter(|s| s.player == 2).map(|s| s.combo).max().unwrap_or(0);
@@ -2724,6 +2751,7 @@ fn reader_loop() {
                     if p != cur_pid || handle.is_none() {
                         handle = mem::Proc::open_read(p);   // reassignment drops+closes any previous handle
                         cur_pid = p; roster.clear(); work = None; opp = None; opp_addr = None; opp_region = None; in_session = false; opp_src_lobby = false; opp_lost = None; sess_key.clear(); ram_base = 0; exe_base = game_exe_base(p);
+                        self_ident_reset();   // new game launch → re-resolve who's signed in (account switch)
                         // SAME game as our persisted anchors → restore them (skip cold scans on an app restart)
                         if p == anchor_pid { ram_base = anchor_ram; opp_region = anchor_opp; work = anchor_work; }
                         last_good_base = ram_base;   // sticky base = restored anchor (same game) or 0 (new game)
@@ -3177,7 +3205,9 @@ fn reader_loop() {
                 a.opponent = if state != "menu" {
                     opp.as_ref().map(|o| if o.1.is_empty() { o.0.clone() } else { o.1.clone() })
                 } else { None };
-                a.score = sc;
+                // caller-relative score (SSOT audit): "vs X (a-b)" must read MY wins first — the raw (P1,P2)
+                // pair showed the opponent's tally first whenever the local player sat on side 2.
+                a.score = if side_ok && side_for_stats == 2 { (sc.1, sc.0) } else { sc };
                 a.reporting = state == "match" && opp.as_ref().map_or(false, |o| o.0.len() == 17);
             }
 
@@ -3232,7 +3262,7 @@ pub struct AgentStatus {
     pub in_session: bool,            // live netplay pairing present (in/entering an online match)
     pub state: String,               // game_off | menu | select | match
     pub opponent: Option<String>,    // opponent display name (or SteamID) while in/entering a match
-    pub score: (u32, u32),           // (P1, P2) games won this set
+    pub score: (u32, u32),           // games won this set — (mine, theirs) when the side is confirmed, else raw (P1, P2)
     pub reporting: bool,             // actively reporting a live match (in a fight vs a real 17-digit SteamID)
     pub online: u32,                 // last heartbeat's live-online count (0 until the first heartbeat lands)
 }
