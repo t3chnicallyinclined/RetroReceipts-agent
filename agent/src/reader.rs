@@ -495,8 +495,19 @@ fn name_near_rpm(h: &mem::Proc, addr: usize) -> String {
         else { if cur.len() > best.len() { best = cur.clone(); } cur.clear(); }
     }
     if cur.len() > best.len() { best = cur; }
-    // Lossy-decode (a window edge can bisect a multibyte sequence) and strip any replacement chars the cut left.
-    let t = String::from_utf8_lossy(&best).trim().trim_matches('\u{FFFD}').trim().to_string();
+    finish_scraped_name(&best)
+}
+
+// The ONE finisher for every name scraped out of game memory. A read window can bisect a multibyte UTF-8
+// sequence ANYWHERE — not just at the edges — and the run-builders above also cut runs at control bytes,
+// so lossy-decode can leave U+FFFD replacement chars in the MIDDLE of a name ("Mn�o.��y" shipped to prod
+// 2026-08-25; the SSOT audit's mojibake class). Edge chars are trimmed; an INTERIOR one means the read
+// destroyed part of the name, and a damaged name must never ship: since 0.3.13 an empty name is fully
+// supported (id-only report — the server resolves display names from Steam itself), so unresolved beats
+// wrong. Rejecting here also stops the damaged form from entering the sticky-opponent cache.
+fn finish_scraped_name(bytes: &[u8]) -> String {
+    let t = String::from_utf8_lossy(bytes).trim().trim_matches('\u{FFFD}').trim().to_string();
+    if t.contains('\u{FFFD}') { return String::new(); }
     if t.chars().count() >= 3 && plausible_opponent_name(&t) { t } else { String::new() }
 }
 
@@ -632,8 +643,7 @@ fn name_fwd_rpm(h: &mem::Proc, addr: usize) -> String {
     for &c in &buf {
         if (0x20..0x7f).contains(&c) || c >= 0x80 { run.push(c); } else { break; }
     }
-    let t = String::from_utf8_lossy(&run).trim().trim_matches('\u{FFFD}').trim().to_string();
-    if t.chars().count() >= 3 && plausible_opponent_name(&t) { t } else { String::new() }
+    finish_scraped_name(&run)
 }
 
 // HOSTED-LOBBY opponent + side — the ADDITIVE fallback to find_opponent_netplay's ranked geometry. In a Steam
@@ -3449,6 +3459,10 @@ pub fn send_bug_report(note: &str) -> Result<String, String> {
             "degraded": READER_DEGRADED.load(std::sync::atomic::Ordering::SeqCst),
             "host_mode": crate::host::HOST_MODE.load(Ordering::Relaxed),
             "ram_mb": total_ram_mb(),
+            // STARTED_AT is set only by start_reader — a CLI (--bugreport) process never starts one, so its
+            // uptime/degraded/state fields are process defaults, not live readings. Label so the admin panel
+            // doesn't read "degraded, uptime 0" as an alarming tray report.
+            "source": if STARTED_AT.get().is_some() { "tray" } else { "cli" },
         }).to_string()
     };
     let mut os = os_descr();
@@ -3478,6 +3492,25 @@ pub fn send_bug_report(note: &str) -> Result<String, String> {
     }
 }
 
+
+// ── scraped-name hygiene: the mojibake class must never ship again (interior U+FFFD = damaged read).
+#[cfg(test)]
+mod name_scrape_tests {
+    use super::finish_scraped_name;
+    #[test]
+    fn interior_replacement_char_rejected_edges_trimmed() {
+        // interior damage → unresolved (server resolves from Steam), never the damaged form
+        assert_eq!(finish_scraped_name("Mn\u{FFFD}o.\u{FFFD}\u{FFFD}y".as_bytes()), "");
+        // raw invalid bytes mid-name (a bisected multibyte read) → unresolved
+        assert_eq!(finish_scraped_name(b"Duc\xE2\x82vader"), "");
+        // edge-only damage (window cut a trailing multibyte char) → trimmed, name survives
+        assert_eq!(finish_scraped_name("ducvader\u{FFFD}".as_bytes()), "ducvader");
+        // legit non-ASCII names pass untouched
+        assert_eq!(finish_scraped_name("Löwe東京".as_bytes()), "Löwe東京");
+        // too short after trim → unresolved
+        assert_eq!(finish_scraped_name("ab".as_bytes()), "");
+    }
+}
 
 // ── gs-110 attribution self-test: a synthetic 6-frame game exercising clean vs chip, KO, first-hit,
 // combo ownership and the interleaved side map. Catches sign/side inversions before a fleet release —
