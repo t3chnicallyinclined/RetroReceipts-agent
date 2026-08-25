@@ -2870,23 +2870,25 @@ fn reader_loop() {
                     || live_seen.map_or(false, |t| t.elapsed().as_secs() < LIVE_ACTIVE_SECS)
                     || last_opp_sweep.elapsed().as_millis() >= IDLE_OPP_SWEEP_MS;
                 if allow_cold { last_opp_sweep = std::time::Instant::now(); }
-                // ranked (netplay pairing geometry) FIRST; hosted-lobby MemberInfo scan as the ADDITIVE fallback
-                // (returns None instantly outside a hosted lobby). Both feed the SAME opp_addr cache + downstream
-                // flow, so the sticky-opponent / side / /peers logic below is identical for ranked and lobby.
-                let resolved = find_opponent_netplay(cur_pid, my_id, &mut opp_addr, &mut opp_region, allow_cold);
-                let net_hit = resolved.is_some();
-                // ⚠ The lobby path needs a MATCH-ACTIVITY gate the netplay path doesn't: the ranked pairing only
-                // exists inside a real matchmade session, but a lobby MemberInfo record exists the moment anyone
-                // JOINS the hosted lobby — and lingers in freed heap after they leave. Without the gate, a random
-                // joiner idling in an auto-host cabinet's lobby became a broadcast "now playing" pairing that never
-                // cleared (the NOBD_Arcade ghost card). NEW lobby locks therefore require fighters loading or a
-                // recent live fight; an ALREADY-HELD lobby opp keeps re-validating so a set never drops mid-hold
-                // (between-games continuity), and the source-aware `active` below lets a dead hold finally expire.
+                // ⚠ UNIVERSAL match-activity gate for NEW locks — BOTH paths (0.3.19). 0.3.14 gated only the
+                // lobby MemberInfo scan, believing the ranked pairing geometry "only exists inside a real
+                // matchmade session" — DISPROVEN live the same day: on a lobby HOST, a mere member's SteamID
+                // co-locates with ours in Steam's session structures closely enough to satisfy best_pair's
+                // ≥2-within-0x400 rule, so the cabinet re-ghosted straight through find_opponent_netplay
+                // (trace 21:04Z: state=menu roster=[] opp locked). The universal rule: an opponent only
+                // EXISTS while a match is actually forming or running — fighters loading (roster) or a live
+                // fight just seen. Cost: the ranked lock lands when fighters start loading, a few seconds
+                // after pairing-formation — the price of killing the ghost class on every path, both seats.
+                // A HELD opponent keeps re-validating regardless (between-games set continuity).
                 let match_activity = !roster.is_empty()
                     || live_seen.map_or(false, |t| t.elapsed().as_secs() < LIVE_ACTIVE_SECS);
-                let held_lobby = opp.is_some() && opp_src_lobby;
+                let allow_lock = match_activity || opp.is_some();
+                let resolved = if allow_lock {
+                    find_opponent_netplay(cur_pid, my_id, &mut opp_addr, &mut opp_region, allow_cold)
+                } else { None };
+                let net_hit = resolved.is_some();
                 let resolved = resolved.or_else(|| {
-                    if match_activity || held_lobby {
+                    if allow_lock {
                         find_opponent_lobby(cur_pid, my_id, exe_base, &mut opp_addr, allow_cold)
                     } else { None }
                 });
@@ -3119,12 +3121,12 @@ fn reader_loop() {
             // Hold the opponent while EITHER the game reads live OR fighters are present (sig-scan roster n) —
             // robust to a flaky reversed-struct read so we never drop + re-hunt the opponent mid-set. Drop
             // only after a sustained gone stretch (set over / menus).
-            // ⚠ in_session counts as activity ONLY for a netplay-sourced opponent: the ranked pairing genuinely
-            // exists only during a set, but a lobby-sourced in_session is just "a MemberInfo record still resolves"
-            // — possibly a freed-heap ghost after the member left. Letting it pin `active` made the hold immortal
-            // (re-validate → in_session → active → never expire). Lobby holds now live on real fight signals alone,
-            // so a dead hold expires via OUT_TIMEOUT and the closed re-lock gate above keeps it from coming back.
-            let active = game.as_ref().map(|g| g.in_match == 1).unwrap_or(false) || n > 0 || (in_session && !opp_src_lobby);
+            // ⚠ in_session NEVER counts as activity (0.3.19; 0.3.14 exempted only lobby-sourced holds — the
+            // netplay path re-ghosted through the same loop). "The pairing still resolves" is exactly what a
+            // stale structure looks like, so it can't be the evidence that keeps itself alive. Real fight
+            // signals only; OUT_TIMEOUT (150s) is the sole between-games bridge — a rematch gap longer than
+            // that splits the set, which is the designed bound and vastly better than immortal ghosts.
+            let active = game.as_ref().map(|g| g.in_match == 1).unwrap_or(false) || n > 0;
             if active { last_active = std::time::Instant::now(); }
             else if opp.is_some() && last_active.elapsed().as_secs() > OUT_TIMEOUT { opp = None; opp_addr = None; opp_src_lobby = false; }
             // VERDICT side = RAW localPlayerNum (authoritative, ground-truth mapping 0=>P1 / 1=>P2) via local_side,
@@ -3159,7 +3161,13 @@ fn reader_loop() {
             // char split below matches on `&game` and yields empty my_chars/opp_chars when no fighters are loaded,
             // and the score is 0-0. Net effect: /match shows the live VS card + ratings/H2H the moment you're
             // paired, and the character tiles fill in when teams lock.
-            if !PAUSED.load(Ordering::Relaxed) && (state == "match" || in_session) {
+            // ⚠ HOST-MODE boxes NEVER broadcast /match/live (0.3.19): a cabinet is furniture — it referees
+            // from a spectator seat and must never claim to be IN a match. During refereed games its roster
+            // reads live (it renders the fight), which would open the lock gate above and put "NOBD_Arcade
+            // vs <player>" on the feed while that player fights someone else. The PLAYERS' own agents drive
+            // Now Playing; the cabinet's other reporting (results/arcade settle) is untouched.
+            if !PAUSED.load(Ordering::Relaxed) && !crate::host::HOST_MODE.load(Ordering::Relaxed)
+                && (state == "match" || in_session) {
                 if let Some((oid, _)) = opp.as_ref() {
                     let new_opp = oid.as_str() != live_rep_opp.as_str();
                     if oid.len() == 17 && oid.bytes().all(|b| b.is_ascii_digit())
