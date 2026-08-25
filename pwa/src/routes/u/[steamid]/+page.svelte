@@ -15,7 +15,6 @@
 	import RankProgress from '$lib/components/RankProgress.svelte';
 	import TeamBars from '$lib/components/TeamBars.svelte';
 	import H2HGrid from '$lib/components/H2HGrid.svelte';
-	import MoneyH2H from '$lib/components/MoneyH2H.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
@@ -123,25 +122,6 @@
 	});
 	const hasRivalries = $derived(!!nemesis || !!victim || form.length > 0 || vs.length > 0);
 
-	// Opponent SteamID → name/flag/avatar map, harvested from everything the profile already resolved
-	// server-side (head-to-head, recent matches, nemesis, victim). Handed to MoneyH2H so its /wager/h2h
-	// rows (which carry only a SteamID) render real names/flags — the same way every other opponent does.
-	const nameMap = $derived.by(() => {
-		const m: Record<string, { name?: string; cc?: string; avatar?: string }> = {};
-		const put = (id?: string, name?: string, cc?: string, avatar?: string) => {
-			const k = id ? String(id) : '';
-			if (!k) return;
-			const cur = m[k] ?? (m[k] = {});
-			if (name && !cur.name) cur.name = name;
-			if (cc && !cur.cc) cur.cc = cc;
-			if (avatar && !cur.avatar) cur.avatar = avatar;
-		};
-		for (const v of vs) put(v.opp_id, v.name, v.cc, v.avatar);
-		for (const rm of recent) put(rm.opp_id, rm.opp);
-		if (nemesis) put(nemesis.opp_id, nemesis.name, nemesis.cc, nemesis.avatar);
-		if (victim) put(victim.opp_id, victim.name, victim.cc, victim.avatar);
-		return m;
-	});
 
 	// Recent-match SET modal — a row that carries a session_id opens the game-by-game set breakdown.
 	let openSession = $state<string | null>(null);
@@ -304,7 +284,6 @@
 	{/if}
 
 	<!-- 🪙 Money-match receipt: net coins per opponent (graceful when the endpoint has no data / isn't live yet) -->
-	<MoneyH2H steamid={sid} handle={p.name} names={nameMap} />
 
 	{#if teams.length}
 		<div class="rail sec-hd">Teams</div>
