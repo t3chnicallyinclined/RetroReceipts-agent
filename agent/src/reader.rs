@@ -2649,6 +2649,11 @@ fn reader_loop() {
         let mut opp_addr: Option<(usize, u8, String, u64)> = None; // cached (session-slot, side, name, opp_id) → instant re-reads; opp_id lets us detect a CHANGED opponent
         let mut opp_region: Option<(usize, usize)> = None; // cached session REGION → warm re-locks skip the 2GB sweep (per-launch stable)
         let mut in_session = false;                   // live netplay pairing present (fast "in a match" signal)
+        let mut opp_src_lobby = false;                // current opp came from the hosted-lobby MemberInfo scan, NOT the
+                                                      // netplay pairing. Lobby MEMBERSHIP is not a match: a member's
+                                                      // record proves someone is (or was — freed heap lingers) in the
+                                                      // lobby, so this source must neither create a pairing while the
+                                                      // host idles nor count as match-activity that pins the hold.
         let mut opp_lost: Option<std::time::Instant> = None; // when the pairing first went missing while holding an opp → set-over grace
         let mut exe_base = 0usize;                     // game module base (for localPlayerNum @ exe+LOCALPLAYER_OFF)
         let mut sess_key = String::new();
@@ -2695,7 +2700,7 @@ fn reader_loop() {
                 Some(p) => {
                     if p != cur_pid || handle.is_none() {
                         handle = mem::Proc::open_read(p);   // reassignment drops+closes any previous handle
-                        cur_pid = p; roster.clear(); work = None; opp = None; opp_addr = None; opp_region = None; in_session = false; opp_lost = None; sess_key.clear(); ram_base = 0; exe_base = game_exe_base(p);
+                        cur_pid = p; roster.clear(); work = None; opp = None; opp_addr = None; opp_region = None; in_session = false; opp_src_lobby = false; opp_lost = None; sess_key.clear(); ram_base = 0; exe_base = game_exe_base(p);
                         // SAME game as our persisted anchors → restore them (skip cold scans on an app restart)
                         if p == anchor_pid { ram_base = anchor_ram; opp_region = anchor_opp; work = anchor_work; }
                         last_good_base = ram_base;   // sticky base = restored anchor (same game) or 0 (new game)
@@ -2707,7 +2712,7 @@ fn reader_loop() {
                 }
                 None => {
                     handle = None;   // drops+closes the previous handle
-                    cur_pid = 0; roster.clear(); work = None; opp = None; opp_addr = None; opp_region = None; in_session = false; opp_lost = None; ss = ScoreState::default();
+                    cur_pid = 0; roster.clear(); work = None; opp = None; opp_addr = None; opp_region = None; in_session = false; opp_src_lobby = false; opp_lost = None; ss = ScoreState::default();
                     { let mut s = snapshot().lock().unwrap(); s.state = "game_off".into(); s.roster.clear(); s.opponent = None; s.game = None; s.score = (0, 0); s.paint_slots.clear(); }
                     { let mut a = agent_status().lock().unwrap(); a.game_running = false; a.in_session = false; a.state = "game_off".into(); a.opponent = None; a.score = (0, 0); a.reporting = false; }
                     if prev_log != "GAME_OFF" { prev_log = "GAME_OFF".into(); trace("[game_off] game closed → cleared roster/opponent/score"); }
@@ -2818,7 +2823,22 @@ fn reader_loop() {
                 // (returns None instantly outside a hosted lobby). Both feed the SAME opp_addr cache + downstream
                 // flow, so the sticky-opponent / side / /peers logic below is identical for ranked and lobby.
                 let resolved = find_opponent_netplay(cur_pid, my_id, &mut opp_addr, &mut opp_region, allow_cold);
-                let resolved = resolved.or_else(|| find_opponent_lobby(cur_pid, my_id, exe_base, &mut opp_addr, allow_cold));
+                let net_hit = resolved.is_some();
+                // ⚠ The lobby path needs a MATCH-ACTIVITY gate the netplay path doesn't: the ranked pairing only
+                // exists inside a real matchmade session, but a lobby MemberInfo record exists the moment anyone
+                // JOINS the hosted lobby — and lingers in freed heap after they leave. Without the gate, a random
+                // joiner idling in an auto-host cabinet's lobby became a broadcast "now playing" pairing that never
+                // cleared (the NOBD_Arcade ghost card). NEW lobby locks therefore require fighters loading or a
+                // recent live fight; an ALREADY-HELD lobby opp keeps re-validating so a set never drops mid-hold
+                // (between-games continuity), and the source-aware `active` below lets a dead hold finally expire.
+                let match_activity = !roster.is_empty()
+                    || live_seen.map_or(false, |t| t.elapsed().as_secs() < LIVE_ACTIVE_SECS);
+                let held_lobby = opp.is_some() && opp_src_lobby;
+                let resolved = resolved.or_else(|| {
+                    if match_activity || held_lobby {
+                        find_opponent_lobby(cur_pid, my_id, exe_base, &mut opp_addr, allow_cold)
+                    } else { None }
+                });
                 match resolved {
                     Some((oid, onm, oside)) => {
                         // DETERMINISTIC → lock immediately (no anti-flip). Cached slot makes re-validation near-free.
@@ -2834,6 +2854,7 @@ fn reader_loop() {
                         opp = Some((sid, if onm.is_empty() { cur_nm } else { onm }));
                         opp_pending = None;
                         in_session = true;
+                        opp_src_lobby = !net_hit;              // netplay wins the source label when both resolve
                         opp_lost = None;                       // pairing present → session alive
                         opp_backoff = if opp_addr.is_some() { 1 } else { 10 };   // cached → re-check next cycle (cheap); cold → pace the scan
                     }
@@ -2868,7 +2889,7 @@ fn reader_loop() {
                                     };
                                     report_abandon(lost_id.clone(), ss.session_id.clone(), mw, ow);
                                 }
-                                opp = None; opp_addr = None; opp_lost = None;   // SET OVER → looking. KEEP opp_region:
+                                opp = None; opp_addr = None; opp_lost = None; opp_src_lobby = false;   // SET OVER → looking. KEEP opp_region:
                                 // the session region is per-launch stable, so the NEXT opponent re-locks via a cheap
                                 // WARM region scan instead of a full COLD sweep.
                             }
@@ -3047,9 +3068,14 @@ fn reader_loop() {
             // Hold the opponent while EITHER the game reads live OR fighters are present (sig-scan roster n) —
             // robust to a flaky reversed-struct read so we never drop + re-hunt the opponent mid-set. Drop
             // only after a sustained gone stretch (set over / menus).
-            let active = game.as_ref().map(|g| g.in_match == 1).unwrap_or(false) || n > 0 || in_session;
+            // ⚠ in_session counts as activity ONLY for a netplay-sourced opponent: the ranked pairing genuinely
+            // exists only during a set, but a lobby-sourced in_session is just "a MemberInfo record still resolves"
+            // — possibly a freed-heap ghost after the member left. Letting it pin `active` made the hold immortal
+            // (re-validate → in_session → active → never expire). Lobby holds now live on real fight signals alone,
+            // so a dead hold expires via OUT_TIMEOUT and the closed re-lock gate above keeps it from coming back.
+            let active = game.as_ref().map(|g| g.in_match == 1).unwrap_or(false) || n > 0 || (in_session && !opp_src_lobby);
             if active { last_active = std::time::Instant::now(); }
-            else if opp.is_some() && last_active.elapsed().as_secs() > OUT_TIMEOUT { opp = None; opp_addr = None; }
+            else if opp.is_some() && last_active.elapsed().as_secs() > OUT_TIMEOUT { opp = None; opp_addr = None; opp_src_lobby = false; }
             // VERDICT side = RAW localPlayerNum (authoritative, ground-truth mapping 0=>P1 / 1=>P2) via local_side,
             // NOT effective_side: a stale/wrong manual override must never flip the RECORDED winner (the Duc-class
             // inversion). manual_side still steers the on-screen label through effective_side elsewhere; the W/L
