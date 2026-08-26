@@ -84,6 +84,7 @@
 	const shortId = (sid: string) => (sid ? `…${sid.slice(-5)}` : 'Player');
 	const myName = $derived(auth.me?.name || (me ? shortId(me) : 'You'));
 	const oppName = $derived(mine?.names?.[oppId] || oppProfile?.name || shortId(oppId));
+	const oppAka = $derived((((oppProfile as { aliases?: string[] } | null)?.aliases ?? []) as string[]).slice(0, 3));
 
 	// ratings — the live feed carries per-sid ratings; fall back to the profile.
 	const myRating = $derived(mine?.ratings?.[me ?? ''] ?? auth.me?.rating ?? 1000);
@@ -180,6 +181,10 @@
 				<div class="who">
 					<div class="sidetag">Opponent</div>
 					<div class="nm">{oppName}{#if oppProfile?.cc} <span class="fl"><Flag cc={oppProfile?.cc} w={16} /></span>{/if}</div>
+					{#if oppAka.length}
+						<!-- name history on their SteamID — know who you're REALLY playing (Tris: alias surfacing) -->
+						<div class="aka">a.k.a. {oppAka.join(' · ')}</div>
+					{/if}
 					<div class="rk">
 						<RankBadge rating={oppRating} games={oppGames || null} size={15} />
 						<span class="rk-t rk-{oppTier.s}" use:rankTitle={oppTier.s}>{oppTier.n}</span>
@@ -321,6 +326,15 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.aka {
+		font-family: ui-monospace, monospace;
+		font-size: 10px;
+		color: var(--faint);
+		margin-top: 1px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.rk {
 		display: flex;

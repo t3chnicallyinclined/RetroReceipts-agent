@@ -189,11 +189,51 @@
 		return v >= 1024 ? `${(v / 1024).toFixed(0)} KB` : `${v} B`;
 	}
 
+	// 🚩 player reports (trust & safety) — review queue, newest first
+	interface PlayerReport {
+		reporter: string;
+		reporter_name?: string;
+		target: string;
+		target_name?: string;
+		reason: string;
+		note?: string;
+		ts?: number;
+		cleared?: boolean;
+		target_flagged?: boolean;
+		target_flag_reason?: string;
+	}
+	let preports = $state<PlayerReport[]>([]);
+	const REASON_LABEL: Record<string, string> = {
+		rage_quit: 'Rage quit',
+		no_show: 'No-show',
+		lag_manipulation: 'Lag manipulation',
+		rank_manipulation: 'Rank manipulation',
+		toxic: 'Toxic behavior',
+		impersonation: 'Impersonation'
+	};
+	async function loadPlayerReports(): Promise<void> {
+		if (!auth.me?.admin) return;
+		try {
+			const res = await fetch(api('/rr/reports'), {
+				headers: { accept: 'application/json', ...auth.headers() }
+			});
+			if (res.status === 403) {
+				forbidden = true;
+				return;
+			}
+			if (!res.ok) throw new Error(`reports ${res.status}`);
+			const d = (await res.json()) as { reports?: PlayerReport[] };
+			preports = d.reports ?? [];
+		} catch (e) {
+			err = e instanceof Error ? e.message : 'error'; // keep-last-good
+		}
+	}
+
 	async function refresh(): Promise<void> {
 		if (!isAdmin || loading) return;
 		loading = true;
 		err = null;
-		await Promise.all([loadStats(), loadFleet(), loadReports()]);
+		await Promise.all([loadStats(), loadFleet(), loadReports(), loadPlayerReports()]);
 		loading = false;
 	}
 
@@ -385,6 +425,28 @@
 		<div class="empty">No bug reports yet — they arrive from the tray's “Send a bug report”.</div>
 	{/if}
 
+	<!-- 🚩 player reports — the trust & safety review queue (GET /rr/reports, newest first) -->
+	<div class="rail sec-hd">Player reports ({preports.length})</div>
+	{#if preports.length}
+		<div class="prlist">
+			{#each preports as r, i (r.ts ?? i)}
+				<div class="pr" class:cleared={r.cleared}>
+					<span class="prwho">
+						<a class="ulink" href="{base}/u/{r.target}">{r.target_name || r.target}</a>
+						{#if r.target_flagged}<span class="prflag" title="≥3 distinct reporters in 30 days">⚠ FLAGGED</span>{/if}
+					</span>
+					<span class="prwhat">
+						<b>{REASON_LABEL[r.reason] ?? r.reason}</b>
+						{#if r.note}<i> — “{r.note}”</i>{/if}
+					</span>
+					<span class="prmeta mono">by <a class="ulink dim" href="{base}/u/{r.reporter}">{r.reporter_name || r.reporter}</a> · {timeAgo(r.ts) || '—'}{r.cleared ? ' · CLEARED' : ''}</span>
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<div class="empty">No player reports — a quiet arcade.</div>
+	{/if}
+
 	<!-- user table — scrolls inside its own container, never the page -->
 	<div class="rail sec-hd">Users ({users.length})</div>
 	{#if users.length}
@@ -428,6 +490,68 @@
 {/if}
 
 <style>
+	/* ── player reports ── */
+	.prlist {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-bottom: 6px;
+	}
+	.pr {
+		display: grid;
+		grid-template-columns: minmax(130px, auto) minmax(0, 1fr) auto;
+		gap: 4px 14px;
+		align-items: baseline;
+		padding: 9px 12px;
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 10px;
+	}
+	.pr.cleared {
+		opacity: 0.55;
+	}
+	.prwho {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		font-weight: 800;
+		font-size: 13px;
+		min-width: 0;
+	}
+	.prflag {
+		font-family: ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.1em;
+		color: var(--gold);
+		border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+		border-radius: 999px;
+		padding: 1px 7px;
+		white-space: nowrap;
+	}
+	.prwhat {
+		font-size: 12.5px;
+		color: var(--dim);
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.prwhat b {
+		color: var(--ink);
+	}
+	.prmeta {
+		font-size: 10.5px;
+		color: var(--faint);
+		white-space: nowrap;
+	}
+	.ulink.dim {
+		color: var(--dim);
+	}
+	@media (max-width: 640px) {
+		.pr {
+			grid-template-columns: 1fr;
+		}
+	}
+
 	/* ── bug reports ── */
 	.brlist {
 		display: flex;

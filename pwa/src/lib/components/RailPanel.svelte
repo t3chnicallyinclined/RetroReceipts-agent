@@ -41,6 +41,9 @@
 	let bettingOpen = $state(false);
 	let rail = $state<RailMatch['rail'] | null>(null);
 	let slipFor = $state(''); // steamid being backed in the open slip ('' = closed)
+	// idempotency key minted when the slip opens and held until the bet lands: a network-timeout retry
+	// of the same slip resolves server-side to the SAME bet instead of charging twice
+	let slipNonce = $state('');
 	let stake = $state(25);
 	let custom = $state('');
 	let busy = $state(false);
@@ -93,7 +96,7 @@
 			notice = { ok: false, text: r.error ?? 'That didn’t go through — try again.' };
 		}
 	}
-	const place = () => act('/rr/rail/bet', { wager_id: m.wager_id, pick: slipFor, stake: chosen }, '🎟 Bet placed — it pays out when someone takes the other side.');
+	const place = () => act('/rr/rail/bet', { wager_id: m.wager_id, pick: slipFor, stake: chosen, client_bet_id: slipNonce }, '🎟 Bet placed — it pays out when someone takes the other side.');
 	const takeBet = (b: RailBet) => {
 		const other = b.pick === m.challenger ? m.acceptor : m.challenger;
 		void act('/rr/rail/take', { bet_id: b.id }, `🎟 Bet matched — you've got ${nameOf(other)}.`);
@@ -116,11 +119,11 @@
 			<p class="rnote">You're IN this match — win the pot, the rail's 10% rides on it. 🎟</p>
 		{:else}
 			<div class="pickrow">
-				<button type="button" class="pick" class:sel={slipFor === m.challenger} onclick={() => (slipFor = slipFor === m.challenger ? '' : m.challenger)}>
+				<button type="button" class="pick" class:sel={slipFor === m.challenger} onclick={() => { slipFor = slipFor === m.challenger ? '' : m.challenger; slipNonce = crypto.randomUUID(); }}>
 					🎟 Bet on {m.challenger_name || 'Player 1'}
 					<span>{sideTotal(m.challenger) ? `🪙 ${sideTotal(m.challenger)} waiting` : ''}</span>
 				</button>
-				<button type="button" class="pick" class:sel={slipFor === m.acceptor} onclick={() => (slipFor = slipFor === m.acceptor ? '' : m.acceptor)}>
+				<button type="button" class="pick" class:sel={slipFor === m.acceptor} onclick={() => { slipFor = slipFor === m.acceptor ? '' : m.acceptor; slipNonce = crypto.randomUUID(); }}>
 					🎟 Bet on {m.acceptor_name || 'Player 2'}
 					<span>{sideTotal(m.acceptor) ? `🪙 ${sideTotal(m.acceptor)} waiting` : ''}</span>
 				</button>
