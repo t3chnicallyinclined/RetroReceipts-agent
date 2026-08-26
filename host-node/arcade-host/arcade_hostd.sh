@@ -82,17 +82,27 @@ steam_ping(){ # TCP connect ms to a stable Steam endpoint (reachability/latency 
   [ -n "$t" ] && awk -v x="$t" 'BEGIN{ if(x+0>0) printf "%d", x*1000; else print "-1" }' || echo "-1"; }
 
 heartbeat(){
-  local st id owner join body hdr resp os sp
+  local st id owner join body hdr resp os sp act rst
   st=$(bash "$AH" status); id=$(jget "$st" lobby_id); owner=$(jget "$st" owner); join=$(jget "$st" join)
   if [ -z "$id" ] || [ "$id" = "0" ]; then echo "[hostd] no lobby to heartbeat"; return 1; fi
   os=$(os_info); sp=$(steam_ping)
-  body=$(printf '{"steamid":"%s","name":"%s","lobby_id":"%s","owner":"%s","join":"%s","region":"%s","os":"%s","steam_ping_ms":%s,"ft":%s,"one_button":%s,"version":"%s","players":%s,"game":"%s"}' \
+  # 🎟 referee feed: the match monitor's live standby flag (1 = a game is being fought on this
+  # cabinet) rides the heartbeat as `active` — it drives the server's IN GAME light and the rail's
+  # betting-close latch for refereed money matches. -1 = monitor absent/stale (server leaves as-is).
+  act=-1; rst="$(dirname "$STATE")/referee_state.json"
+  if [ -f "$rst" ]; then
+    act=$(python3 -c "import json,time;d=json.load(open('$rst'));print(d.get('standby',0) if time.time()-d.get('ts',0)<20 else -1)" 2>/dev/null || echo -1)
+  fi
+  body=$(printf '{"steamid":"%s","name":"%s","lobby_id":"%s","owner":"%s","join":"%s","region":"%s","os":"%s","steam_ping_ms":%s,"ft":%s,"one_button":%s,"version":"%s","players":%s,"game":"%s","active":%s}' \
          "$owner" "$NODE_NAME" "$id" "$owner" "$join" "$REGION" "$os" "${sp:--1}" \
-         "$(cur_ft)" "$(cur_ob)" "$(cur_ver)" "$ARCADE_PLAYERS" "$ARCADE_GAME")
+         "$(cur_ft)" "$(cur_ob)" "$(cur_ver)" "$ARCADE_PLAYERS" "$ARCADE_GAME" "${act:--1}")
   hdr=(-H 'content-type: application/json')
   [ -n "$HOST_TOKEN" ] && hdr+=(-H "authorization: Bearer $HOST_TOKEN")
   resp=$(curl -s -m 6 -X POST "$HOST/skinsync/arcade/host/heartbeat" "${hdr[@]}" -d "$body" 2>&1)
-  echo "[hostd] HB lobby=$id owner=$owner -> ${resp:-<no response>}"
+  echo "[hostd] HB lobby=$id owner=$owner active=$act -> ${resp:-<no response>}"
+  # 🧾 referee feed: dump the raw reply — referee.py reads `assigned` (wager_id + fighters + best_of)
+  # from it, so assignment awareness costs zero extra requests.
+  printf '%s' "$resp" > "$(dirname "$STATE")/assigned_resp.json" 2>/dev/null || true
   # PER-MATCH FT: the server's `assigned` carries the match's best_of; set Victory Condition to its FT
   # (best_of = ft*2-1  =>  ft = (best_of+1)/2). If the current lobby's FT differs, cycle to match. The new
   # lobby id heartbeats next tick. ⚠ FOLLOW-UP: the server must re-sync the reserved wager's lobby_id to
@@ -154,7 +164,8 @@ case "${1:-tick}" in
                 echo "[hostd] REGISTER ABORTED — injector not deployed (see above); hosting NOT enabled"; exit 1
               fi
               systemctl --user enable --now arcade-hostd 2>/dev/null
-              echo "[hostd] REGISTERED — hosting ON (service: $(systemctl --user is-active arcade-hostd 2>/dev/null))";;
+              systemctl --user enable --now arcade-refereed 2>/dev/null || true
+              echo "[hostd] REGISTERED — hosting ON (service: $(systemctl --user is-active arcade-hostd 2>/dev/null), referee: $(systemctl --user is-active arcade-refereed 2>/dev/null))";;
   # deploy/verify the injector ONLY (no service change). The agent calls this synchronously before
   # 'register' so the tray gets an HONEST answer — prefix-not-built / game-running surface as a nonzero exit.
   ensure-injector) ensure_injector; exit $?;;
@@ -162,6 +173,7 @@ case "${1:-tick}" in
   unregister) export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
               do_unregister
               systemctl --user disable --now arcade-hostd 2>/dev/null
+              systemctl --user disable --now arcade-refereed 2>/dev/null || true
               echo "[hostd] UNREGISTERED — hosting OFF (service: $(systemctl --user is-active arcade-hostd 2>/dev/null))";;
   status)     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
               echo "hosting: enabled=$(systemctl --user is-enabled arcade-hostd 2>/dev/null) active=$(systemctl --user is-active arcade-hostd 2>/dev/null)"

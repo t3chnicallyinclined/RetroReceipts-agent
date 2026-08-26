@@ -1,0 +1,12 @@
+[Unit]
+Description=Retro Receipts match referee (watches the assigned money match, counts the set, reports the result)
+After=arcade-hostd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/share/retro-receipts/arcade-host/referee.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
