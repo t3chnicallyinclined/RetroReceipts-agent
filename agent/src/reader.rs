@@ -1535,10 +1535,15 @@ unsafe fn gs_record_select(h: &mem::Proc, exe_base: usize, armed: &mut bool) {
     }
     let mut last = u32::MAX;
     let start = std::time::Instant::now();
+    // ⚠ This loop owns the capture thread for as long as the player sits at character select, so it
+    // must honour the share toggle itself — otherwise switching gameplay sharing OFF would not take
+    // effect until the fight started, which is not what the tray switch promises.
+    use std::sync::atomic::Ordering::SeqCst;
     // ⚠ bounded: someone can sit on character select indefinitely, and an unbounded buffer on a
     // background thread is how a tray agent ends up holding hundreds of MB. Two minutes of frames
     // is far more than any real character select and costs ~86 KB.
     while start.elapsed().as_secs() < 120 {
+        if !SHARE_GAMEPLAY.load(SeqCst) { break; }                   // the user turned sharing off
         if rpm_u8(h, blk + BLK_MODE_OFF + 2) != Some(1) { break; }   // fight started, or we left
         let f = match rpm_u32(h, blk + BLK_FRAME_OFF) { Some(v) => v, None => break };
         if f != last {
