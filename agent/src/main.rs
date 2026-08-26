@@ -173,7 +173,9 @@ fn main() {
             // APPLIES when it's safe (MvC2 not running), else raises a NON-MODAL, once-per-version toast +
             // reflects the pending version in the tray (updater::note_deferred_update), and auto-applies on a
             // later pass once the game closes.
-            const RECHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(3 * 60 * 60); // 3h
+            const RECHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60); // 1h — the
+            // fleet drifts through versions fast right now; a tighter loop shrinks the straggler window
+            // (updates still only APPLY when safe: menu, no pairing — or at next launch)
             std::thread::sleep(std::time::Duration::from_secs(8));
             loop {
                 match updater::check_for_update(config::VERSION) {

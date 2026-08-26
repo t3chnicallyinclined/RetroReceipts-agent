@@ -218,7 +218,9 @@ fn build_menu() -> (Menu, MenuHandles) {
     let open = MenuItem::new("Open Retro Receipts", true, None);
     // Initial check states read the flags main.rs already restored (skins) / the process default (pause).
     let apply_skins = CheckMenuItem::new(
-        "Apply my skins",
+        // "Skin sync" by name (Tris 2026-08-25): stats-only users must be able to FIND the off switch.
+        // Unchecked = the agent never touches game palettes; every stat/report feature keeps working.
+        "Skin sync — show custom skins in game",
         true,
         painter::SKINS_ENABLED.load(Ordering::Relaxed),
         None,
