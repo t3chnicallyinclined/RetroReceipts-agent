@@ -18,6 +18,7 @@
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
+	import { apiGet } from '$lib/net.svelte';
 	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import Flag from '$lib/components/Flag.svelte';
 	import ReportModal from '$lib/components/ReportModal.svelte';
@@ -33,6 +34,7 @@
 		const s = sid;
 		if (s && s !== loadedSid) {
 			loadedSid = s;
+			pageN = 0; // a new profile starts at page 1 (the pager cache re-keys itself)
 			void store.load(s);
 			void stats.load(s);
 		}
@@ -106,9 +108,41 @@
 	// player you just faced, right from the tape)
 	let reportOpen = $state(false);
 
-	// match-history pager (client-side over the server's window; deeper history = a server pager, queued)
+	// ── MATCH-HISTORY PAGER ── server-driven when GET /rr/history exists (offset-based so a page JUMP
+	// fetches exactly that page — Tris's design); falls back to the profile's recent window until the
+	// endpoint ships. Fetched pages cache per (sid, perPage) for the visit.
 	let perPage = $state(10);
 	let pageN = $state(0);
+	let histTotal = $state<number | null>(null); // null = pager endpoint absent → window fallback
+	let histPages = $state<Record<number, import('$lib/stores/profile.svelte').RecentMatch[]>>({});
+	let histKey = ''; // sid|perPage the cache belongs to
+	$effect(() => {
+		const s = sid, pp = perPage, pn = pageN;
+		if (!s) return;
+		const key = `${s}|${pp}`;
+		if (key !== histKey) {
+			histKey = key;
+			histPages = {};
+		}
+		if (histPages[pn]) return;
+		void (async () => {
+			try {
+				const j = await apiGet<{ ok?: boolean; total?: number; rows?: import('$lib/stores/profile.svelte').RecentMatch[] }>(
+					`/rr/history?steamid=${encodeURIComponent(s)}&offset=${pn * pp}&limit=${pp}`
+				);
+				if (`${s}|${pp}` !== histKey) return; // superseded
+				if (j?.ok && Array.isArray(j.rows)) {
+					histPages = { ...histPages, [pn]: j.rows };
+					histTotal = j.total ?? null;
+				}
+			} catch {
+				/* endpoint absent (404) or blip → the recent-window fallback below renders */
+			}
+		})();
+	});
+	const histCount = $derived(histTotal ?? recent.length);
+	const pageRows = $derived(histPages[pageN] ?? recent.slice(pageN * perPage, (pageN + 1) * perPage));
+	const lastPage = $derived(Math.max(0, Math.ceil(histCount / perPage) - 1));
 
 	async function toggleLobby() {
 		if (ownerBusy) return;
@@ -331,9 +365,9 @@
 
 	<!-- Match history — paginated over everything the server hands us, per-page picker (Tris 2026-08-25) -->
 	<div class="rail sec-hd">Match history</div>
-	{#if recent.length}
+	{#if recent.length || histCount}
 		<div class="pager">
-			<span class="pinfo">{pageN * perPage + 1}–{Math.min((pageN + 1) * perPage, recent.length)} of {recent.length}</span>
+			<span class="pinfo">{histCount ? pageN * perPage + 1 : 0}–{Math.min((pageN + 1) * perPage, histCount)} of {histCount}</span>
 			<label class="psel">per page
 				<select bind:value={perPage} onchange={() => (pageN = 0)}>
 					<option value={10}>10</option>
@@ -341,11 +375,20 @@
 					<option value={50}>50</option>
 				</select>
 			</label>
+			{#if lastPage > 0}
+				<label class="psel">page
+					<select bind:value={pageN}>
+						{#each Array.from({ length: lastPage + 1 }) as _, i (i)}
+							<option value={i}>{i + 1}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
 			<button type="button" class="pbtn" disabled={pageN === 0} onclick={() => (pageN = Math.max(0, pageN - 1))}>‹ Prev</button>
-			<button type="button" class="pbtn" disabled={(pageN + 1) * perPage >= recent.length} onclick={() => (pageN = pageN + 1)}>Next ›</button>
+			<button type="button" class="pbtn" disabled={pageN >= lastPage} onclick={() => (pageN = Math.min(lastPage, pageN + 1))}>Next ›</button>
 		</div>
 		<div class="matches">
-			{#each recent.slice(pageN * perPage, (pageN + 1) * perPage) as m, i (m.mid ?? m.match_key ?? i)}
+			{#each pageRows as m, i (m.mid ?? m.match_key ?? i)}
 				<MatchBanner
 					a={{ steamid: sid, name: p.name || 'Player', avatar: p.avatar, cc: p.cc, rating, games: gp, team: m.my_team ?? null }}
 					b={{ steamid: m.opp_id ?? '', name: m.opp, team: m.opp_team ?? null }}
