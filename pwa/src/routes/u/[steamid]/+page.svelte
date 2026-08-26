@@ -106,6 +106,10 @@
 	// player you just faced, right from the tape)
 	let reportOpen = $state(false);
 
+	// match-history pager (client-side over the server's window; deeper history = a server pager, queued)
+	let perPage = $state(10);
+	let pageN = $state(0);
+
 	async function toggleLobby() {
 		if (ownerBusy) return;
 		ownerBusy = true;
@@ -322,14 +326,26 @@
 
 	{#if teams.length}
 		<div class="rail sec-hd">Teams</div>
-		<TeamBars {teams} />
+		<TeamBars {teams} steamid={sid} />
 	{/if}
 
-	<!-- Recent matches -->
-	<div class="rail sec-hd">Recent matches</div>
+	<!-- Match history — paginated over everything the server hands us, per-page picker (Tris 2026-08-25) -->
+	<div class="rail sec-hd">Match history</div>
 	{#if recent.length}
+		<div class="pager">
+			<span class="pinfo">{pageN * perPage + 1}–{Math.min((pageN + 1) * perPage, recent.length)} of {recent.length}</span>
+			<label class="psel">per page
+				<select bind:value={perPage} onchange={() => (pageN = 0)}>
+					<option value={10}>10</option>
+					<option value={25}>25</option>
+					<option value={50}>50</option>
+				</select>
+			</label>
+			<button type="button" class="pbtn" disabled={pageN === 0} onclick={() => (pageN = Math.max(0, pageN - 1))}>‹ Prev</button>
+			<button type="button" class="pbtn" disabled={(pageN + 1) * perPage >= recent.length} onclick={() => (pageN = pageN + 1)}>Next ›</button>
+		</div>
 		<div class="matches">
-			{#each recent.slice(0, 20) as m, i (m.mid ?? m.match_key ?? i)}
+			{#each recent.slice(pageN * perPage, (pageN + 1) * perPage) as m, i (m.mid ?? m.match_key ?? i)}
 				<MatchBanner
 					a={{ steamid: sid, name: p.name || 'Player', avatar: p.avatar, cc: p.cc, rating, games: gp, team: m.my_team ?? null }}
 					b={{ steamid: m.opp_id ?? '', name: m.opp, team: m.opp_team ?? null }}
@@ -359,6 +375,50 @@
 	.heroloc {
 		display: block;
 		margin-top: 6px;
+	}
+	.pager {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin: 0 0 8px;
+		font-size: 11.5px;
+		color: var(--dim);
+	}
+	.pinfo {
+		font-family: ui-monospace, monospace;
+		font-variant-numeric: tabular-nums;
+	}
+	.psel {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.psel select {
+		font: inherit;
+		font-size: 11.5px;
+		color: var(--ink);
+		background: var(--panel-2);
+		border: 1px solid var(--line);
+		border-radius: 7px;
+		padding: 4px 7px;
+	}
+	.pbtn {
+		font: inherit;
+		font-size: 11.5px;
+		font-weight: 700;
+		color: var(--dim);
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 5px 12px;
+		cursor: pointer;
+	}
+	.pbtn:first-of-type {
+		margin-left: auto;
+	}
+	.pbtn:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 	.hero {
 		display: flex;

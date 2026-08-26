@@ -55,6 +55,9 @@
 		onOpen?: (() => void) | null;
 	} = $props();
 
+	// recency reads as "5m ago"; HISTORY reads as a date — past 48h the banner shows the day itself
+	// (Tris: full history needs real dates, "3w" tells you nothing on page 4)
+	const when = (t: number) => (Date.now() - t > 48 * 3600e3 ? new Date(t).toISOString().slice(0, 10) : timeAgo(t));
 	const MODE_LABEL: Record<string, string> = { ranked: 'RANKED', lobby: 'LOBBY', money: 'MONEY', tourney: 'TOURNEY', tournament: 'TOURNEY' };
 	const modeLabel = $derived(MODE_LABEL[mode] ?? (mode ? mode.toUpperCase() : ''));
 	const loA = $derived(a.team?.length ? loadouts.peek(a.steamid ?? '') : null);
@@ -107,7 +110,7 @@
 		</span>
 		<span class="r2">
 			{#if delta != null && delta !== 0}<span class="delta" class:neg={delta < 0}>{delta > 0 ? '+' : ''}{delta}</span>{/if}
-			{#if dur}<span>{Math.floor(dur / 60)}:{String(dur % 60).padStart(2, '0')}</span>{/if}{#if gameNo != null}<span>G{gameNo}</span>{:else if ts}<span>{timeAgo(ts)}</span>{/if}
+			{#if dur}<span>{Math.floor(dur / 60)}:{String(dur % 60).padStart(2, '0')}</span>{/if}{#if gameNo != null}<span>G{gameNo}</span>{:else if ts}<span>{when(ts)}</span>{/if}
 			<span class="chev">›</span>
 		</span>
 	</span>
