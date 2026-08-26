@@ -126,6 +126,9 @@ const ARENA_PTR_OFF:   usize = 0xac6d40;    // exe global → the single 256 MiB
 const BLK_SIM_LEN:     usize = 0x33b18;     // 211,736 B
 const BLK_MODE_OFF:    usize = 0x3cb8;      // blk+0x3CB8 byte[2]: 1 = CHARACTER SELECT, 2 = IN BATTLE
 const BLK_FRAME_OFF:   usize = 0x3cc8;      // blk+0x3CC8: the sim frame counter (used as a torn-read guard)
+const BLK_H0_OFF:      usize = 0x3db8;      // blk+0x3DB8 = fighter slot 0. ⚠ NOT MATCH_ARR_ADD (0x3f24),
+                                            //   which is 0x16C INSIDE the object — 0x3f24 − 0x16c = 0x3db8.
+const H_CID:           usize = 0x6c0;       // slot CID — ALSO where the char-select cursor writes
 const LOCALPLAYER_OFF: usize = 0xac7230;    // localPlayerNum: 0 = P1, 1 = P2 (flycast's own side global, next to kcode;
                                             //   differential-capture confirmed: 0 in a live P1 match, 1 across 3 P2 matches)
 const GSTATE_PTR_OFF:  usize = 0xacd3a0;    // exe global → pointer to game_state (scene id @ +0x8, locked picks @ +PICKS_OFF)
@@ -2112,6 +2115,67 @@ unsafe fn read_char_picks(h: &mem::Proc, exe_base: usize) -> Vec<u8> {
     picks   // NO -1 requirement (a fully-locked team has no in-team -1). The CALLER gates on scene==5 && no live
             // fighters (= char-select), so a settled menu/in-fight state never surfaces a stale team here.
 }
+/// `blk` — the match block — or None. The capture path derefs this inline in a couple of places;
+/// this is the same two lines with a name, so the character-select reads below and the anchor
+/// capture cannot drift apart.
+unsafe fn blk_of(h: &mem::Proc, exe_base: usize) -> Option<usize> {
+    if exe_base == 0 { return None; }
+    let p = read_at(h, exe_base + MATCH_PTR_OFF, 8).filter(|b| b.len() >= 8)
+        .map(|b| u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]) as usize)?;
+    if p > 0x10000 && p < 0x7fff_ffff_ffff { Some(p) } else { None }
+}
+
+/// Which screen the SIMULATION is on: 1 = character select, 2 = in battle, 0 = unknown.
+/// Cheaper and more direct than inferring from `scene` + live-fighter heuristics.
+///
+/// ⚠ This is NOT an end-of-match signal. Measured live 2026-08-26: it stayed at 2 through the KO,
+/// the win pose AND the results screen for 118 seconds straight. For "the game ended", use a team
+/// wipe (three dead on one side) held for a couple of seconds, which is what the capture thread's
+/// own boundary detection already does.
+#[allow(dead_code)] // exposed for the char-select gate below and for callers that want the screen
+unsafe fn read_sim_mode(h: &mem::Proc, exe_base: usize) -> u8 {
+    match blk_of(h, exe_base) {
+        Some(blk) => read_at(h, blk + BLK_MODE_OFF, 5).filter(|b| b.len() >= 5).map(|b| b[2]).unwrap_or(0),
+        None => 0,
+    }
+}
+
+/// BOTH teams, read locally from the match block: `[p1a,p1b,p1c, p2a,p2b,p2c]`.
+///
+/// `read_char_picks` above gives OUR OWN locked team only — its own comment says "we only ever
+/// receive our own picks". This gives both, without trusting anyone's client: the character-select
+/// cursor writes its selection straight into the fighter slot's CID field, so both teams are
+/// readable the instant they lock in, BEFORE the fight starts. That is what lets team verification
+/// and wager locking stop depending on a client report.
+///
+/// Found by differential capture (park P1 on one character, snapshot blk, move, snapshot, diff):
+/// exactly two words changed, `blk+0x4478` (= blk+0x3DB8+0x6C0, slot 0 CID) going 0x3a -> 0x34,
+/// i.e. 58 (Servbot) -> 52 (Sentinel) — the two characters actually selected. Slots interleave as
+/// everywhere else: EVEN = P1 team, ODD = P2 team.
+///
+/// ⚠ LIVE, not final, while a player is still hovering. Gate on the mode EDGE (1 -> 2), NOT on the
+/// values holding steady: the cursor writes continuously, character select runs ~500-1800 frames,
+/// and a player parked on a character is indistinguishable from a locked pick.
+///
+/// RE and design: the original replay lane (session 87af92a3). Named against the constants already
+/// in this file rather than duplicating them.
+#[allow(dead_code)] // wired up by whoever owns the wager/team-verification path
+unsafe fn read_both_teams(h: &mem::Proc, exe_base: usize) -> Vec<u8> {
+    let blk = match blk_of(h, exe_base) { Some(b) => b, None => return Vec::new() };
+    let mut p1 = Vec::new();
+    let mut p2 = Vec::new();
+    for i in 0..6usize {
+        let cid = match read_at(h, blk + BLK_H0_OFF + i * STRIDE + H_CID, 1) {
+            Some(b) if !b.is_empty() => b[0],
+            _ => return Vec::new(),
+        };
+        if cid > MAX_CID { return Vec::new(); }   // not a character id -> block not populated yet
+        if i % 2 == 0 { p1.push(cid) } else { p2.push(cid) }
+    }
+    p1.extend(p2);
+    p1
+}
+
 unsafe fn pointer_follow_array(h: &mem::Proc, exe_base: usize) -> Option<usize> {
     if exe_base == 0 { return None; }
     let blk = read_at(h, exe_base + MATCH_PTR_OFF, 8)
