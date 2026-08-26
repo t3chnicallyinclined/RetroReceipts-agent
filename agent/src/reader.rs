@@ -1243,10 +1243,13 @@ struct GsCapture {
     anchor_blk: u64,                                // the blk address it was captured at, and
     anchor_arena: u64,                              // *(exe+ARENA_PTR_OFF), the 256 MiB arena — the two
     anchor_frame: u32,                              // deltas needed to relocate it; blk+0x3CC8 at capture
+    start_sim_frame: u32,                           // blk+0x3CC8 at match start, from the SAME counter as
+                                                    //   anchor_frame — an anchor at or after it belongs to
+                                                    //   an EARLIER match and must not ship with this tape
 }
 impl Default for GsCapture {
     fn default() -> Self { GsCapture { frames: std::collections::BTreeMap::new(), frame_addr: 0, synthetic: false, assist: [0; 6], local_pn: 255, set_start: None, last_update: None,
-                                       seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0 } }
+                                       seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, start_sim_frame: 0 } }
 }
 fn gs_capture() -> &'static Mutex<GsCapture> {
     static S: OnceLock<Mutex<GsCapture>> = OnceLock::new();
@@ -1257,7 +1260,8 @@ fn gs_capture() -> &'static Mutex<GsCapture> {
 struct GsSnapshot { frames: Vec<GsRow>, frame_addr: usize, synthetic: bool, assist: [u8; 6], local_pn: u8, set_start: Option<(u8, u8)>,
                     // 0.3.24: everything a server needs to RE-SIMULATE this game in the real engine
                     seat_map: [i32; 4], rollbacks: u32, build_id: String,
-                    anchor: Option<Vec<u8>>, anchor_blk: u64, anchor_arena: u64, anchor_frame: u32 }
+                    anchor: Option<Vec<u8>>, anchor_blk: u64, anchor_arena: u64, anchor_frame: u32,
+                    start_sim_frame: u32 }
 // Return the buffered game IFF it was actively updating within the last few seconds (i.e. it IS the game
 // that just ended). This guards against attaching a stale/other game's buffer to a late (pending-flush) win.
 fn gamestate_snapshot() -> Option<GsSnapshot> {
@@ -1266,7 +1270,8 @@ fn gamestate_snapshot() -> Option<GsSnapshot> {
     if c.last_update.map_or(true, |t| t.elapsed().as_secs() > 6) { return None; }
     Some(GsSnapshot { frames: c.frames.values().cloned().collect(), frame_addr: c.frame_addr, synthetic: c.synthetic, assist: c.assist, local_pn: c.local_pn, set_start: c.set_start,
                       seat_map: c.seat_map, rollbacks: c.rollbacks, build_id: c.build_id.clone(),
-                      anchor: c.anchor.clone(), anchor_blk: c.anchor_blk, anchor_arena: c.anchor_arena, anchor_frame: c.anchor_frame })
+                      anchor: c.anchor.clone(), anchor_blk: c.anchor_blk, anchor_arena: c.anchor_arena, anchor_frame: c.anchor_frame,
+                      start_sim_frame: c.start_sim_frame })
 }
 
 fn le32(b: &[u8], o: usize) -> u32 { u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) }
@@ -1555,6 +1560,12 @@ fn start_gamestate_capture() {
                 }
                 c.rollbacks = 0;
                 c.build_id = unsafe { game_build_id(h, exe_base) };
+                // The sim frame this match starts on, read from blk+0x3CC8 — the SAME counter the
+                // anchor stamped itself with. Any anchor at or after it was captured before an
+                // EARLIER match (two games can run without an intervening character select), and
+                // shipping it would hand a server a savestate for the wrong fight.
+                c.start_sim_frame = base.checked_sub(BLK_BACK)
+                    .and_then(|blk| unsafe { rpm_u32(h, blk + BLK_FRAME_OFF) }).unwrap_or(0);
                 // ⚠ c.anchor is deliberately NOT cleared here — it was captured at the character select that
                 //   PRECEDED this match and belongs to it. The next char-select visit overwrites it.
             }
@@ -1669,6 +1680,25 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
 
     let ts = gs_now_ms();
     let id = format!("{}_{}", match_key, reporter);
+    // ── tape continuity, stated rather than assumed ──
+    // The capture polls a frame counter from a thread; a slow poll drops that frame's input, and on
+    // re-simulation the previous input persists instead (the engine's own store is NOPed), which
+    // diverges silently. GS_CAP also stops accepting NEW frames once hit, truncating the tail. So
+    // say so in the record: span vs count is the check a consumer can actually gate on.
+    let (f_first, f_last) = (gs.frames.first().map(|r| r.frame).unwrap_or(0),
+                             gs.frames.last().map(|r| r.frame).unwrap_or(0));
+    let frame_span = f_last.saturating_sub(f_first).saturating_add(1);
+    let frame_gaps = frame_span.saturating_sub(gs.frames.len() as u32);
+    let truncated = gs.frames.len() >= GS_CAP;
+    // An anchor stamped at or after this match's first sim frame was captured for an EARLIER match.
+    // Two games can run back to back with no character select between them, and the anchor is
+    // deliberately kept across a match start — so this is the check that keeps that from shipping.
+    let anchor_ok = gs.anchor.is_some() && gs.start_sim_frame != 0 && gs.anchor_frame < gs.start_sim_frame;
+    if gs.anchor.is_some() && !anchor_ok {
+        trace(&format!("[gamestate] DROPPING anchor: frame {} is not before match start {} (stale)",
+                       gs.anchor_frame, gs.start_sim_frame));
+    }
+    let anchor = if anchor_ok { gs.anchor.as_ref() } else { None };
     let frames: Vec<serde_json::Value> = gs.frames.iter().map(|r| serde_json::json!([
         r.frame, r.p1_in, r.p2_in, r.kcode, r.hp, r.px, r.py, r.m1, r.m2, r.mfill, r.cd, r.cr,
         r.vx, r.vy, r.rhp, r.face, r.hitstun, r.act,
@@ -1697,10 +1727,15 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         // only); anchor is gzip+base64 of blk[0..0x33B18) taken at CHARACTER SELECT — restore it, relocate its
         // pointers by (new_blk − anchor_blk) / (new_arena − anchor_arena), then feed seat_in[] frame by frame.
         "seat_map": gs.seat_map, "rollbacks": gs.rollbacks, "build_id": gs.build_id,
-        "anchor": gs.anchor.as_ref().map(|g| b64_encode(g)),
-        "anchor_gz_len": gs.anchor.as_ref().map(|g| g.len()).unwrap_or(0),
+        "anchor": anchor.map(|g| b64_encode(g)),
+        "anchor_gz_len": anchor.map(|g| g.len()).unwrap_or(0),
         "anchor_sim_len": BLK_SIM_LEN as u64, "anchor_enc": "gzip+base64",
         "anchor_blk": gs.anchor_blk, "anchor_arena": gs.anchor_arena, "anchor_frame": gs.anchor_frame,
+        "start_sim_frame": gs.start_sim_frame,
+        // continuity: frame_gaps > 0 means input frames are MISSING and a re-simulation will diverge;
+        // truncated means GS_CAP stopped accepting new frames and the tail of the match is absent.
+        "frame_first": f_first, "frame_last": f_last, "frame_span": frame_span,
+        "frame_gaps": frame_gaps, "truncated": truncated,
         "frame_count": frames.len(), "frames": frames,
     });
     let gz = gzip_bytes(&serde_json::to_vec(&record).unwrap_or_default());

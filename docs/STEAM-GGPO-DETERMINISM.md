@@ -25,10 +25,44 @@ Registration: `FUN_140118290` sets `DAT_142d10950 = 1` (one region), `DAT_142d10
 `DAT_142d108d0 = G[0x1b8]`. The memset+register is `FUN_140608690` @ `0x1406086a7`.
 **VERIFIED LIVE:** the size field at `0x140AC6EF8` reads exactly `0x33B18`.
 
-**Why this is a proof, not an inference.** GGPO rewinds and re-simulates constantly during every
-online match. Anything sim-relevant living outside the registered region would not be restored on
-rollback and peers would desync within MAX_PREDICTION_FRAMES. Online matches complete. Therefore
-the region is sufficient — certified by Capcom's own shipping netcode.
+**What GGPO actually proves.** GGPO rewinds and re-simulates constantly during every online match.
+Anything that CHANGES during a match and lives outside the registered region would not be restored
+on rollback, and peers would desync within MAX_PREDICTION_FRAMES. Online matches complete.
+Therefore:
+
+> `blk` contains every piece of state that **changes** during a match.
+
+### ⚠⚠ THE LIMIT OF THAT PROOF — corrected 2026-08-26, read before relying on this page
+**Rollback-sufficiency is not replay-sufficiency.** State that is set once *before* a match and only
+*read* during it never needs restoring, so rollback works perfectly without it — and the proof above
+says nothing about it. The stronger claim, "`blk` is the complete deterministic simulation state",
+does **not** follow from GGPO and is **not yet proven**. An earlier version of this page and the
+0.3.24 release note both asserted it as certified. They were wrong to.
+
+What has been checked since:
+- ✅ **Settings and unlocks are INSIDE.** `FUN_140608690` (match init) copies difficulty/damage/time
+  options into `blk+0x3C40…0x3D07` and builds a 56-bit roster/unlock mask at `blk+0x3CE8/0x3CEC`
+  (observed `0xf8ffffff / 0x07ffffff` = exactly 56 bits = the MvC2 roster) — so the anchor carries
+  them. ⚠ Which also means **an anchor is per-account identifiable**.
+- ✅ **Stage selection is INSIDE** — the DC layout carries `STG_ID` twice, mapping to `blk+0x6D3C`
+  and `blk+0x32530`.
+- ❓ **THE RNG IS THE OPEN COUNTER-EXAMPLE.** On DC/NAOMI — the same game code — the sim RNG is an
+  LCG at `0x8C16BC2C`, `s = s*0x41C64E6D + 0x3039`, seeded `srand(1)`, with **54 call sites** across
+  the character-program and effect banks, sitting **~1 MB outside** the block that became `blk`. If
+  the x86-64 recompile left it as a static, it is not rolled back and not carried by an anchor.
+  `replay-kit/verify.py rng` settles this in about a minute: an LCG is uniquely identifiable from
+  two samples, because only the real generator satisfies `x1 == x0·A^k + B_k`.
+  The "two replays were bit-identical" evidence does **not** cover this — both ran back to back in
+  one process, and damage calculation consumes zero RNG, so a short tape passes either way.
+- ❓ **A second block exists.** `FUN_140608690` also allocates `blk2 = blk + 0x33B18`, size `0x33B20`,
+  registered at `G+0x1c0`/`G+0x1c8` — **not** in the rollback list, therefore never restored.
+  `verify.py blk2` reports whether it mutates during play (mutating ⟹ derived output, safe).
+
+### ⚠ AND THE REGISTRATION IS A FORK
+`FUN_140118290` branches on `G+0x48`: **`< 3` registers 10–18 regions** (that is the emulated-CPS
+path the collection's CPS2 titles use); **`>= 3` registers the single `G+0x1b0`/`G+0x1b8` pair**.
+Live value on MvC2 is **11**. Everything on this page depends on being on the `>= 3` arm — assert it,
+never assume it. (This is also the answer to how the collection's *other* games work: differently.)
 
 ⚠ `0x33B18` is the **same size the agent already reads every frame**. We have been capturing the
 complete deterministic state all along and discarding all but a few fields.
