@@ -11,6 +11,8 @@
 	import MyMatch from '$lib/components/MyMatch.svelte';
 	import WagerRail from '$lib/components/WagerRail.svelte';
 	import Marquee from '$lib/components/Marquee.svelte';
+	import RailPanel, { type RailMatch } from '$lib/components/RailPanel.svelte';
+	import { apiGet } from '$lib/net.svelte';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
@@ -48,6 +50,24 @@
 	});
 
 	const nowPlaying = $derived(matchfeed.nowPlaying);
+
+	// 🎟 the rail board — locked money matches open for betting; 20s refresh while the tab is visible
+	let railBoard = $state<RailMatch[]>([]);
+	async function loadRail(): Promise<void> {
+		try {
+			const j = await apiGet<{ ok?: boolean; matches?: RailMatch[] }>('/rr/rail/board', { ttl: 15_000 });
+			if (j?.ok) railBoard = j.matches ?? [];
+		} catch {
+			/* keep last-good */
+		}
+	}
+	onMount(() => {
+		void loadRail();
+		const iv = setInterval(() => {
+			if (!document.hidden) void loadRail();
+		}, 20_000);
+		return () => clearInterval(iv);
+	});
 	const results = $derived(matchfeed.results);
 	const mode = $derived(matchfeed.mode);
 	const me = $derived(auth.steamid);
@@ -233,6 +253,28 @@
 <!-- 🪙 Money Match: your wager rail + the open-challenge arcade (live off the same `matches` channel) -->
 <WagerRail />
 <Marquee />
+
+<!-- 🎟 THE RAIL — betting on locked money matches. Board rows come from GET /rr/rail/board; each match
+     carries its own RailPanel (place / take / cancel, live totals). Section hides when nothing's locked. -->
+{#if railBoard.length}
+	<h2 class="shead"><span class="ic tick">🎟</span> The Rail <span class="cnt">{railBoard.length}</span></h2>
+	<p class="subnote">Bet on who wins — 1:1, winner takes 90%, <b>10% of every bet feeds the fighters' pot</b>. Betting closes when the match starts.</p>
+	<div class="railboard">
+		{#each railBoard as rm (rm.wager_id)}
+			<div class="rmatch" class:on={rm.live}>
+				<div class="rmhead">
+					<span class="rmnames"><b>{rm.challenger_name || '?'}</b> <i class="rmvs">VS</i> <b>{rm.acceptor_name || '?'}</b></span>
+					<span class="rmmeta">
+						{#if rm.live || (rm.cw ?? 0) + (rm.aw ?? 0) > 0}<span class="rml">🔴 {rm.cw ?? 0}–{rm.aw ?? 0}</span>
+						{:else}<span class="rmo">BETS OPEN</span>{/if}
+						<span class="rmpot">POT 🪙 {(rm.pot ?? rm.stake * 2) + (rm.rail?.pot_feed ?? 0)}</span>
+					</span>
+				</div>
+				<RailPanel m={rm} />
+			</div>
+		{/each}
+	</div>
+{/if}
 
 <!-- 🟢 Now Playing — standardized live banners (same one-row family as Live Results) -->
 <section class="sec">
@@ -442,6 +484,76 @@
 		flex-wrap: wrap;
 		margin-bottom: 8px;
 	}
+	/* ── 🎟 the rail board ── */
+	.subnote {
+		margin: -4px 0 10px;
+		font-size: 12px;
+		color: var(--dim);
+	}
+	.subnote b {
+		color: var(--gold);
+	}
+	.ic.tick {
+		font-size: 14px;
+	}
+	.railboard {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		margin-bottom: 18px;
+	}
+	.rmatch {
+		border: 1px solid color-mix(in srgb, var(--gold) 26%, var(--line));
+		border-radius: 12px;
+		background: linear-gradient(120deg, var(--gold-soft), transparent 75%), var(--panel);
+		padding: 11px 13px;
+	}
+	.rmatch.on {
+		border-left: 3px solid var(--live);
+	}
+	.rmhead {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.rmnames {
+		font-size: 14px;
+		min-width: 0;
+	}
+	.rmnames b {
+		font-weight: 800;
+	}
+	.rmvs {
+		font-style: italic;
+		font-weight: 900;
+		font-size: 11px;
+		background: linear-gradient(175deg, #fff3c0 20%, var(--gold) 45%, #a3670a 80%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		margin: 0 3px;
+	}
+	.rmmeta {
+		display: flex;
+		gap: 10px;
+		align-items: baseline;
+		font-family: ui-monospace, monospace;
+		font-size: 10px;
+		letter-spacing: 0.08em;
+	}
+	.rml {
+		color: var(--live);
+	}
+	.rmo {
+		color: var(--good);
+	}
+	.rmpot {
+		color: var(--gold);
+		font-weight: 700;
+	}
+
 	.shead {
 		display: flex;
 		align-items: center;
