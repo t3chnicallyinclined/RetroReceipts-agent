@@ -88,6 +88,57 @@
 
 	// 🪙 challenge THIS player — the reusable ChallengeButton self-guards (signed in, not you, real 17-digit id).
 
+	// ── TRUST & SAFETY (Tris 2026-08-25): alias history + player reports. Server fields feature-detected —
+	// absent (route not deployed yet / nothing to show) simply hides the surfaces.
+	const aliases = $derived(((p as { aliases?: string[] })?.aliases ?? []).filter(Boolean));
+	const flagged = $derived(!!(p as { flagged?: boolean })?.flagged);
+	const flagReason = $derived((p as { flag_reason?: string })?.flag_reason ?? '');
+	const FLAG_LABEL: Record<string, string> = {
+		rage_quit: 'rage quitting',
+		no_show: 'no-shows',
+		lag_manipulation: 'lag manipulation',
+		rank_manipulation: 'rank manipulation',
+		toxic: 'toxic behavior',
+		impersonation: 'impersonation'
+	};
+	// the standard report vocabulary — one honest sentence per reason, no catch-all "other" (free text
+	// rides the note field instead, so every report stays classifiable)
+	const REPORT_REASONS: { id: string; label: string; desc: string }[] = [
+		{ id: 'rage_quit', label: 'Rage quit', desc: 'Left mid-game or dodged the rest of the set after losing' },
+		{ id: 'no_show', label: 'No-show', desc: 'Accepted a challenge or wager, then never played' },
+		{ id: 'lag_manipulation', label: 'Lag manipulation', desc: 'Suspicious lag spikes at key moments (lag switch / bad-faith VPN)' },
+		{ id: 'rank_manipulation', label: 'Rank manipulation', desc: 'Win-trading, boosting, or smurf accounts farming rank' },
+		{ id: 'toxic', label: 'Toxic behavior', desc: 'Harassment or abusive conduct' },
+		{ id: 'impersonation', label: 'Impersonation', desc: "Copying another player's name or identity" }
+	];
+	let reportOpen = $state(false);
+	let reportReason = $state('');
+	let reportNote = $state('');
+	let reportBusy = $state(false);
+	let reportMsg = $state<{ ok: boolean; text: string } | null>(null);
+	async function submitReport(): Promise<void> {
+		if (!reportReason || reportBusy) return;
+		reportBusy = true;
+		reportMsg = null;
+		const res = await auth.post('/rr/report', {
+			target: sid,
+			reason: reportReason,
+			note: reportNote.trim().slice(0, 280)
+		});
+		reportBusy = false;
+		if (res.ok) {
+			reportMsg = { ok: true, text: 'Report filed — thank you. Multiple independent reports raise a visible flag.' };
+			reportReason = '';
+			reportNote = '';
+			setTimeout(() => {
+				reportOpen = false;
+				reportMsg = null;
+			}, 2400);
+		} else {
+			reportMsg = { ok: false, text: res.error ?? 'Could not file the report — try again shortly.' };
+		}
+	}
+
 	async function toggleLobby() {
 		if (ownerBusy) return;
 		ownerBusy = true;
@@ -151,6 +202,10 @@
 				link={false}
 			/>
 			{#if loc}<span class="loc heroloc">{loc}</span>{/if}
+			{#if aliases.length}
+				<!-- name history on this SteamID — renaming never sheds a reputation -->
+				<span class="aka">a.k.a. <b>{aliases.slice(0, 5).join(' · ')}</b></span>
+			{/if}
 		</div>
 		<div class="rank">
 			<RankBadge rating={rating} games={gp} size={34} />
@@ -169,6 +224,14 @@
 		</div>
 	{/if}
 
+	{#if flagged}
+		<!-- the community flag: ≥3 distinct reporters in 30 days. Copy carries the warning (charter: no
+		     red/molten for caution surfaces) — visible to everyone BEFORE money goes into a machine. -->
+		<div class="flagwarn" role="note">
+			⚠ Reported by multiple players recently{FLAG_LABEL[flagReason] ? ` — ${FLAG_LABEL[flagReason]}` : ''}. Play with caution.
+		</div>
+	{/if}
+
 	<RankProgress rating={rating} games={gp} pa={acc[0]} />
 
 	<!-- 🎛 Cabinet status — shows only when this player runs an online host node (self-hides otherwise). -->
@@ -176,7 +239,35 @@
 
 	<div class="challenge">
 		<ChallengeButton steamid={sid} name={p.name || 'this player'} />
+		{#if auth.authed && auth.steamid !== sid}
+			<button type="button" class="reportbtn" onclick={() => (reportOpen = true)}>⚑ Report player</button>
+		{/if}
 	</div>
+
+	{#if reportOpen}
+		<div class="rovl" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) reportOpen = false; }}>
+			<div class="rdlg" role="dialog" aria-modal="true" aria-label="Report player">
+				<button type="button" class="rx" onclick={() => (reportOpen = false)} aria-label="Close">✕</button>
+				<h3 class="rhd">⚑ Report {p.name || 'this player'}</h3>
+				<p class="rsub">Reports are reviewed and never public. Multiple independent reports raise a visible caution flag.</p>
+				<div class="rlist">
+					{#each REPORT_REASONS as rr (rr.id)}
+						<label class="ropt" class:sel={reportReason === rr.id}>
+							<input type="radio" name="reason" value={rr.id} bind:group={reportReason} />
+							<span class="rl">{rr.label}</span>
+							<span class="rd">{rr.desc}</span>
+						</label>
+					{/each}
+				</div>
+				<textarea class="rnote" rows="2" maxlength="280" placeholder="Anything specific? (optional — session link, what happened)" bind:value={reportNote}></textarea>
+				{#if reportMsg}<p class="rmsg" class:bad={!reportMsg.ok}>{reportMsg.text}</p>{/if}
+				<div class="racts">
+					<button type="button" class="rsend" disabled={!reportReason || reportBusy} onclick={submitReport}>{reportBusy ? 'Filing…' : 'File report'}</button>
+					<button type="button" class="rcancel" onclick={() => (reportOpen = false)}>Cancel</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Stat tiles -->
 	<div class="tiles">
@@ -445,6 +536,172 @@
 		border: 1px solid color-mix(in srgb, var(--gold) 26%, var(--line));
 		border-radius: 12px;
 		background: linear-gradient(120deg, var(--gold-soft), transparent 72%), var(--panel);
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	/* ── trust & safety ── */
+	.aka {
+		font-family: ui-monospace, monospace;
+		font-size: 10.5px;
+		color: var(--faint);
+		margin-top: 2px;
+	}
+	.aka b {
+		font-weight: 700;
+		color: var(--dim);
+	}
+	.flagwarn {
+		margin: 0 0 12px;
+		padding: 9px 13px;
+		border: 1px dashed var(--line);
+		border-radius: 10px;
+		background: var(--panel-2);
+		color: var(--dim);
+		font-size: 12.5px;
+		font-weight: 600;
+	}
+	.reportbtn {
+		margin-left: auto;
+		font: inherit;
+		font-size: 11.5px;
+		font-weight: 700;
+		color: var(--faint);
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 7px 13px;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.reportbtn:hover {
+		color: var(--dim);
+		border-color: var(--faint);
+	}
+	.rovl {
+		position: fixed;
+		inset: 0;
+		z-index: 95;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+		background: color-mix(in srgb, var(--bg) 78%, transparent);
+		backdrop-filter: blur(3px);
+	}
+	.rdlg {
+		position: relative;
+		width: min(100%, 460px);
+		max-height: 90vh;
+		overflow-y: auto;
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		padding: 18px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.rx {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		font: inherit;
+		color: var(--faint);
+		background: transparent;
+		border: 0;
+		cursor: pointer;
+		font-size: 14px;
+	}
+	.rhd {
+		margin: 0;
+		font-size: 16px;
+		font-weight: 800;
+	}
+	.rsub {
+		margin: 0;
+		font-size: 11.5px;
+		color: var(--dim);
+	}
+	.rlist {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.ropt {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 2px 9px;
+		align-items: center;
+		padding: 8px 10px;
+		border: 1px solid var(--line);
+		border-radius: 9px;
+		cursor: pointer;
+	}
+	.ropt.sel {
+		border-color: color-mix(in srgb, var(--gold) 45%, var(--line));
+		background: var(--gold-soft);
+	}
+	.ropt input {
+		grid-row: 1 / span 2;
+		accent-color: var(--gold);
+	}
+	.ropt .rl {
+		font-size: 12.5px;
+		font-weight: 800;
+	}
+	.ropt .rd {
+		grid-column: 2;
+		font-size: 10.5px;
+		color: var(--dim);
+	}
+	.rnote {
+		font: inherit;
+		font-size: 12px;
+		color: var(--ink);
+		background: var(--panel-2);
+		border: 1px solid var(--line);
+		border-radius: 9px;
+		padding: 8px 10px;
+		resize: vertical;
+	}
+	.rmsg {
+		margin: 0;
+		font-size: 11.5px;
+		color: var(--good);
+	}
+	.rmsg.bad {
+		color: var(--dim);
+	}
+	.racts {
+		display: flex;
+		gap: 10px;
+	}
+	.rsend {
+		font: inherit;
+		font-size: 12.5px;
+		font-weight: 800;
+		color: var(--gold-ink);
+		background: linear-gradient(180deg, #ffe084, #c98f0e);
+		border: 1px solid transparent;
+		border-radius: 999px;
+		padding: 8px 18px;
+		cursor: pointer;
+	}
+	.rsend:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.rcancel {
+		font: inherit;
+		font-size: 12px;
+		color: var(--dim);
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 8px 14px;
+		cursor: pointer;
 	}
 	.ch-open {
 		font: inherit;
