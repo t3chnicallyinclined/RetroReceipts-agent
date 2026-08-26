@@ -121,12 +121,12 @@
 			<!-- someone challenged ME directly — the one primary action of this moment -->
 			<div class="body">
 				<span class="line"
-					><b>{w.challenger_name || 'A challenger'}</b> puts up 🪙 {w.stake} — match it and the machine holds
-					🪙 {pot}.</span
+					><b>{w.challenger_name || 'A challenger'}</b> puts up 🪙 {w.stake} to play you for coins — put up
+					yours and the winner takes the 🪙 {pot} pot.</span
 				>
 				<div class="acts">
 					<button type="button" class="gold" disabled={acting} onclick={() => respond(true)}
-						>Match 🪙 {w.stake}</button
+						>🪙 Put up {w.stake} &amp; play</button
 					>
 					<button type="button" class="ghost" disabled={acting} onclick={() => respond(false)}>Decline</button>
 				</div>

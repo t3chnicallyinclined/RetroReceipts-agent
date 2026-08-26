@@ -179,13 +179,13 @@
 		<span class="lab">🪙 You've been challenged</span>
 		{#if inviteOpen}
 			<p class="iline">
-				<b>{inviteChallenger}</b> puts up 🪙 {inviteStake} · FT{invite?.ft ?? 2} — match it and the machine
-				holds 🪙 {invitePot}.
+				<b>{inviteChallenger}</b> puts up 🪙 {inviteStake} · FT{invite?.ft ?? 2} — play them for coins: put
+				up yours and the winner takes the 🪙 {invitePot} pot.
 			</p>
 			<div class="iacts">
 				{#if auth.authed}
 					<button type="button" class="gold" disabled={inviteActing} onclick={acceptInvite}
-						>⚔ {inviteActing ? '…' : `Accept — match 🪙 ${inviteStake}`}</button
+						>⚔ {inviteActing ? '…' : `🪙 Put up ${inviteStake} & play`}</button
 					>
 				{:else}
 					<button type="button" class="steam" onclick={acceptInvite}>

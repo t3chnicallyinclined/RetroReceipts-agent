@@ -112,7 +112,7 @@
 			{:else}
 				<button class="btn decline" onclick={decline} disabled={acting}>Decline</button>
 				<button class="btn accept" onclick={accept} disabled={acting || expired || !covers} title={covers ? '' : 'Not enough quarters'}>
-					⚔ {expired ? 'Expired' : covers ? `Accept — match 🪙${stake}` : 'Need quarters'}
+					⚔ {expired ? 'Expired' : covers ? `🪙 Put up ${stake} & play` : 'Need quarters'}
 				</button>
 			{/if}
 		</div>
