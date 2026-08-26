@@ -3,9 +3,9 @@
 
 	// ⚑ REPORT MODAL — the one report surface (profile + set receipts). Six standard reasons, no
 	// catch-all "other" (free text rides the note, so every report stays classifiable). Server rules:
-	// you can only report someone you RECENTLY PLAYED (a recorded match within 30 days — Tris's
-	// anti-troll rule, all reasons), 1 report per target per day. ≥3 distinct reporters in a rolling
-	// 30 days raises the profile caution flag.
+	// a recorded match reporter↔target within 24 HOURS (all reasons — reports are time-sensitive,
+	// Tris 2026-08-26), 1 report per target per day. ≥3 distinct reporters in a rolling 30 days
+	// raises the profile caution flag.
 	let {
 		target,
 		name = 'this player',
@@ -50,8 +50,9 @@
 		<div class="rdlg" role="dialog" aria-modal="true" aria-label="Report player">
 			<button type="button" class="rx" onclick={() => (open = false)} aria-label="Close">✕</button>
 			<h3 class="rhd">⚑ Report {name}</h3>
-			<p class="rsub">Reports are reviewed and never public. You can only report players you recently
-				played; multiple independent reports raise a visible caution flag.</p>
+			<p class="rsub">Reports are reviewed and never public. <b>Reports are time-sensitive — you can only
+				report a player within 24 hours of your match</b>, so file promptly. Multiple independent
+				reports raise a visible caution flag.</p>
 			<div class="rlist">
 				{#each REPORT_REASONS as rr (rr.id)}
 					<label class="ropt" class:sel={reason === rr.id}>
