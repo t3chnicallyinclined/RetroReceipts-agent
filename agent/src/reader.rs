@@ -1243,13 +1243,18 @@ struct GsCapture {
     anchor_blk: u64,                                // the blk address it was captured at, and
     anchor_arena: u64,                              // *(exe+ARENA_PTR_OFF), the 256 MiB arena — the two
     anchor_frame: u32,                              // deltas needed to relocate it; blk+0x3CC8 at capture
+    anchor_hash: u64,                               // FNV-1a of the RAW region — identity + dedup key
+    select_in: Vec<(u32, u32, u32)>,                // (frame, seat0, seat1) from the anchor frame to the
+                                                    //   first battle frame — WITHOUT these the anchor and
+                                                    //   the match frames do not compose (see the capture)
     start_sim_frame: u32,                           // blk+0x3CC8 at match start, from the SAME counter as
                                                     //   anchor_frame — an anchor at or after it belongs to
                                                     //   an EARLIER match and must not ship with this tape
 }
 impl Default for GsCapture {
     fn default() -> Self { GsCapture { frames: std::collections::BTreeMap::new(), frame_addr: 0, synthetic: false, assist: [0; 6], local_pn: 255, set_start: None, last_update: None,
-                                       seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, start_sim_frame: 0 } }
+                                       seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, anchor_hash: 0,
+                                       select_in: Vec::new(), start_sim_frame: 0 } }
 }
 fn gs_capture() -> &'static Mutex<GsCapture> {
     static S: OnceLock<Mutex<GsCapture>> = OnceLock::new();
@@ -1261,7 +1266,7 @@ struct GsSnapshot { frames: Vec<GsRow>, frame_addr: usize, synthetic: bool, assi
                     // 0.3.24: everything a server needs to RE-SIMULATE this game in the real engine
                     seat_map: [i32; 4], rollbacks: u32, build_id: String,
                     anchor: Option<Vec<u8>>, anchor_blk: u64, anchor_arena: u64, anchor_frame: u32,
-                    start_sim_frame: u32 }
+                    anchor_hash: u64, select_in: Vec<(u32, u32, u32)>, start_sim_frame: u32 }
 // Return the buffered game IFF it was actively updating within the last few seconds (i.e. it IS the game
 // that just ended). This guards against attaching a stale/other game's buffer to a late (pending-flush) win.
 fn gamestate_snapshot() -> Option<GsSnapshot> {
@@ -1271,6 +1276,7 @@ fn gamestate_snapshot() -> Option<GsSnapshot> {
     Some(GsSnapshot { frames: c.frames.values().cloned().collect(), frame_addr: c.frame_addr, synthetic: c.synthetic, assist: c.assist, local_pn: c.local_pn, set_start: c.set_start,
                       seat_map: c.seat_map, rollbacks: c.rollbacks, build_id: c.build_id.clone(),
                       anchor: c.anchor.clone(), anchor_blk: c.anchor_blk, anchor_arena: c.anchor_arena, anchor_frame: c.anchor_frame,
+                      anchor_hash: c.anchor_hash, select_in: c.select_in.clone(),
                       start_sim_frame: c.start_sim_frame })
 }
 
@@ -1442,6 +1448,23 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
 // Cost: one ~211 KB read (~0.2 ms) per character-select visit, and it only runs while we are WAITING
 // for a match — never during a fight. `armed` makes it once per VISIT: leaving char select re-arms it,
 // so the anchor always belongs to the match about to start, never a stale earlier one.
+//
+// ⭐ WHY EVERY MATCH CARRIES ITS OWN ANCHOR, instead of one canonical base + a per-match delta
+// (Tris's call, 2026-08-26, and it is the right one):
+//   • Match init copies real configuration INTO this region — options, difficulty/damage/time, and a
+//     56-bit unlock/roster mask (FUN_140608690 → blk+0x3C40..0x3D07, blk+0x3CE8). Ranked, a custom
+//     lobby, the arcade cabinet and training do not necessarily arrive at character select with the
+//     same state, and neither do two different accounts. A shared base would substitute one
+//     session's configuration for another's and the divergence would be silent.
+//   • It costs almost nothing: 211,736 B → ~17 KB gzipped, against ~23 KB of inputs for a 5-minute
+//     match. The whole tape is still ~50 KB versus the ~188 KB descriptive tape it replaces.
+//   • Dedup is still available, for free and WITHOUT the risk: anchor_hash below is the anchor's
+//     identity, so a server can keep one copy of byte-identical anchors and reference it. That is a
+//     storage decision made after the fact on measured bytes — not a capture-time assumption that
+//     two anchors ought to be the same.
+// ⚠ The anchor carries that unlock mask and the account's option settings, so it is
+//   per-account identifiable. It is game configuration, not personal data, but it does leave the
+//   machine — worth knowing before this ships.
 unsafe fn gs_try_anchor(h: &mem::Proc, exe_base: usize, armed: &mut bool) {
     if exe_base == 0 { return; }
     let blk = match read_at(h, exe_base + MATCH_PTR_OFF, 8).filter(|b| b.len() >= 8)
@@ -1462,16 +1485,73 @@ unsafe fn gs_try_anchor(h: &mem::Proc, exe_base: usize, armed: &mut bool) {
         .map(|b| u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])).unwrap_or(0);
     let gz = gzip_bytes(&buf);
     if gz.is_empty() { return; }
-    trace(&format!("[gamestate] anchor @char-select blk=0x{blk:x} arena=0x{arena:x} frame={f0} {} B -> {} B gz",
-                   buf.len(), gz.len()));
+    let hash = fnv1a64(&buf[..BLK_SIM_LEN]);
+    trace(&format!("[gamestate] anchor @char-select blk=0x{blk:x} arena=0x{arena:x} frame={f0} \
+                    {} B -> {} B gz  hash={hash:016x}", buf.len(), gz.len()));
     {
         let mut c = gs_capture().lock().unwrap();
         c.anchor = Some(gz);
         c.anchor_blk = blk as u64;
         c.anchor_arena = arena;
         c.anchor_frame = f0;
+        c.anchor_hash = hash;
     }
     *armed = false;
+}
+
+// FNV-1a 64 over the raw anchor bytes. Two purposes, both cheap: it is the anchor's IDENTITY, so
+// a server can store one copy of a byte-identical anchor and reference it from every tape that
+// shares it (Fightcade's savestate-by-reference, except derived from the actual bytes rather than
+// assumed), and it is an integrity check that survives the gzip+base64 round trip.
+// ⚠ Deliberately NOT used to SKIP capturing. Every match ships its own anchor; see the capture
+// comment for why. Dedup is a storage decision made after the fact, never a capture decision.
+fn fnv1a64(data: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in data {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    h
+}
+
+// Take the anchor, then record character select frame by frame until the fight starts.
+//
+// Runs only while we are WAITING for a match, so the 3 ms poll costs nothing during a fight. It
+// exits the moment the mode byte leaves 1, which is also the moment the caller's match-load gate
+// takes over — so the input stream is continuous from the anchor frame into the battle frames.
+unsafe fn gs_record_select(h: &mem::Proc, exe_base: usize, armed: &mut bool) {
+    gs_try_anchor(h, exe_base, armed);
+    if exe_base == 0 { return; }
+    let blk = match read_at(h, exe_base + MATCH_PTR_OFF, 8).filter(|b| b.len() >= 8)
+        .map(|b| u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]) as usize) {
+        Some(p) if p > 0x10000 && p < 0x7fff_ffff_ffff => p,
+        _ => return,
+    };
+    if rpm_u8(h, blk + BLK_MODE_OFF + 2) != Some(1) { return; }   // not at character select
+    {
+        let mut c = gs_capture().lock().unwrap();
+        if c.anchor.is_none() { return; }                        // no anchor → nothing to compose with
+        c.select_in.clear();                                     // this visit owns the buffer
+    }
+    let mut last = u32::MAX;
+    let start = std::time::Instant::now();
+    // ⚠ bounded: someone can sit on character select indefinitely, and an unbounded buffer on a
+    // background thread is how a tray agent ends up holding hundreds of MB. Two minutes of frames
+    // is far more than any real character select and costs ~86 KB.
+    while start.elapsed().as_secs() < 120 {
+        if rpm_u8(h, blk + BLK_MODE_OFF + 2) != Some(1) { break; }   // fight started, or we left
+        let f = match rpm_u32(h, blk + BLK_FRAME_OFF) { Some(v) => v, None => break };
+        if f != last {
+            last = f;
+            if let Some(b) = read_at(h, exe_base + SEATIN_OFF, 8).filter(|b| b.len() >= 8) {
+                let mut c = gs_capture().lock().unwrap();
+                if c.select_in.len() < 8192 { c.select_in.push((f, le32(&b, 0), le32(&b, 4))); }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(3));
+    }
+    let n = gs_capture().lock().unwrap().select_in.len();
+    if n > 0 { trace(&format!("[gamestate] character select recorded: {n} frames of input")); }
 }
 
 // 0.3.24: pin the GAME BUILD a tape was recorded against. Re-simulation is deterministic for the
@@ -1505,10 +1585,17 @@ fn start_gamestate_capture() {
             let proc = match mem::Proc::open_read(pid) { Some(p) => p, None => { std::thread::sleep(std::time::Duration::from_millis(600)); continue; } };
             let h = &proc;
             let exe_base = game_exe_base(pid);   // for the local pad (kcode) recorded per frame → offline side-attribution
-            // 0.3.24: while we are WAITING for a match, watch for character select and keep one copy of the
-            // sim region — the portable anchor a server restores before replaying seat_in[]. Cheap, off the
-            // hot path, and it never runs during a fight (the fast loop below never returns here mid-game).
-            unsafe { gs_try_anchor(h, exe_base, &mut anchor_armed) };
+            // 0.3.24: while we are WAITING for a match, watch for character select — take the portable
+            // anchor, and then RECORD THE CHARACTER-SELECT INPUTS at full rate until the fight begins.
+            //
+            // ⚠⚠ THE ANCHOR AND THE MATCH FRAMES DO NOT COMPOSE WITHOUT THIS. The anchor is a
+            // character-select state (the only portable kind), but the frame buffer below only starts
+            // at match load. Restore the anchor, feed the battle inputs, and the game is still sitting
+            // at character select with no picks made — the inputs that navigated the screen and locked
+            // the teams in were never recorded. Found 2026-08-26 by walking every mode with
+            // replay-kit/verify.py watch: character select runs for ~500-1800 frames before the mode
+            // byte flips to 2, and every one of those frames carries input we were discarding.
+            unsafe { gs_record_select(h, exe_base, &mut anchor_armed) };
             // wait for a live match with BOTH teams alive (a fresh game start, not a mid-KO/loading copy).
             // Prefer the base the MAIN reader already located via pointer-follow (deterministic O(1) → the LIVE copy,
             // not a rollback savestate). anchor_array is only a fallback for the brief window before the reader
@@ -1566,8 +1653,9 @@ fn start_gamestate_capture() {
                 // shipping it would hand a server a savestate for the wrong fight.
                 c.start_sim_frame = base.checked_sub(BLK_BACK)
                     .and_then(|blk| unsafe { rpm_u32(h, blk + BLK_FRAME_OFF) }).unwrap_or(0);
-                // ⚠ c.anchor is deliberately NOT cleared here — it was captured at the character select that
-                //   PRECEDED this match and belongs to it. The next char-select visit overwrites it.
+                // ⚠ c.anchor and c.select_in are deliberately NOT cleared here — both were captured at
+                //   the character select that PRECEDED this match and belong to it. The next char-select
+                //   visit clears and refills them.
             }
             GS_IN_MATCH.store(true, SeqCst);   // pause the uploader for the duration of the fight
             trace(&format!("[gamestate] recording START base=0x{base:x} fc={} (share={})",
@@ -1711,6 +1799,15 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
     // an Option<(u8,u8)> that serializes as [p1,p2] or null (a failed read → null), so old tapes / failed reads
     // are absent-safe. The server derives/auto-confirms the winner from the +1 delta (works for KO AND timeout).
     let set_start = gs.set_start;
+    // Computed OUTSIDE the json! macro on purpose: it expands recursively per token, and the
+    // envelope is long enough that inline expressions push it past the default recursion limit.
+    let anchor_b64 = anchor.map(|g| b64_encode(g));
+    let anchor_gz_len = anchor.map(|g| g.len()).unwrap_or(0);
+    let select_raw: Vec<u8> = gs.select_in.iter()
+        .flat_map(|(f, a, b)| [f.to_le_bytes(), a.to_le_bytes(), b.to_le_bytes()])
+        .flatten().collect();
+    let select_b64 = b64_encode(&gzip_bytes(&select_raw));
+    let anchor_hash_hex = format!("{:016x}", gs.anchor_hash);
     let record = serde_json::json!({
         "id": id, "match_key": match_key, "reporter": reporter, "side": side,
         "local_pn": gs.local_pn,   // raw localPlayerNum (0/1/255=unknown) — candidate side signal for offline validation
@@ -1727,10 +1824,16 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         // only); anchor is gzip+base64 of blk[0..0x33B18) taken at CHARACTER SELECT — restore it, relocate its
         // pointers by (new_blk − anchor_blk) / (new_arena − anchor_arena), then feed seat_in[] frame by frame.
         "seat_map": gs.seat_map, "rollbacks": gs.rollbacks, "build_id": gs.build_id,
-        "anchor": anchor.map(|g| b64_encode(g)),
-        "anchor_gz_len": anchor.map(|g| g.len()).unwrap_or(0),
+        "anchor": anchor_b64, "anchor_gz_len": anchor_gz_len,
         "anchor_sim_len": BLK_SIM_LEN as u64, "anchor_enc": "gzip+base64",
         "anchor_blk": gs.anchor_blk, "anchor_arena": gs.anchor_arena, "anchor_frame": gs.anchor_frame,
+        "anchor_hash": anchor_hash_hex,
+        // The bridge between the anchor and the battle frames: (frame, seat0, seat1) for every
+        // character-select frame. A re-simulator restores the anchor, feeds these, and arrives at
+        // the first battle frame with the right teams picked — then feeds seat_in from `frames`.
+        // gzip+base64 for the same reason as the anchor: it is 12 B/frame raw and compresses hard.
+        "select_in": select_b64, "select_in_frames": gs.select_in.len(),
+        "select_in_enc": "gzip+base64 of (u32 frame, u32 seat0, u32 seat1) triples",
         "start_sim_frame": gs.start_sim_frame,
         // continuity: frame_gaps > 0 means input frames are MISSING and a re-simulation will diverge;
         // truncated means GS_CAP stopped accepting new frames and the tail of the match is absent.
