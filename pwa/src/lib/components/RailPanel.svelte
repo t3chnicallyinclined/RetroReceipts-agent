@@ -140,6 +140,7 @@
 					<div class="math"><span>You win if {nameOf(slipFor)} wins</span><b class="good">🪙 {chosen * 2 - Math.floor((chosen * 2) / 10)}</b></div>
 					<div class="math"><span>Goes to the fighters' pot (win or lose)</span><b class="gold">🪙 {Math.floor((chosen * 2) / 10)}</b></div>
 					<div class="math dim"><span>Nobody matches it before the match starts?</span><b>full refund</b></div>
+					<div class="math dim"><span>Once matched it rides to the end — settled bets are final</span><b>house rules</b></div>
 					<button type="button" class="placebtn" disabled={busy || chosen < 1} onclick={place}>{busy ? '…' : `🎟 PLACE BET — 🪙 ${chosen}`}</button>
 				</div>
 			{/if}

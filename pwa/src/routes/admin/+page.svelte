@@ -229,11 +229,42 @@
 		}
 	}
 
+	// 🎟 THE RAIL integrity report — collusion/abuse signals the server correlates (shared IPs between
+	// bettor↔taker or bettor↔fighter, throwaway accounts, bets racing the close). Signals, not verdicts.
+	interface RailFlag {
+		bid: string;
+		wid: string;
+		stake: number;
+		status: string;
+		bettor: string;
+		bettor_name?: string;
+		taker?: string;
+		taker_name?: string;
+		created_ms?: number;
+		flags: string[];
+	}
+	let railFlags = $state<RailFlag[]>([]);
+	let railScanned = $state(0);
+	async function loadRailIntegrity(): Promise<void> {
+		if (!auth.me?.admin) return;
+		try {
+			const res = await fetch(api('/rr/rail/integrity'), {
+				headers: { accept: 'application/json', ...auth.headers() }
+			});
+			if (!res.ok) return; // older server / forbidden — leave the section empty
+			const d = (await res.json()) as { flagged?: RailFlag[]; bets_scanned?: number };
+			railFlags = d.flagged ?? [];
+			railScanned = d.bets_scanned ?? 0;
+		} catch {
+			/* keep-last-good */
+		}
+	}
+
 	async function refresh(): Promise<void> {
 		if (!isAdmin || loading) return;
 		loading = true;
 		err = null;
-		await Promise.all([loadStats(), loadFleet(), loadReports(), loadPlayerReports()]);
+		await Promise.all([loadStats(), loadFleet(), loadReports(), loadPlayerReports(), loadRailIntegrity()]);
 		loading = false;
 	}
 
@@ -447,6 +478,28 @@
 		<div class="empty">No player reports — a quiet arcade.</div>
 	{/if}
 
+	<!-- 🎟 rail integrity — collusion/abuse signals from the bet audit trail (GET /rr/rail/integrity) -->
+	<div class="rail sec-hd">Rail integrity ({railFlags.length} flagged of {railScanned} bets)</div>
+	{#if railFlags.length}
+		<div class="prlist">
+			{#each railFlags as f (f.bid)}
+				<div class="pr">
+					<span class="prwho">
+						<a class="ulink" href="{base}/u/{f.bettor}">{f.bettor_name || f.bettor}</a>
+						{#if f.taker}<span class="rvs">vs</span> <a class="ulink" href="{base}/u/{f.taker}">{f.taker_name || f.taker}</a>{/if}
+						<span class="prmeta mono">🪙 {f.stake} · {f.status}</span>
+					</span>
+					<span class="prwhat">
+						{#each f.flags as fl (fl)}<span class="iflag mono">{fl}</span>{/each}
+					</span>
+					<span class="prmeta mono">bet {f.bid.slice(0, 14)}… on <a class="ulink dim" href="{base}/match">{f.wid}</a> · {timeAgo(f.created_ms) || '—'}</span>
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<div class="empty">No integrity flags — a clean rail. Shared-IP, fresh-account, and late-bet signals land here.</div>
+	{/if}
+
 	<!-- user table — scrolls inside its own container, never the page -->
 	<div class="rail sec-hd">Users ({users.length})</div>
 	{#if users.length}
@@ -527,6 +580,20 @@
 		border-radius: 999px;
 		padding: 1px 7px;
 		white-space: nowrap;
+	}
+	.iflag {
+		display: inline-block;
+		font-size: 9.5px;
+		color: var(--gold);
+		border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+		border-radius: 6px;
+		padding: 1px 6px;
+		margin: 1px 4px 1px 0;
+		white-space: nowrap;
+	}
+	.rvs {
+		font-size: 10px;
+		color: var(--faint);
 	}
 	.prwhat {
 		font-size: 12.5px;
