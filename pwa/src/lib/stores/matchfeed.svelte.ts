@@ -268,6 +268,17 @@ export class MatchFeedStore {
 		else if (type === 'match_live') this.#onLive(d); // Phase B: set-score advanced mid-match
 		else if (type === 'match_end') this.#onEnd(d);
 		else if (type === 'match_result') this.#onResult(d);
+		else if (type === 'spectate_open') this.#onSpectateOpen(d); // wager pair granted mutual consent mid-match
+	}
+
+	/** Both fighters in a wagered match opted in mid-set — reveal the Watch link on the live card.
+	 *  Payload: {players:[a,b], spectate_url} (server's gated_spectate_url choke point). */
+	#onSpectateOpen(d: MatchFrame) {
+		const players = Array.isArray(d.players) ? d.players.map(String).filter(Boolean) : [];
+		const url = typeof (d as { spectate_url?: unknown }).spectate_url === 'string' ? ((d as { spectate_url?: string }).spectate_url ?? '') : '';
+		if (players.length < 2 || !url) return;
+		const key = pairKey(players[0], players[1]);
+		this.nowPlaying = this.nowPlaying.map((r) => (r.key === key ? { ...r, join_link: url } : r));
 	}
 
 	#onStart(d: MatchFrame) {

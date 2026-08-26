@@ -61,10 +61,38 @@
 			/* keep last-good */
 		}
 	}
+
+	// 🕹 THE ARCADE — live cabinets anyone can WATCH (referee lobbies: host spectates, seats free by
+	// design, so the steam:// join drops the viewer straight into a spectator slot). Same cadence as
+	// the rail board; only spectatable cabinets render.
+	interface ArcadeCab {
+		steamid: string;
+		name?: string;
+		city?: string;
+		cc?: string;
+		ft?: number;
+		members?: number;
+		active?: number;
+		spectatable?: boolean;
+		spectate_url?: string;
+	}
+	let cabs = $state<ArcadeCab[]>([]);
+	async function loadCabs(): Promise<void> {
+		try {
+			const j = await apiGet<{ ok?: boolean; hosts?: ArcadeCab[] }>('/rr/arcade/hosts', { ttl: 15_000 });
+			cabs = (j?.hosts ?? []).filter((h) => h.spectatable && h.spectate_url);
+		} catch {
+			/* keep last-good */
+		}
+	}
 	onMount(() => {
 		void loadRail();
+		void loadCabs();
 		const iv = setInterval(() => {
-			if (!document.hidden) void loadRail();
+			if (!document.hidden) {
+				void loadRail();
+				void loadCabs();
+			}
 		}, 20_000);
 		return () => clearInterval(iv);
 	});
@@ -298,6 +326,21 @@
 				/>
 			{/each}
 		</div>
+	{/if}
+
+	<!-- 🕹 THE ARCADE — cabinets anyone can watch live (referee lobbies; seats free, viewer lands as spectator) -->
+	{#if cabs.length}
+		<div class="cabhd">THE ARCADE — WATCH A LIVE CABINET</div>
+		{#each cabs as c (c.steamid)}
+			<div class="cab">
+				<span class="cabw">
+					<b>{c.name || 'Cabinet'}</b>
+					<span class="cabm mono">{c.city ? `${c.city} · ` : ''}FT{c.ft ?? 3}{(c.members ?? 0) > 1 ? ` · ${(c.members ?? 0) - 1} inside` : ''}</span>
+					{#if c.active === 1}<span class="cablive">🔴 IN GAME</span>{/if}
+				</span>
+				<a class="cabbtn" href={c.spectate_url}>▶ WATCH</a>
+			</div>
+		{/each}
 	{/if}
 </section>
 
@@ -711,5 +754,60 @@
 		.scope {
 			padding: 6px 10px;
 		}
+	}
+	/* 🕹 THE ARCADE watch strip */
+	.cabhd {
+		font-family: ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.15em;
+		color: var(--faint);
+		margin: 12px 0 6px;
+	}
+	.cab {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 8px 11px;
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		background: var(--panel);
+		margin-bottom: 6px;
+	}
+	.cabw {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		min-width: 0;
+		font-size: 12.5px;
+	}
+	.cabw b {
+		font-weight: 800;
+		color: var(--ink);
+		white-space: nowrap;
+	}
+	.cabm {
+		font-size: 10px;
+		color: var(--faint);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.cablive {
+		font-family: ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.1em;
+		color: var(--stream, #e33);
+		white-space: nowrap;
+	}
+	.cabbtn {
+		font-size: 11.5px;
+		font-weight: 800;
+		text-decoration: none;
+		color: var(--gold-ink);
+		background: linear-gradient(180deg, #ffe084, #c98f0e);
+		border-radius: 999px;
+		padding: 6px 13px;
+		white-space: nowrap;
 	}
 </style>
