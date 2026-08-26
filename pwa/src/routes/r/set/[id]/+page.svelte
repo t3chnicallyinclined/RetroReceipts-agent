@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import SetReceipt from '$lib/components/SetReceipt.svelte';
 	import type { SetReceiptData } from '$lib/components/SetReceipt.svelte';
+	import ReportModal from '$lib/components/ReportModal.svelte';
 	import { shortSetLink } from '$lib/share';
 
 	// 🧾 /r/set/<session_id> — the RANKED counterpart to /r/<wager_id>. Public + read-only so a set is
@@ -49,6 +50,7 @@
 	});
 
 	let copied = $state(false);
+	let repOpen = $state(false);
 	async function copyLink() {
 		try {
 			// SHORT form (nobd.net/s/<tail>) — clean, identical to the address-bar link (no seat param).
@@ -73,7 +75,18 @@
 		</div>
 	{:else if data}
 		<SetReceipt r={data} me={perspective} />
-		<button type="button" class="act" onclick={copyLink}>{copied ? '✓ Link copied' : 'Copy link'}</button>
+		{@const opp = auth.steamid && (data.players ?? []).some((pl) => pl.steamid === auth.steamid)
+			? (data.players ?? []).find((pl) => pl.steamid !== auth.steamid)
+			: null}
+		<div class="actrow">
+			<button type="button" class="act" onclick={copyLink}>{copied ? '✓ Link copied' : 'Copy link'}</button>
+			{#if opp}
+				<!-- report lives ON the receipt — you report the player you just faced (the server enforces
+				     the recent-match rule anyway; this surface makes the honest path the obvious one) -->
+				<button type="button" class="act" onclick={() => (repOpen = true)}>⚑ Report {opp.name || 'opponent'}</button>
+			{/if}
+		</div>
+		{#if opp}<ReportModal target={opp.steamid} name={opp.name || 'opponent'} bind:open={repOpen} />{/if}
 	{/if}
 </div>
 
@@ -96,6 +109,13 @@
 		margin-top: 8px;
 		color: var(--gold);
 		text-decoration: none;
+	}
+	.actrow {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+		flex-wrap: wrap;
+		justify-content: center;
 	}
 	.act {
 		font: inherit;

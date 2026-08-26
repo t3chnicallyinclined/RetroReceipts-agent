@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import SetReceipt from './SetReceipt.svelte';
 	import type { SetReceiptData } from './SetReceipt.svelte';
+	import ReportModal from './ReportModal.svelte';
 	import { shortSetLink } from '$lib/share';
 
 	// The SET modal — an overlay around THE TAPE (SetReceipt). Opened with a session_id from a result OR a
@@ -22,6 +23,8 @@
 
 	// ⧉ short share link (nobd.net/s/<tail>) — clean, no seat param (recipients read their own seat)
 	let copied = $state(false);
+	// ⚑ report the player you just faced — shown only when the VIEWER is a participant of this set
+	let repOpen = $state(false);
 	async function copyShort(): Promise<void> {
 		try {
 			await navigator.clipboard.writeText(shortSetLink(sessionId));
@@ -36,6 +39,11 @@
 	let error = $state<string | null>(null);
 	let data = $state<SetReceiptData | null>(null);
 	let reqId = 0;
+	const repOpp = $derived(
+		auth.steamid && (data?.players ?? []).some((pl) => pl.steamid === auth.steamid)
+			? ((data?.players ?? []).find((pl) => pl.steamid !== auth.steamid) ?? null)
+			: null
+	);
 
 	// Fetch the set. `silent` (a live re-poll) keeps the current view on screen — no spinner, no data
 	// clear, and a transient failure keeps last-good rather than flashing an error over live content.
@@ -151,8 +159,12 @@
 			<SetReceipt r={data} me={auth.steamid ?? null} {live} />
 			<div class="row">
 				<button type="button" class="open" onclick={copyShort}>{copied ? '✓ Link copied' : '⧉ Copy link'}</button>
+				{#if repOpp}
+					<button type="button" class="open" onclick={() => (repOpen = true)}>⚑ Report</button>
+				{/if}
 				<a class="open" href="{base}/r/set/{encodeURIComponent(sessionId)}">Open receipt page →</a>
 			</div>
+			{#if repOpp}<ReportModal target={repOpp.steamid} name={repOpp.name || 'opponent'} bind:open={repOpen} />{/if}
 		{/if}
 	</div>
 </div>
