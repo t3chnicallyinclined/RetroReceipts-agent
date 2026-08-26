@@ -80,11 +80,18 @@ const H_YVEL:     usize = 0x7c;       // y velocity (f32) — replaces cl+0x648
 const H_FACING:   usize = 0x154;      // facing (u8) 0/1 — replaces cl+0x720
 const H_DRAWN:    usize = 0x170;      // DC +0x12C draw gate: non-zero = the engine rendered this
                                       //   object THIS frame (bank03 loc_8c03093c early-returns on 0)
+const H_ANIM_TMR: usize = 0x186;      // anim cell duration countdown (u8) — replay interpolation aid
+const H_SPRITE_ID: usize = 0x188;     // THE render key (u16) — shipped RAW (bit15 = xform flag, consumer masks)
+// Camera globals live in the BLOCK the fighter array hangs off: blk = *(exe+0xAC6EF0), and the array
+// base = blk + 0x3f24 (so H_0 = blk + 0x3DB8 = base − 0x16C, the same identity as OBJ_BACK — the two
+// constants cross-check each other: 0x3f24 − 0x16C = 0x3DB8).
+const BLK_BACK:    usize = 0x3f24;    // array base − BLK_BACK = blk
+const CAM_EYE_OFF: usize = 0x6914;    // blk-relative: f32 eyeX, +4 = eyeY (blk+0x6918)
+const CAM_WIN:     usize = 0x88;      // one read covers eyeX..ground
+const CAM_GROUND_REL: usize = 0x6998 - 0x6914; // ground f32 (usually 433.4000244) within that window
 // REMOVED: OFF_ACTION 0x76c and OFF_COMBO_RECV 0x902. Both are >0x5CC, i.e. the NEXT character's
 // fields (0x76c → char i+1's +0x600 region; 0x902 → char i+1's combo-dealt). There is no known
 // correct Steam analogue for either; do NOT re-add one without a live proof.
-// (H_SCREEN_X 0x124 / H_SCREEN_Y 0x128 / H_ANIM_TMR 0x186 / H_SPRITE_ID 0x188 &0x7FFF exist for the
-//  replay lane's richer capture — not read here yet; the tape schema has no columns for them.)
 
 // ── (2) battle-globals + meter (relative to the array base `ram`) ──
 // The DC BattleState struct transfers BYTE-FAITHFUL to array+0x2e5dc (MET_BARS/FILL are that base +0x5a/+0x7c;
@@ -1080,7 +1087,14 @@ fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)
 }
-const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],action[6]]";
+// REPLAY COLUMNS (0.3.22 kinematics fix + 0.3.23 schema, spec'd by the replay lane): sid = RAW sprite id
+// (u16, bit15 = scale-walker xform flag — consumers mask &0x7FFF themselves); eyeX/eyeY = camera globals;
+// atimer = anim cell countdown; ground = the block-stored ground line (usually 433.4 — shipped, not
+// hardcoded, in case a stage/camera mode ever moves it). screen coords are deliberately NOT shipped:
+// screen_x = 320 + (world_x − eyeX), screen_y = ground − world_y, exact to sub-pixel on drawn objects.
+// ⚠ consumers gating on that camera identity: use a ~8px threshold, NOT tight — real frames sit 0.0–0.7px
+// off, stale ones 215px+ (a 0.5px cut silently dropped 80% of a character's frames in testing).
+const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],drawn[6],sid[6],atimer[6],eyeX,eyeY,ground]";
 
 fn gs_now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
@@ -1184,6 +1198,8 @@ struct GsRow {
     m1: u8, m2: u8, mfill: u16, cd: [u16; 6], cr: [u16; 6],
     // additional per-slot match state
     vx: [f32; 6], vy: [f32; 6], rhp: [u16; 6], face: [u8; 6], hitstun: [u8; 6], act: [u8; 6],
+    // replay columns (0.3.23): raw sprite ids + anim countdown per slot, camera globals + ground line
+    sid: [u16; 6], atimer: [u8; 6], eye_x: f32, eye_y: f32, ground: f32,
 }
 struct GsCapture {
     frames: std::collections::BTreeMap<u32, GsRow>, // frame_counter -> row (last-write-wins, sorted)
@@ -1328,6 +1344,13 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
     // STRONG negative gate (matches read_fighters): any real fighter health > 144 means this is a
     // stale/half-written savestate COPY — drop the frame so garbage (hp=235) never enters a recording.
     if hp_arr.iter().any(|&v| v > HP_FULL) { return None; }
+    // camera globals — one read covers eyeX/eyeY/ground; (0,0,0) = camera unknown this frame (the
+    // consumer falls back / treats it as no-gate rather than failing the whole frame)
+    let cam: (f32, f32, f32) = match base.checked_sub(BLK_BACK)
+        .and_then(|blk| read_at(h, blk + CAM_EYE_OFF, CAM_WIN)) {
+        Some(c) if c.len() >= CAM_WIN => (lef32(&c, 0), lef32(&c, 4), lef32(&c, CAM_GROUND_REL)),
+        _ => (0.0, 0.0, 0.0),
+    };
     Some(GsRow {
         frame,
         p1_in: u16le(&s[0], OFF_INPUT), p2_in: u16le(&s[1], OFF_INPUT),
@@ -1352,6 +1375,9 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
         // THIS frame — which is the field a replay actually needs (point chars + a called assist,
         // benched partners excluded). Same width, same position, so the tape schema is unchanged.
         act: [o[0][H_DRAWN], o[1][H_DRAWN], o[2][H_DRAWN], o[3][H_DRAWN], o[4][H_DRAWN], o[5][H_DRAWN]],
+        sid: [u16le(&o[0], H_SPRITE_ID), u16le(&o[1], H_SPRITE_ID), u16le(&o[2], H_SPRITE_ID), u16le(&o[3], H_SPRITE_ID), u16le(&o[4], H_SPRITE_ID), u16le(&o[5], H_SPRITE_ID)],
+        atimer: [o[0][H_ANIM_TMR], o[1][H_ANIM_TMR], o[2][H_ANIM_TMR], o[3][H_ANIM_TMR], o[4][H_ANIM_TMR], o[5][H_ANIM_TMR]],
+        eye_x: cam.0, eye_y: cam.1, ground: cam.2,
     })
 }
 
@@ -1517,7 +1543,8 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
     let id = format!("{}_{}", match_key, reporter);
     let frames: Vec<serde_json::Value> = gs.frames.iter().map(|r| serde_json::json!([
         r.frame, r.p1_in, r.p2_in, r.kcode, r.hp, r.px, r.py, r.m1, r.m2, r.mfill, r.cd, r.cr,
-        r.vx, r.vy, r.rhp, r.face, r.hitstun, r.act
+        r.vx, r.vy, r.rhp, r.face, r.hitstun, r.act,
+        r.sid, r.atimer, r.eye_x, r.eye_y, r.ground
     ])).collect();
     // the complete artifact that lands on disk (server writes the gunzip-able bytes verbatim)
     let assist_p1 = [gs.assist[0], gs.assist[2], gs.assist[4]];
@@ -3600,7 +3627,8 @@ mod gs_stats_tests {
     use super::*;
     fn row(frame: u32, hp: [u16; 6], hitstun: [u8; 6], cd: [u16; 6], m1: u8, m2: u8, mfill: u16) -> GsRow {
         GsRow { frame, p1_in: 0, p2_in: 0, kcode: 0, hp, px: [0.0; 6], py: [0.0; 6], m1, m2, mfill,
-                cd, cr: [0; 6], vx: [0.0; 6], vy: [0.0; 6], rhp: [0; 6], face: [0; 6], hitstun, act: [0; 6] }
+                cd, cr: [0; 6], vx: [0.0; 6], vy: [0.0; 6], rhp: [0; 6], face: [0; 6], hitstun, act: [0; 6],
+                sid: [0; 6], atimer: [0; 6], eye_x: 0.0, eye_y: 0.0, ground: 0.0 }
     }
     #[test]
     fn attribution_sides_chip_ko() {
