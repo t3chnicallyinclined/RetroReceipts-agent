@@ -108,6 +108,38 @@
 	// player you just faced, right from the tape)
 	let reportOpen = $state(false);
 
+	// 🪙 THE MONEY-MATCH RECORD (ducking ledger) — who they challenge, who answers, who ducks. From the
+	// durable offer-outcome ledger (GET /rr/mm/ledger); hidden entirely until a player has any record.
+	// "ignored" = a DIRECTED challenge they let hit the 3-day clock — the duck itself.
+	interface MMPair {
+		opp_id: string;
+		name?: string;
+		out: { sent: number; accepted: number; declined: number; ignored: number };
+		in: { sent: number; accepted: number; declined: number; ignored: number };
+		ducks: number;
+	}
+	interface MMLedger {
+		ok?: boolean;
+		sent?: { total: number; accepted: number; declined: number; ignored: number; unclaimed: number; cancelled: number };
+		received?: { total: number; accepted: number; declined: number; ignored: number };
+		pairs?: MMPair[];
+	}
+	let mm = $state<MMLedger | null>(null);
+	$effect(() => {
+		const s = sid;
+		if (!s) return;
+		void apiGet<MMLedger>(`/rr/mm/ledger?steamid=${encodeURIComponent(s)}`, { ttl: 60_000 })
+			.then((j) => {
+				if (sid === s && j?.ok) mm = j;
+			})
+			.catch(() => {});
+	});
+	const mmHas = $derived((mm?.sent?.total ?? 0) + (mm?.received?.total ?? 0) > 0);
+	// answer rate: of the DIRECTED challenges aimed at them that resolved, how many did they take?
+	const mmAnswerable = $derived((mm?.received?.accepted ?? 0) + (mm?.received?.declined ?? 0) + (mm?.received?.ignored ?? 0));
+	const mmAnswerPct = $derived(mmAnswerable > 0 ? Math.round((100 * (mm?.received?.accepted ?? 0)) / mmAnswerable) : null);
+	const duckRows = $derived((mm?.pairs ?? []).filter((r) => r.ducks > 0).slice(0, 8));
+
 	// ── MATCH-HISTORY PAGER ── server-driven when GET /rr/history exists (offset-based so a page JUMP
 	// fetches exactly that page — Tris's design); falls back to the profile's recent window until the
 	// endpoint ships. Fetched pages cache per (sid, perPage) for the visit.
@@ -358,6 +390,35 @@
 
 	<!-- 🪙 Money-match receipt: net coins per opponent (graceful when the endpoint has no data / isn't live yet) -->
 
+	{#if mmHas}
+		<!-- 🪙 the money-match record — receipts culture for the OFFER, not just the set -->
+		<div class="rail sec-hd">Money match record</div>
+		<div class="mmrec">
+			<div class="mmline">
+				{#if mmAnswerPct != null}
+					<span class="mmpct" class:good={mmAnswerPct >= 70} class:low={mmAnswerPct < 40}>answers {mmAnswerPct}%</span>
+					<span class="mmsub">of challenges aimed at them ({mm?.received?.accepted ?? 0}/{mmAnswerable} — {mm?.received?.declined ?? 0} declined · {mm?.received?.ignored ?? 0} let the 3-day clock run out)</span>
+				{:else}
+					<span class="mmsub">no directed challenges answered or dodged yet</span>
+				{/if}
+			</div>
+			{#if (mm?.sent?.total ?? 0) > 0}
+				<div class="mmline dim2">
+					🪙 {mm?.sent?.total} calls sent — {mm?.sent?.accepted} answered · {mm?.sent?.declined} declined · {mm?.sent?.ignored} ducked · {mm?.sent?.unclaimed} found no taker
+				</div>
+			{/if}
+			{#if duckRows.length}
+				<div class="duckhd">THE DUCK LIST — challenges from {p.name || 'this player'} that went unanswered</div>
+				{#each duckRows as r (r.opp_id)}
+					<a class="duckrow" href="{base}/u/{r.opp_id}">
+						<span class="dnm">{r.name || r.opp_id}</span>
+						<span class="dst">ducked <b>{r.ducks}</b> of {r.out.sent} ({r.out.declined} declined · {r.out.ignored} ignored)</span>
+					</a>
+				{/each}
+			{/if}
+		</div>
+	{/if}
+
 	{#if teams.length}
 		<div class="rail sec-hd">Teams</div>
 		<TeamBars {teams} steamid={sid} />
@@ -419,6 +480,78 @@
 		display: block;
 		margin-top: 6px;
 	}
+	/* ── money-match record ── */
+	.mmrec {
+		margin: 0 0 12px;
+		padding: 11px 14px;
+		border: 1px solid color-mix(in srgb, var(--gold) 26%, var(--line));
+		border-radius: 12px;
+		background: linear-gradient(120deg, var(--gold-soft), transparent 72%), var(--panel);
+		display: flex;
+		flex-direction: column;
+		gap: 7px;
+	}
+	.mmline {
+		display: flex;
+		align-items: baseline;
+		gap: 9px;
+		flex-wrap: wrap;
+		font-size: 12.5px;
+	}
+	.mmline.dim2 {
+		color: var(--dim);
+		font-size: 12px;
+	}
+	.mmpct {
+		font-style: italic;
+		font-weight: 900;
+		font-size: 17px;
+		color: var(--ink);
+	}
+	.mmpct.good {
+		color: var(--good);
+	}
+	.mmpct.low {
+		color: var(--dim);
+	}
+	.mmsub {
+		color: var(--dim);
+		font-size: 11.5px;
+	}
+	.duckhd {
+		font-family: ui-monospace, monospace;
+		font-size: 9.5px;
+		letter-spacing: 0.12em;
+		color: var(--faint);
+		margin-top: 3px;
+	}
+	.duckrow {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 5px 0;
+		border-top: 1px dashed color-mix(in srgb, var(--line) 60%, transparent);
+		text-decoration: none;
+		color: inherit;
+	}
+	.duckrow .dnm {
+		font-weight: 800;
+		font-size: 13px;
+	}
+	.duckrow:hover .dnm {
+		color: var(--gold);
+	}
+	.duckrow .dst {
+		font-family: ui-monospace, monospace;
+		font-size: 11px;
+		color: var(--dim);
+		font-variant-numeric: tabular-nums;
+	}
+	.duckrow .dst b {
+		color: var(--ink);
+	}
+
 	.pager {
 		display: flex;
 		align-items: center;
