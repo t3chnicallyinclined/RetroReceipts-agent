@@ -9,9 +9,9 @@ export interface NavItem {
 	live: boolean;
 }
 
-// Primary nav = the competitive core only. Two deliberate off-nav routes (still deep-linkable, like
-// /regions & /library): SKINS lives in the account menu (a personal loadout tool), and FLEET is folded
-// into Match as "The Arcade" live cabinet map (live money-match discovery belongs on the money axis).
+// Primary nav = the competitive core + SKINS (promoted from the account menu 2026-08-25 — Tris's call:
+// the locker is a flagship feature, it earns a tab). Still off-nav (deep-linkable): /regions, /library,
+// and FLEET, which stays folded into Match as "The Arcade" cabinet map.
 export const NAV: NavItem[] = [
 	{
 		// Match — the money-match / live hub (the core of the app).
@@ -27,6 +27,14 @@ export const NAV: NavItem[] = [
 		label: 'Tournament',
 		href: '/tournament',
 		d: 'M6 3 v18 M6 4 h12 l-3 4 l3 4 H6',
+		live: false
+	},
+	{
+		// Skins — the locker/vault (dye station, community skins, team loadouts).
+		id: 'skins',
+		label: 'Skins',
+		href: '/skins',
+		d: 'M12 3 C12 3 6 10 6 14 a6 6 0 0 0 12 0 C18 10 12 3 12 3',
 		live: false
 	}
 ];

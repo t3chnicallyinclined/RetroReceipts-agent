@@ -51,8 +51,8 @@
 	let copied = $state(false);
 	async function copyLink() {
 		try {
-			// SHORT form (nobd.net/s/<tail>), seat baked in so the recipient sees the slip the SHARER sees.
-			await navigator.clipboard.writeText(shortSetLink(id, perspective));
+			// SHORT form (nobd.net/s/<tail>) — clean, identical to the address-bar link (no seat param).
+			await navigator.clipboard.writeText(shortSetLink(id));
 			copied = true;
 			setTimeout(() => (copied = false), 1600);
 		} catch {

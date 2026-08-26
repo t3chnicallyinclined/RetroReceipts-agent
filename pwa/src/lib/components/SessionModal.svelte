@@ -20,11 +20,11 @@
 
 	const LIVE_POLL_MS = 5000; // silent refresh cadence while a live set is open
 
-	// ⧉ short share link (nobd.net/s/<tail>), the viewer's seat baked in so the recipient reads THEIR slip
+	// ⧉ short share link (nobd.net/s/<tail>) — clean, no seat param (recipients read their own seat)
 	let copied = $state(false);
 	async function copyShort(): Promise<void> {
 		try {
-			await navigator.clipboard.writeText(shortSetLink(sessionId, auth.steamid));
+			await navigator.clipboard.writeText(shortSetLink(sessionId));
 			copied = true;
 			setTimeout(() => (copied = false), 1600);
 		} catch {
