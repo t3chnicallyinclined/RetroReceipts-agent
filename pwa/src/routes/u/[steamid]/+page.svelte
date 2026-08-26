@@ -419,6 +419,21 @@
 		</div>
 	{/if}
 
+	<!-- 🎟 the rail record — settled betting W-L + net (public ledger); hidden until they've ever bet -->
+	{#if (p.rail?.wins ?? 0) + (p.rail?.losses ?? 0) + (p.rail?.riding ?? 0) > 0}
+		<div class="rail sec-hd">The rail</div>
+		<div class="mmrec">
+			<div class="mmline">
+				<span class="mmpct" class:good={(p.rail?.net ?? 0) > 0} class:low={(p.rail?.net ?? 0) < 0}>
+					{p.rail?.wins ?? 0}–{p.rail?.losses ?? 0} betting
+				</span>
+				<span class="mmsub">
+					net {(p.rail?.net ?? 0) >= 0 ? '+' : ''}{p.rail?.net ?? 0} 🪙{(p.rail?.riding ?? 0) > 0 ? ` · ${p.rail?.riding} riding right now` : ''}
+				</span>
+			</div>
+		</div>
+	{/if}
+
 	{#if teams.length}
 		<div class="rail sec-hd">Teams</div>
 		<TeamBars {teams} steamid={sid} />

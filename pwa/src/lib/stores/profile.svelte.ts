@@ -99,6 +99,9 @@ export interface Profile {
 	tourney?: ModeRecord;
 	money?: ModeRecord;
 	lobby?: ModeRecord | null;
+	// 🎟 THE RAIL — public betting record: settled W-L as a bettor, net coins, coins riding on
+	// open/matched bets right now. Absent on older servers.
+	rail?: { wins?: number; losses?: number; net?: number; riding?: number };
 	// Owner view only: the server stamps `admin:true` in GET /profile when the caller's OWN SteamID is on
 	// the operator allowlist (Bearer required; false/absent for everyone else). Gates the /admin dashboard.
 	admin?: boolean;
