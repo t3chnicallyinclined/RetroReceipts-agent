@@ -14,6 +14,9 @@ export interface AgentStatus {
 	last_seen?: number;
 	latest?: string; // the latest released agent version (server: config::LATEST_AGENT_VER)
 	update_available?: boolean; // this agent's build is behind `latest` → nudge the user to update
+	/** the tray's "Skin sync" toggle at last heartbeat (agent 0.3.21+; absent on older agents/servers).
+	 *  false = the agent paints NO skins in-game (yours or opponents'); web rendering is unaffected. */
+	skins?: boolean;
 }
 
 export class AgentStore {

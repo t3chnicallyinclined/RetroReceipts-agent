@@ -69,7 +69,7 @@
 					<a class="row" href="{base}/settings" role="menuitem" onclick={close}>
 						<span class="ri">⬢</span><span class="rl">Desktop agent</span>
 						{#if presence === 'upd'}<span class="rv amber">update →</span>
-						{:else if presence === 'ok'}<span class="rv good">v{agent.status?.ver} · online</span>
+						{:else if presence === 'ok'}<span class="rv good">v{agent.status?.ver} · online{#if agent.status?.skins === false}<i class="soff"> · skins OFF</i>{:else if agent.status?.skins}<i class="son"> · skins ON</i>{/if}</span>
 						{:else}<span class="rv dim">offline</span>{/if}
 					</a>
 					<a class="row" href="{base}/skins" role="menuitem" onclick={close}>
@@ -277,6 +277,15 @@
 	}
 	.rv.good {
 		color: var(--good);
+	}
+	/* skin-sync state riding the agent row — ON in the skins accent, OFF dim (state, not an alarm) */
+	.rv .son {
+		font-style: normal;
+		color: var(--stream);
+	}
+	.rv .soff {
+		font-style: normal;
+		color: var(--dim);
 	}
 	.rv.amber {
 		color: var(--gold);

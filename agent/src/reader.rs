@@ -875,7 +875,9 @@ fn read_my_lobby_inner() -> Option<serde_json::Value> {
 }
 
 pub fn sync_heartbeat(id: String, name: String) -> Result<serde_json::Value, String> {
-    auth_post(&format!("{}/heartbeat", RR)).send_json(serde_json::json!({ "id": id, "name": name, "ver": env!("CARGO_PKG_VERSION"), "platform": if cfg!(windows) { "windows" } else { "linux" }, "client": "tray", "reader_restarts": READER_RESTARTS.load(std::sync::atomic::Ordering::SeqCst), "reader_degraded": READER_DEGRADED.load(std::sync::atomic::Ordering::SeqCst) }))
+    // `skins` = the tray's "Skin sync" toggle, so the web app can SHOW whether in-game skins are on
+    // (server stores it on the agent record; /rr/agent echoes it; unknown-field-safe on old servers).
+    auth_post(&format!("{}/heartbeat", RR)).send_json(serde_json::json!({ "id": id, "name": name, "ver": env!("CARGO_PKG_VERSION"), "platform": if cfg!(windows) { "windows" } else { "linux" }, "client": "tray", "skins": crate::painter::SKINS_ENABLED.load(std::sync::atomic::Ordering::Relaxed), "reader_restarts": READER_RESTARTS.load(std::sync::atomic::Ordering::SeqCst), "reader_degraded": READER_DEGRADED.load(std::sync::atomic::Ordering::SeqCst) }))
         .map_err(|e| e.to_string())?
         .into_json::<serde_json::Value>().map_err(|e| e.to_string())
 }

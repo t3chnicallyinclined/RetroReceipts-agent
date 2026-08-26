@@ -7,6 +7,7 @@
 	import { CHAR_NAME } from '$lib/chars';
 	import { STOCK_PALETTES } from '$lib/stockPalettes';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { agent } from '$lib/stores/agent.svelte';
 	import { vault } from '$lib/stores/vault.svelte';
 	import { teams } from '$lib/stores/teams.svelte';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
@@ -115,6 +116,14 @@
 		<button class="steam" onclick={() => auth.login()}>Sign in through Steam</button>
 	</div>
 {:else}
+	{#if agent.status?.skins === false}
+		<!-- the one place this MUST be loud: equipping skins with sync off looks like the feature is broken -->
+		<div class="syncoff" role="note">
+			<b>🎨 Skin sync is OFF in your desktop agent</b> — skins you wear here still show to everyone on the
+			site and to other players, but <b>your own game stays vanilla</b>. Turn it on from the tray icon:
+			<i>Skin sync — show custom skins in game</i>.
+		</div>
+	{/if}
 	<!-- ── the stage: your mains, dressed — the mirror of what the arena sees ── -->
 	<div class="stagebox">
 		<div class="stage">
@@ -176,6 +185,24 @@
 		font-size: 10px;
 		letter-spacing: 0.14em;
 		color: var(--dim);
+	}
+	.syncoff {
+		margin: 0 0 14px;
+		padding: 11px 14px;
+		border: 1px solid color-mix(in srgb, var(--stream) 40%, var(--line));
+		border-left: 4px solid var(--stream);
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--stream) 7%, var(--panel));
+		font-size: 12.5px;
+		line-height: 1.5;
+		color: var(--dim);
+	}
+	.syncoff b {
+		color: var(--ink);
+	}
+	.syncoff i {
+		color: var(--stream);
+		font-style: normal;
 	}
 	.signin {
 		border: 1px dashed var(--line);
