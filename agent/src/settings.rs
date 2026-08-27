@@ -183,6 +183,55 @@ fn read_auth() -> (String, String) {
     (get("steamid"), get("token"))
 }
 
+/// The Marvel Ladder — ported VERBATIM from pwa/src/lib/ranks.ts (which mirrors elo.rs rank_tier).
+/// DESIGN-SYSTEM "Badges" rule: derive the tier from rating+games client-side; never trust a
+/// server-supplied rank string. games < 5 = placement gate ("Civilian").
+const RANK_TIERS: &[(&str, i64)] = &[
+    // (name, hi) — first tier whose hi exceeds the rating wins; Galactus is the open top.
+    ("Iron", 920), ("Bronze", 980), ("Silver", 1050), ("Gold", 1120), ("Vibranium", 1200),
+    ("Adamantium", 1300), ("Herald", 1400), ("Infinity", 1500), ("Galactus", i64::MAX),
+];
+const RANK_MIN_GAMES: i64 = 5;
+
+/// RK_PLATE (light, dark) — the webapp's badge plate palette, byte-for-byte.
+fn plate(tier: &str) -> (Color32, Color32) {
+    let (l, d) = match tier {
+        "Iron" => (0xa7adb8, 0x63697a),
+        "Bronze" => (0xd59a5f, 0x8a5527),
+        "Silver" => (0xcdd7e4, 0x93a1b6),
+        "Gold" => (0xf2c74a, 0xc98f0e),
+        "Vibranium" => (0xb98cff, 0x6428cf),
+        "Adamantium" => (0x9fd4ef, 0x48789e),
+        "Herald" => (0xffb35c, 0x2c2456),
+        "Infinity" => (0xffe9b0, 0x241b33),
+        "Galactus" => (0xff7ae0, 0x7a5cff),
+        _ => (0x6b7488, 0x2a3140), // Civilian
+    };
+    let c = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
+    (c(l), c(d))
+}
+
+fn rank_of(rating: i64, games: i64) -> &'static str {
+    if games < RANK_MIN_GAMES {
+        return "Civilian";
+    }
+    RANK_TIERS.iter().find(|(_, hi)| rating < *hi).map(|(n, _)| *n).unwrap_or("Galactus")
+}
+
+/// The rank BADGE: a plate-styled chip — dark plate fill, light plate stroke + text, condensed
+/// display type. The egui rendition of the webapp's RK_PLATE badges.
+fn rank_badge(ui: &mut egui::Ui, tier: &str) {
+    let (light, dark) = plate(tier);
+    egui::Frame::none()
+        .fill(dark)
+        .stroke(egui::Stroke::new(1.5, light))
+        .rounding(Rounding::same(8.0))
+        .inner_margin(egui::Margin::symmetric(11.0, 3.0))
+        .show(ui, |ui| {
+            ui.label(RichText::new(tier.to_uppercase()).color(light).font(display(19.0)));
+        });
+}
+
 /// stat helpers over the loose profile Value — crude on purpose, like the ask.
 fn vi(v: &serde_json::Value, path: &[&str]) -> i64 {
     let mut cur = v;
@@ -268,9 +317,11 @@ impl eframe::App for Door {
                             Some(pv) => {
                                 let (w, l) = (vi(pv, &["wins"]), vi(pv, &["losses"]));
                                 let pct = if w + l > 0 { (100 * w) / (w + l) } else { 0 };
+                                let rating = vi(pv, &["rating"]);
+                                let tier = rank_of(rating, w + l);
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new(vs(pv, "rank").to_uppercase()).color(GOLD).font(display(24.0)));
-                                    ui.label(RichText::new(format!("{}", vi(pv, &["rating"]))).color(INK).font(display(24.0)));
+                                    rank_badge(ui, tier);
+                                    ui.label(RichText::new(format!("{}", rating)).color(INK).font(display(26.0)));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         ui.label(RichText::new(format!("peak {}", vi(pv, &["peak_rating"]))).color(FAINT).font(FontId::new(10.5, FontFamily::Monospace)));
                                     });
