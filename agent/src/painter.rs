@@ -425,7 +425,10 @@ struct PainterState {
 /// "Apply my skins" (tray, PERSISTED to runtime_dir()/prefs.json, default ON). While false the painter writes
 /// NOTHING (painter_tick returns before any RPM). main.rs restores the persisted value into this flag BEFORE
 /// start_painter(); the tray flips it (and re-persists) live. Detection/reporting are unaffected.
-pub(crate) static SKINS_ENABLED: AtomicBool = AtomicBool::new(true);
+// ⚠ OPT-IN since 2026-08-27 (Tris): skin painting writes game memory and has crashed the game for
+// some users — it must never be on for someone who didn't choose it. `false` here is only the
+// pre-prefs-load placeholder; the real default lives in prefs::load_apply_skins (also false).
+pub(crate) static SKINS_ENABLED: AtomicBool = AtomicBool::new(false);
 
 // ── Phase 3: WEB-DRIVEN LOADOUT (server is the picker) ─────────────────────────────────────────────────
 // A background thread polls GET /rr/loadout (our own, auth-bound) and mirrors it into this in-memory

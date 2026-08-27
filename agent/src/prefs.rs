@@ -1,7 +1,8 @@
 // Persisted user preferences — a tiny JSON object in `runtime_dir()/prefs.json`.
 //
 // Keys:
-//   • `apply_skins` (bool, default true) — the "Apply my skins" toggle (gates painter::SKINS_ENABLED).
+//   • `apply_skins` (bool, default FALSE — OPT-IN, Tris 2026-08-27: painting writes game memory and
+//     has crashed the game for some users) — the "Apply my skins" toggle (gates painter::SKINS_ENABLED).
 //   • `autostart_choice` (bool, ABSENT until the user picks) — the "Start with Windows" preference. While
 //     ABSENT the default is ON: every launch re-asserts the Run key (also self-heals a stale path after a
 //     move/reinstall). Once the user toggles it in the tray we record their choice here and honor it forever —
@@ -31,9 +32,11 @@ fn save_obj(m: &serde_json::Map<String, serde_json::Value>) {
     let _ = std::fs::write(prefs_path(), serde_json::Value::Object(m.clone()).to_string());
 }
 
-/// The "Apply my skins" preference. Defaults to `true` (paint) when missing/blank/malformed.
+/// The "Apply my skins" preference. Defaults to `false` (OPT-IN) when missing/blank/malformed —
+/// a user who never chose skins must never have their game memory written. An explicit stored
+/// `true` (they opted in, on any version) is honored unchanged.
 pub fn load_apply_skins() -> bool {
-    load_obj().get("apply_skins").and_then(|x| x.as_bool()).unwrap_or(true)
+    load_obj().get("apply_skins").and_then(|x| x.as_bool()).unwrap_or(false)
 }
 
 /// Persist "Apply my skins" (preserves the other keys).

@@ -91,9 +91,14 @@ class Mem:
 
 
 # ── assignment (from the heartbeat reply hostd dumps) ───────────────────────────────────────────
-# FRESHNESS GATE (defense-in-depth with the unit's Requires/PartOf coupling): hostd dumps the reply
+# FRESHNESS GATE (defense-in-depth with the unit's one-way PartOf coupling): hostd dumps the reply
 # every ~8-10s, so a file older than 60s means the daemon is dead or wedged — its frozen last
 # assignment must NOT keep the referee counting a stale wager against whatever match is on screen.
+# ⚠ LOAD-BEARING SHAPE (Bazzite-expert review 2026-08-27): the stale case returns None INSIDE the
+# loop — the referee IDLES INERT, it never exits. Since the unit coupling is deliberately one-way
+# (no Requires=), "referee running alone against a daemon that never came up" is a REACHABLE state,
+# and this gate is what makes it safe. Do NOT "tidy" this into an exit: under Restart=always an
+# exit-on-stale becomes a 5-second flap loop.
 ASSIGNED_MAX_AGE_S = 60
 
 
