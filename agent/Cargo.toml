@@ -50,6 +50,7 @@ flate2 = "1"
 # minisign .sig files from `cargo tauri signer sign` are base64-encoded (Tauri convention); the self-updater
 # base64-decodes them back to raw minisign text before verifying. See updater::verify_signature.
 base64 = "0.22"
+eframe = "0.29"
 
 # Windows-only: process-memory + toolhelp APIs used by mem.rs (ported verbatim from src-tauri). Same version
 # + feature set as the shipped app so the proven RE compiles byte-for-byte. Autostart uses winreg (below),

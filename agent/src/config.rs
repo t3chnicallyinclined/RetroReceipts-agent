@@ -15,6 +15,16 @@ pub const UPDATE_MANIFEST: &str = "https://nobd.net/rr/update/agent-latest.json"
 #[cfg(not(windows))]
 pub const UPDATE_MANIFEST: &str = "https://nobd.net/rr/update/agent-latest-linux.json";
 
+/// 🎛 Channel-aware manifest (Coin Door / split-plan R0): "beta" swaps agent-latest → agent-beta.
+/// An absent beta manifest 404s and the updater treats it as no-update — fail-safe to stable-silence.
+pub fn update_manifest() -> String {
+    if crate::prefs::load_channel() == "beta" {
+        UPDATE_MANIFEST.replace("agent-latest", "agent-beta")
+    } else {
+        UPDATE_MANIFEST.to_string()
+    }
+}
+
 /// The web app the tray "Open Retro Receipts" item launches in the default browser (the replacement for the
 /// old in-app webview).
 pub const WEB_APP: &str = "https://nobd.net/app";
