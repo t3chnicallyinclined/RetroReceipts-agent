@@ -228,6 +228,10 @@ fn main() {
     // The saved pref (load_host_mode) is a breadcrumb of intent, surfaced in the startup log; the service wins.
     let host_st = host::host_status();
     host::HOST_MODE.store(host_st.active, std::sync::atomic::Ordering::Relaxed);
+    // A bundle fix in a new agent version only ever reached FRESH installs, because materializing
+    // happened solely inside the tray's enable path. Refresh the files on a node that is already
+    // hosting, so an upgrade actually delivers them. Files only — nothing is registered or started.
+    host::refresh_bundle_if_hosting(host_st.active);
     if host_st.supported {
         eprintln!(
             "[host] startup: active={} installed={} (saved intent={}) — {}",

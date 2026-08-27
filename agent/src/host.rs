@@ -159,12 +159,60 @@ fn ensure_materialized() -> Result<(), String> {
             .map_err(|e| format!("write version.dll: {e}"))?;
     }
 
-    // make systemd see the (possibly new) unit, then stamp the marker last
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "daemon-reload"])
-        .status();
+    // Make systemd see the (possibly new) unit, then stamp the marker last.
+    // ⚠ `systemctl --user` needs XDG_RUNTIME_DIR to find the user bus, and this inherits the
+    // agent's environment. Verified on the box: with it unset the reload fails
+    // ("Failed to connect to user scope bus"), and the result is discarded, so it fails SILENTLY.
+    // arcade_hostd.sh:162 already defends with exactly this default; mirror it here rather than
+    // depend on however the agent happened to be launched.
+    let mut reload = std::process::Command::new("systemctl");
+    reload.args(["--user", "daemon-reload"]);
+    if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
+        if let Ok(uid) = std::process::Command::new("id").arg("-u").output() {
+            let uid = String::from_utf8_lossy(&uid.stdout).trim().to_string();
+            if !uid.is_empty() { reload.env("XDG_RUNTIME_DIR", format!("/run/user/{uid}")); }
+        }
+    }
+    let _ = reload.status();
     std::fs::write(&marker, bundled::BUNDLE_VERSION).map_err(|e| format!("write marker: {e}"))?;
     Ok(())
+}
+
+/// Re-lay the bundled host-node runtime on a node where hosting is ALREADY enabled. Files only.
+///
+/// ⚠⚠ `ensure_materialized()` had exactly ONE call site — `host_enable()`, i.e. the tray toggle. An
+/// agent upgrade therefore never re-materialized anything, so a bundle fix shipped in a new version
+/// reached only FRESH installs. On a box where hosting was already on, `host_enable()` never fires
+/// again, and the only way to apply the fix was toggling hosting OFF — which runs
+/// `arcade_hostd.sh unregister`, dropping the node from the server's host pool and stopping both
+/// units, a visible hosting outage — and back ON.
+///
+/// That made the referee-unit fix in this same release INERT on exactly the machines that needed
+/// it, the live cabinet included. This closes that hole: at startup, when the daemon itself reports
+/// hosting active, refresh the files in place. The `BUNDLE_VERSION` marker makes it a no-op once
+/// the bundle already matches, so it costs one file read per launch.
+///
+/// ⚠ FILES ONLY, deliberately. It does not register, enable, or start anything — starting a service
+/// on someone's machine is not a decision a startup path should make quietly. A newly materialized
+/// `arcade-refereed.service` therefore sits installed-but-not-enabled until the next
+/// `arcade_hostd.sh register` (tray toggle, or the daemon's own re-register) runs
+/// `systemctl --user enable --now arcade-refereed`. The log line below says so explicitly rather
+/// than leaving someone to wonder why the referee is present and idle.
+/// ⚠ Also note (verified live): `daemon-reload` + `enable --now` does NOT restart an already-running
+/// unit, so a CHANGED unit definition needs an explicit restart to take effect. First install is
+/// unaffected — there is nothing running to restart.
+pub fn refresh_bundle_if_hosting(active: bool) {
+    #[cfg(target_os = "linux")]
+    {
+        if !active { return; }
+        match ensure_materialized() {
+            Ok(()) => eprintln!("[host] bundle refreshed for the active host node \
+                                 (units are installed; `register` enables a newly added one)"),
+            Err(e) => eprintln!("[host] bundle refresh skipped: {e}"),
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = active;
 }
 
 /// Like `run_hostd` but FAILS (`Err`) on a non-zero exit, returning the combined output. Used for the
