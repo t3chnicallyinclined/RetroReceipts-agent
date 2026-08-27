@@ -155,9 +155,35 @@ ensure_injector(){
   STEAM="$steam" GAMEDIR="$GD" SRC_DLL="$dll" bash "$sp" install
 }
 
+# Install/refresh any BUNDLED --user units without touching registration state (no unregister, no
+# disable). Needed because `enable --now` does NOT apply a CHANGED unit definition to a running
+# service (same PID, old ExecStart, NeedDaemonReload=no — verified live 2026-08-27): on a content
+# change we daemon-reload AND restart the unit. Called at loop start, and safe to call any time.
+ensure_units(){
+  local dir; dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local udir="$HOME/.config/systemd/user" u
+  mkdir -p "$udir"
+  for u in arcade-refereed.service; do
+    [ -f "$dir/$u" ] || continue
+    if ! cmp -s "$dir/$u" "$udir/$u" 2>/dev/null; then
+      cp "$dir/$u" "$udir/$u"
+      systemctl --user daemon-reload
+      systemctl --user enable "$u" >/dev/null 2>&1 || true
+      systemctl --user restart "$u" 2>/dev/null || true
+      echo "[hostd] unit $u installed/refreshed (+restart — a changed definition needs it)"
+    elif ! systemctl --user is-active --quiet "$u" 2>/dev/null; then
+      systemctl --user enable --now "$u" >/dev/null 2>&1 || true
+      echo "[hostd] unit $u enabled (was installed but idle)"
+    fi
+  done
+}
+
 case "${1:-tick}" in
   once|tick) tick;;
-  loop) echo "[hostd] loop every ${INTERVAL:-8}s -> $HOST"; while true; do tick; sleep "${INTERVAL:-8}"; done;;
+  loop) echo "[hostd] loop every ${INTERVAL:-8}s -> $HOST"; ensure_units; while true; do tick; sleep "${INTERVAL:-8}"; done;;
+  # non-destructive unit refresh for already-hosting nodes (the agent's startup refresh calls this):
+  # picks up newly bundled / changed units with NO unregister and NO disable.
+  ensure-units) ensure_units;;
   # opt IN to hosting: enable + start the supervised loop (it registers via its first heartbeat).
   register)   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
               if ! ensure_injector; then

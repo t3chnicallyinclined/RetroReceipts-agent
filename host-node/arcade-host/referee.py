@@ -91,8 +91,16 @@ class Mem:
 
 
 # ── assignment (from the heartbeat reply hostd dumps) ───────────────────────────────────────────
+# FRESHNESS GATE (defense-in-depth with the unit's Requires/PartOf coupling): hostd dumps the reply
+# every ~8-10s, so a file older than 60s means the daemon is dead or wedged — its frozen last
+# assignment must NOT keep the referee counting a stale wager against whatever match is on screen.
+ASSIGNED_MAX_AGE_S = 60
+
+
 def read_assignment():
     try:
+        if time.time() - os.path.getmtime(ASSIGNED_PATH) > ASSIGNED_MAX_AGE_S:
+            return None
         d = json.load(open(ASSIGNED_PATH))
         a = d.get("assigned") or {}
         if a.get("kind") == "wager" and a.get("p1") and a.get("p2"):
