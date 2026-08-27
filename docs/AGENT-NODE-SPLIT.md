@@ -167,6 +167,12 @@ Steam/the game. Unit keeps `After=/PartOf=graphical-session.target`; **never** `
   True today (verified); any future "re-assign a dead cabinet mid-set" feature breaks it silently.
 - **Arming is data, never code.** No bundle/materializer/refresh path may ever create or touch
   `referee.env`. Absent = observe = safe.
+- **Refresh follows the operator; it never leads.** (2026-08-27, learned twice in one day.) No
+  refresh/reconcile/deploy path may ever START a unit the operator stopped — a changed definition on
+  an active unit restarts it; on a stopped unit the file lands and the unit stays down. In rr-noded's
+  Rust reconciler this is a STATED, CHECKED invariant, not an emergent property of conditions that
+  happen to line up. Unit coupling is ONE-WAY only (PartOf, never Requires — empirically verified:
+  Requires made touching the referee resurrect hosting).
 - **The server guards stay after the split lands** (result guard, offer/accept refusal, pick_host
   exclusion): S defends the new fleet, V defends against old binaries and leaked tokens. Never trade
   one for the other.
