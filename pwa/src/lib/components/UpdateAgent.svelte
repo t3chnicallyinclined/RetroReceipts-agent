@@ -26,14 +26,41 @@
 		}
 	}
 
-	const show = $derived(agent.reporting && agent.status?.update_available === true);
 	const ver = $derived(agent.status?.ver ?? '');
 	const latest = $derived(agent.status?.latest ?? '');
+	// LEGACY = the retired MetaSync Tauri generation. Gate on the LAST-KNOWN agent version (not on
+	// live reporting) — closing the old app must not dodge the wall; installing the new agent clears
+	// it the moment the new build reports.
 	const legacy = $derived(ver.startsWith('0.1.') || ver.startsWith('0.2.'));
+	const show = $derived(!legacy && agent.reporting && agent.status?.update_available === true);
 	$effect(() => {
-		if (show) void resolveWinUrl();
+		if (show || legacy) void resolveWinUrl();
 	});
 </script>
+
+<!-- ⛔ THE WALL (Tris 2026-08-27): a signed-in user whose last agent is the retired MetaSync
+     generation sees NOTHING but this — full-viewport takeover, no dismiss, one path forward.
+     It clears itself the moment a modern agent reports for this account. -->
+{#if legacy}
+	<div class="wall" role="alertdialog" aria-modal="true" aria-label="Update required">
+		<div class="wallbox">
+			<div class="wk">RETRO RECEIPTS · REQUIRED UPDATE</div>
+			<h1>MetaSync is retired.</h1>
+			<p class="wp">
+				Your desktop app (v{ver}) is a generation behind and no longer works right with the arcade —
+				money matches, receipts, ranked tracking and skins have moved on. To keep playing, install
+				the new <b>RETRO RECEIPTS agent</b>{latest ? ` (v${latest})` : ''}.
+			</p>
+			<a class="wbtn" href={winUrl}>⬇ DOWNLOAD THE NEW AGENT</a>
+			<ol class="wsteps">
+				<li>Run the download — no installer wizard, it's the app itself. Your sign-in and history carry over.</li>
+				<li>Uninstall “MetaSync” from Windows Settings → Apps (the old app stops getting updates today).</li>
+				<li>This screen disappears on its own once the new agent checks in.</li>
+			</ol>
+			<p class="wfoot">Signed in as {agent.status ? 'this account' : ''} — wrong account? Sign out from the top bar.</p>
+		</div>
+	</div>
+{/if}
 
 {#if show}
 	<div class="upd" class:urgent={legacy}>
@@ -54,6 +81,73 @@
 {/if}
 
 <style>
+	.wall {
+		position: fixed;
+		inset: 0;
+		z-index: 9999;
+		background: radial-gradient(120% 90% at 50% -10%, color-mix(in srgb, var(--gold) 8%, transparent), transparent 55%), var(--bg);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 24px;
+		overflow-y: auto;
+	}
+	.wallbox {
+		max-width: 480px;
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: var(--r, 14px);
+		padding: 26px 28px;
+	}
+	.wk {
+		font-family: ui-monospace, monospace;
+		font-size: 10px;
+		letter-spacing: 0.2em;
+		color: var(--gold);
+	}
+	.wallbox h1 {
+		font-size: 26px;
+		font-weight: 900;
+		font-style: italic;
+		margin: 8px 0 10px;
+	}
+	.wp {
+		color: var(--dim);
+		font-size: 13.5px;
+		line-height: 1.55;
+		margin: 0 0 16px;
+	}
+	.wp b {
+		color: var(--ink);
+	}
+	.wbtn {
+		display: block;
+		text-align: center;
+		text-decoration: none;
+		font-weight: 900;
+		font-style: italic;
+		font-size: 14px;
+		color: var(--gold-ink);
+		background: linear-gradient(180deg, #ffe084, #c98f0e);
+		border-radius: 10px;
+		padding: 12px 0;
+		margin-bottom: 16px;
+	}
+	.wsteps {
+		margin: 0;
+		padding-left: 20px;
+		color: var(--dim);
+		font-size: 12px;
+		line-height: 1.6;
+	}
+	.wsteps li {
+		margin: 4px 0;
+	}
+	.wfoot {
+		margin: 14px 0 0;
+		font-size: 10.5px;
+		color: var(--faint);
+	}
 	.upd {
 		display: flex;
 		align-items: center;
