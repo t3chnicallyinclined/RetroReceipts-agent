@@ -131,6 +131,18 @@ fn ensure_materialized() -> Result<bool, String> {
     }
 
     // arcade-host scripts
+    //
+    // ⚠⚠ NEVER ADD `referee.env` TO THIS LIST, AND NEVER CLEAN THIS DIRECTORY.
+    // The referee's arming (REFEREE_SEAT_P1 / REFEREE_REPORT) lives in
+    // `host_dir()/referee.env`, pulled in by `EnvironmentFile=-` on arcade-refereed.service. It is
+    // OPERATOR-OWNED: no bundle, materializer or ensure-units path may create, overwrite or delete
+    // it. Absent means observe-only, which is the safe default.
+    // Why this is load-bearing: arming used to be edited into the unit file, and every
+    // rematerialize silently reverted it — an armed cabinet taking an agent update would drop back
+    // to observe and then count every refereed set correctly while settling NOTHING. Money would
+    // sit until the timeout refunded it, conservation would stay clean and no audit would fire, so
+    // the failure is invisible. That is the same hazard class as clobbering a hand-installed unit,
+    // and it is why this function writes a FIXED list of files and deletes nothing.
     std::fs::create_dir_all(&hd).map_err(|e| format!("mkdir {}: {e}", hd.display()))?;
     write_exec(&hd.join("arcade_host.sh"), bundled::ARCADE_HOST_SH)?;
     write_exec(&hd.join("arcade_hostd.sh"), bundled::ARCADE_HOSTD_SH)?;
