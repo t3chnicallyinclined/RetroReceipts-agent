@@ -168,19 +168,30 @@ ensure_units(){
     if ! cmp -s "$dir/$u" "$udir/$u" 2>/dev/null; then
       cp "$dir/$u" "$udir/$u"
       systemctl --user daemon-reload
-      systemctl --user enable "$u" >/dev/null 2>&1 || true
-      systemctl --user restart "$u" 2>/dev/null || true
-      echo "[hostd] unit $u installed/refreshed (+restart — a changed definition needs it)"
+      # ⚠ PRESERVE OPERATOR STATE (2026-08-27 lesson): `restart` on a STOPPED unit STARTS it — a
+      # refresh must never resurrect what an operator turned off (a deploy did exactly that, pulling
+      # hosting back up 57s after the owner disabled it, via the referee's Requires= coupling).
+      # Active → restart (a changed definition needs it). Inactive → file lands, unit STAYS DOWN.
+      if systemctl --user is-active --quiet "$u" 2>/dev/null; then
+        systemctl --user restart "$u" 2>/dev/null || true
+        echo "[hostd] unit $u refreshed (+restart — was active, changed definition needs it)"
+      else
+        echo "[hostd] unit $u refreshed on disk (left STOPPED — operator state preserved)"
+      fi
     elif ! systemctl --user is-active --quiet "$u" 2>/dev/null; then
-      systemctl --user enable --now "$u" >/dev/null 2>&1 || true
-      echo "[hostd] unit $u enabled (was installed but idle)"
+      # unchanged + idle: enable only when WE are the running loop (hosting is on) — the loop-start
+      # caller implies hosting; the CLI ensure-units case must not flip an operator's off switch.
+      if [ "${ENSURE_UNITS_START:-0}" = 1 ]; then
+        systemctl --user enable --now "$u" >/dev/null 2>&1 || true
+        echo "[hostd] unit $u enabled (hosting loop is up, unit was idle)"
+      fi
     fi
   done
 }
 
 case "${1:-tick}" in
   once|tick) tick;;
-  loop) echo "[hostd] loop every ${INTERVAL:-8}s -> $HOST"; ensure_units; while true; do tick; sleep "${INTERVAL:-8}"; done;;
+  loop) echo "[hostd] loop every ${INTERVAL:-8}s -> $HOST"; ENSURE_UNITS_START=1 ensure_units; while true; do tick; sleep "${INTERVAL:-8}"; done;;
   # non-destructive unit refresh for already-hosting nodes (the agent's startup refresh calls this):
   # picks up newly bundled / changed units with NO unregister and NO disable.
   ensure-units) ensure_units;;
