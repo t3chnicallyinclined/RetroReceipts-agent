@@ -31,14 +31,21 @@ RetroReceipts-agent/
   noded/                bin rr-noded: main.rs                          (node role, headless)
 ```
 
-- `reader.rs` moves **byte-identical**: its whole crate-surface is six paths
-  (`config/host/mem/painter/runtime_dir/updater`) re-exported by the `rr-game` shim. The replay
-  lane's tape/capture regions are untouched.
+- `reader.rs` moves **byte-identical** — FROM THE MERGED FILE, never from main's stale copy: its
+  whole crate-surface is six paths (`config/host/mem/painter/runtime_dir/updater`) re-exported by
+  the `rr-game` shim. ⚠ SEQUENCING (replay lane, 2026-08-27): the 0.3.24 branch carries reader.rs
+  399 lines ahead of main — moving main's copy first would force their in-flight commits to merge
+  across a rename over a 399-line diff. **Phase 1's move gates on the 0.3.24 branch LANDING ON MAIN
+  (merged), not merely on the release shipping.** The replay lane's tape/capture regions stay
+  untouched either way.
 - `painter.rs` stays beside `reader.rs` (imports eight `pub(crate)` reader items — measured).
 - `updater.rs` lives in `rr-game`, NOT rr-core (it calls `reader::agent_status()` — cycle otherwise).
-- **Phase 1 changes exactly ONE line of reader.rs**: gate the presence heartbeat (reader.rs:3189) on
-  `!HOST_MODE` — the only role gate missing today (result + /match/live gates exist at 2519/3623).
-  `rr-noded` sets HOST_MODE as its first statement and asserts it in the startup log.
+- **Phase 1 changes exactly ONE line of reader.rs**: gate the presence heartbeat on `!HOST_MODE` —
+  the only role gate missing (the result + /match/live gates already exist). ⚠ Locate all three
+  gates BY CONTENT, not line number — the anchors cited here (3189/2519/3623) are against main's
+  copy and have shifted on the 0.3.24 branch. `rr-noded` sets HOST_MODE as its first statement and
+  asserts it in the startup log. (Replay lane reviewed this gate: consistent with their on_game_win
+  HOST_MODE gate — a cabinet should not appear as a present player any more than it reports results.)
 - **Phase 2 (AFTER the 0.3.24 train lands)**: convert the role gates + opponent-detection call sites
   (reader.rs 2519/3189/3623/642/716) to `#[cfg(feature = "player")]` — "not compiled in" becomes
   literally true. Sequencing second avoids racing the replay lane's in-flight file.
@@ -139,9 +146,10 @@ Steam/the game. Unit keeps `After=/PartOf=graphical-session.target`; **never** `
    are invisible to Σ=0 auditing — test splits the identities); N4 registered cabinets refused at
    wager offer/accept (their results are policy-ignored → their matches were unwinnable); the
    "referee doesn't fight" result guard; pick_host fighter exclusion; walk-on TTL grace.
-2. **Tape-final 0.3.24** ships (replay lane) — includes the on_game_win HOST_MODE gate, the 3-seat
-   opponent-ID fix, and the host-node payload bundling (file list delivered; preserve the
-   referee.env no-touch contract).
+2. **Tape-final 0.3.24** ships AND its branch **lands on main** (replay lane; the merge is the
+   phase-1 gate, not the release — reader.rs must be moved from the MERGED file). Includes the
+   on_game_win HOST_MODE gate, the 3-seat opponent-ID fix, and the host-node payload bundling
+   (payload parity with main confirmed 2026-08-27; preserve the referee.env no-touch contract).
 3. **Legacy 0.2.6 fleet migration** (held gate, plan in memory rr-legacy-fleet-migration).
 4. **R0 beta channel** + staging-cabinet posture.
 5. **Split phase 1:** workspace + shim (+1 line reader.rs) · N1 credential class (same train) ·
