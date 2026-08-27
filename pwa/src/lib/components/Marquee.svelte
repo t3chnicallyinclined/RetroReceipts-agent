@@ -57,9 +57,10 @@
 
 <section class="sec">
 	<h2 class="shead">
-		<span class="ic" aria-hidden="true">🕹</span> The Arcade
+		<span class="ic" aria-hidden="true">💰</span> Money Matches
 		{#if rows.length}<span class="cnt">{rows.length}</span>{/if}
 	</h2>
+	<div class="subhd">THE ARCADE · REAL CHALLENGES FOR COINS · WINNER TAKES ALL</div>
 
 	{#if rows.length === 0}
 		<div class="empty">
@@ -84,8 +85,9 @@
 							<span class="nm" title={nm}>{nm}</span>
 						{/if}
 					</span>
-					<span class="stake" title="pot 🪙 {w.pot ?? w.stake * 2}">
-						🪙 {w.stake}<i>·</i>FT{w.ft ?? 3}<i>·</i><span class="pot">pot 🪙 {w.pot ?? w.stake * 2}</span>
+					<span class="stake">
+						<span class="putup">put <b>🪙 {w.stake}</b> in the machine <i>·</i> FT{w.ft ?? 3}</span>
+						<span class="winline" title="winner takes the whole pot">WIN &amp; TAKE <b class="coin">🪙 {w.pot ?? w.stake * 2}</b></span>
 					</span>
 					{#if mine}
 						<button type="button" class="btn ghost" disabled={acting === w.id} onclick={() => cancel(w.id)}
@@ -93,7 +95,7 @@
 						>
 					{:else}
 						<button type="button" class="btn attempt" disabled={acting === w.id} onclick={() => attempt(w.id)}
-							>⚔ {acting === w.id ? '…' : 'Attempt'}</button
+							>{acting === w.id ? '…' : `🪙 Put up ${w.stake} & play`}</button
 						>
 					{/if}
 				</div>
@@ -174,6 +176,45 @@
 	a.nm:hover {
 		color: var(--gold);
 	}
+	.subhd {
+		font-family: ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.16em;
+		color: var(--faint);
+		margin: -2px 0 8px;
+	}
+	.putup {
+		display: block;
+		font-size: 11px;
+		color: var(--dim);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.putup b {
+		color: var(--ink);
+	}
+	.winline {
+		display: block;
+		font-family: ui-monospace, monospace;
+		font-size: 10.5px;
+		letter-spacing: 0.12em;
+		font-weight: 700;
+		color: var(--gold);
+		white-space: nowrap;
+	}
+	.winline .coin {
+		font-size: 13px;
+		letter-spacing: 0;
+		animation: coinpulse 2.4s ease-in-out infinite;
+	}
+	@keyframes coinpulse {
+		0%, 100% { text-shadow: 0 0 0 transparent; opacity: 1; }
+		50% { text-shadow: 0 0 9px color-mix(in srgb, var(--gold) 55%, transparent); opacity: 0.82; }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.winline .coin { animation: none; }
+	}
 	.stake {
 		display: inline-flex;
 		align-items: center;
@@ -190,14 +231,9 @@
 		color: var(--faint);
 		font-weight: 700;
 	}
-	.stake .pot {
-		color: var(--dim);
-		font-weight: 700;
-	}
 	/* on the tightest phones drop the pot echo (the stake + FT carry the meaning) */
 	@media (max-width: 380px) {
-		.stake .pot,
-		.stake i:last-of-type {
+				.stake i:last-of-type {
 			display: none;
 		}
 	}
