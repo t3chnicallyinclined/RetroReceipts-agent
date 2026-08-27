@@ -1,0 +1,6 @@
+# binaries must never be CRLF-smudged at checkout (a fresh-clone release build would
+# embed corrupted fonts via include_bytes and break the Coin Door at startup)
+*.ttf -text
+*.dll -text
+*.png -text
+*.ico -text
