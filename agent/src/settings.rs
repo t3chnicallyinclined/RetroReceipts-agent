@@ -24,19 +24,25 @@ use std::sync::{Arc, Mutex};
 
 use crate::{config, prefs};
 
-const GOLD: Color32 = Color32::from_rgb(0xdf, 0xb2, 0x54);
-const GOLD_DEEP: Color32 = Color32::from_rgb(0xc9, 0x8f, 0x0e);
-const INK: Color32 = Color32::from_rgb(0xec, 0xe6, 0xd8);
-const DIM: Color32 = Color32::from_rgb(0x9a, 0x91, 0x80);
-const FAINT: Color32 = Color32::from_rgb(0x6d, 0x65, 0x54);
-const WARN: Color32 = Color32::from_rgb(0xd9, 0xa3, 0x7a);
-const GOOD: Color32 = Color32::from_rgb(0x6f, 0xbf, 0x8f);
-const PANEL: Color32 = Color32::from_rgb(0x12, 0x0f, 0x0c); // window ground
-const CARD: Color32 = Color32::from_rgb(0x1c, 0x18, 0x12); // section cards
-const CARD_LINE: Color32 = Color32::from_rgb(0x2e, 0x28, 0x1e);
+// ── THE ARENA token sheet — byte-for-byte from pwa/src/app.css :root (dark). The Coin Door is a
+// native citizen of the SAME design system as the webapp; if a color is not in app.css, it does not
+// belong here (the one exception: RK_PLATE, which IS the system's badge palette).
+const BG: Color32 = Color32::from_rgb(0x0a, 0x0c, 0x12); //     --bg
+const CARD: Color32 = Color32::from_rgb(0x16, 0x1a, 0x28); //   --card
+const PANEL2: Color32 = Color32::from_rgb(0x19, 0x1d, 0x2b); // --panel-2 (widget fills)
+const LINE: Color32 = Color32::from_rgb(0x27, 0x2d, 0x3e); //   --line
+const INK: Color32 = Color32::from_rgb(0xee, 0xf1, 0xf8); //    --ink
+const DIM: Color32 = Color32::from_rgb(0x8a, 0x91, 0xa8); //    --dim
+const FAINT: Color32 = Color32::from_rgb(0x5a, 0x61, 0x78); //  --faint
+const GOLD: Color32 = Color32::from_rgb(0xff, 0xb0, 0x20); //   --gold
+const GOLD_INK: Color32 = Color32::from_rgb(0x24, 0x17, 0x00); // --gold-ink
+const GOOD: Color32 = Color32::from_rgb(0x35, 0xd0, 0x7f); //   --good
+const MOLTEN: Color32 = Color32::from_rgb(0xff, 0x5c, 0x2c); // --molten (urgency: the crash warning)
 
+// ARENA's display voice is WEIGHT, not a family — heavy sizes of the text face (app.css uses the
+// system font with 800/900 weights; no condensed serif exists in the system).
 fn display(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("display".into()))
+    FontId::new(size, FontFamily::Name("semibold".into()))
 }
 fn semibold(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("semibold".into()))
@@ -48,27 +54,26 @@ fn setup(ctx: &egui::Context) {
     fonts.font_data.insert("plex".into(), egui::FontData::from_static(include_bytes!("../assets/fonts/IBMPlexSans-Regular.ttf")));
     fonts.font_data.insert("plex-sb".into(), egui::FontData::from_static(include_bytes!("../assets/fonts/IBMPlexSans-SemiBold.ttf")));
     fonts.font_data.insert("plex-mono".into(), egui::FontData::from_static(include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf")));
-    fonts.font_data.insert("barlow".into(), egui::FontData::from_static(include_bytes!("../assets/fonts/BarlowCondensed-SemiBold.ttf")));
     fonts.families.get_mut(&FontFamily::Proportional).unwrap().insert(0, "plex".into());
     fonts.families.get_mut(&FontFamily::Monospace).unwrap().insert(0, "plex-mono".into());
-    fonts.families.insert(FontFamily::Name("display".into()), vec!["barlow".into()]);
     fonts.families.insert(FontFamily::Name("semibold".into()), vec!["plex-sb".into()]);
     ctx.set_fonts(fonts);
 
     // ── visuals: dark ground, gold accent, soft rounding everywhere ──
     let mut v = egui::Visuals::dark();
-    v.panel_fill = PANEL;
+    v.panel_fill = BG;
     v.override_text_color = Some(INK);
     v.selection.bg_fill = GOLD;
-    v.selection.stroke = egui::Stroke::new(1.0, PANEL);
-    v.widgets.inactive.bg_fill = Color32::from_rgb(0x26, 0x21, 0x19);
-    v.widgets.inactive.weak_bg_fill = Color32::from_rgb(0x26, 0x21, 0x19);
-    v.widgets.hovered.bg_fill = Color32::from_rgb(0x35, 0x2e, 0x22);
-    v.widgets.hovered.weak_bg_fill = Color32::from_rgb(0x35, 0x2e, 0x22);
-    v.widgets.active.bg_fill = GOLD_DEEP;
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, CARD_LINE);
+    v.selection.stroke = egui::Stroke::new(1.0, GOLD_INK);
+    v.widgets.inactive.bg_fill = PANEL2;
+    v.widgets.inactive.weak_bg_fill = PANEL2;
+    v.widgets.hovered.bg_fill = LINE;
+    v.widgets.hovered.weak_bg_fill = LINE;
+    v.widgets.active.bg_fill = GOLD;
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, GOLD_INK);
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, LINE);
     for w in [&mut v.widgets.noninteractive, &mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
-        w.rounding = Rounding::same(8.0);
+        w.rounding = Rounding::same(10.0);
     }
     let mut style = (*ctx.style()).clone();
     style.visuals = v;
@@ -228,7 +233,7 @@ fn rank_badge(ui: &mut egui::Ui, tier: &str) {
         .rounding(Rounding::same(8.0))
         .inner_margin(egui::Margin::symmetric(11.0, 3.0))
         .show(ui, |ui| {
-            ui.label(RichText::new(tier.to_uppercase()).color(light).font(display(19.0)));
+            ui.label(RichText::new(tier.to_uppercase()).color(light).font(display(15.0)));
         });
 }
 
@@ -246,8 +251,8 @@ fn vs<'a>(v: &'a serde_json::Value, key: &str) -> &'a str {
 fn card<R>(ui: &mut egui::Ui, label: &str, body: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let frame = egui::Frame::none()
         .fill(CARD)
-        .stroke(egui::Stroke::new(1.0, CARD_LINE))
-        .rounding(Rounding::same(12.0))
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .rounding(Rounding::same(14.0)) // --r
         .inner_margin(egui::Margin::symmetric(14.0, 12.0));
     let r = frame
         .show(ui, |ui| {
@@ -270,12 +275,12 @@ fn sub(ui: &mut egui::Ui, text: &str, color: Color32) {
 impl eframe::App for Door {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(PANEL).inner_margin(egui::Margin::symmetric(16.0, 14.0)))
+            .frame(egui::Frame::none().fill(BG).inner_margin(egui::Margin::symmetric(16.0, 14.0)))
             .show(ctx, |ui| {
                 // ── header: gold kicker, condensed display title, version chip ──
-                ui.label(RichText::new("R E T R O   R E C E I P T S").color(GOLD).font(FontId::new(9.5, FontFamily::Monospace)));
+                ui.label(RichText::new("RETRO RECEIPTS · THE ARENA").color(GOLD).font(FontId::new(9.5, FontFamily::Monospace)));
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Agent Settings").color(INK).font(display(30.0)));
+                    ui.label(RichText::new("AGENT SETTINGS").color(INK).font(display(22.0)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(RichText::new(format!("v{}", config::VERSION)).color(FAINT).font(FontId::new(10.5, FontFamily::Monospace)));
                     });
@@ -321,7 +326,7 @@ impl eframe::App for Door {
                                 let tier = rank_of(rating, w + l);
                                 ui.horizontal(|ui| {
                                     rank_badge(ui, tier);
-                                    ui.label(RichText::new(format!("{}", rating)).color(INK).font(display(26.0)));
+                                    ui.label(RichText::new(format!("{}", rating)).color(INK).font(display(24.0)));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         ui.label(RichText::new(format!("peak {}", vi(pv, &["peak_rating"]))).color(FAINT).font(FontId::new(10.5, FontFamily::Monospace)));
                                     });
@@ -342,7 +347,7 @@ impl eframe::App for Door {
                 // ── gameplay ──
                 card(ui, "GAMEPLAY", |ui| {
                     changed |= ui.checkbox(&mut self.skins, RichText::new("Show custom skins in game").font(semibold(13.5))).changed();
-                    sub(ui, "Off by default. Skin painting writes live game memory and can crash the game on some setups — turn it on only if you want it. Also controls receiving other players' skins.", WARN);
+                    sub(ui, "Off by default. Skin painting writes live game memory and can crash the game on some setups — turn it on only if you want it. Also controls receiving other players' skins.", MOLTEN);
                     ui.add_space(6.0);
                     changed |= ui.checkbox(&mut self.paused, RichText::new("Pause reporting").font(semibold(13.5))).changed();
                     sub(ui, "Stops sending matches, presence and results until you unpause. Your games won't count while paused.", DIM);
@@ -420,7 +425,11 @@ impl eframe::App for Door {
                             let _ = open::that(crate::runtime_dir());
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button(RichText::new("nobd.net/app ↗").size(11.5).color(GOLD)).clicked() {
+                            // the system's gold-pill primary (solid GOLD, GOLD_INK text, full radius)
+                            let pill = egui::Button::new(RichText::new("OPEN RETRO RECEIPTS").font(semibold(11.0)).color(GOLD_INK))
+                                .fill(GOLD)
+                                .rounding(Rounding::same(999.0));
+                            if ui.add(pill).clicked() {
                                 let _ = open::that(config::WEB_APP);
                             }
                         });
