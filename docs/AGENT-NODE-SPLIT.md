@@ -178,6 +178,12 @@ Steam/the game. Unit keeps `After=/PartOf=graphical-session.target`; **never** `
   one for the other.
 - **Fee payee = bound node identity.** Conservation auditing cannot see payee bugs; only
   authorization can.
+- **Graceful-shutdown unregister belongs to rr-noded, not the unit file.** `ExecStop=unregister`
+  was considered and REJECTED (2026-08-27): server unregister removes the host row UNCONDITIONALLY —
+  on a deploy-restart mid-refereed-set it would kill the join-link resync and drop the cabinet out of
+  the `arcade_hosts` membership that the result guard + wager-offer guard key off, mid-set. The 45s
+  heartbeat-TTL window stays (bounded; reserve recovery covers it). rr-noded's Rust shutdown expresses
+  the correct conditional: unregister on graceful stop ONLY when unassigned.
 - Small debts, noted: referee.py token path drift (`.metasync_host_token` vs runbook's
   `.rr_host_token`); hostd's `-1 = leave-as-is` comment is wrong (server stores it — correctly);
   the tray zombie is `open::that_detached` at tray.rs:392 (attribution by elimination — reap on a
