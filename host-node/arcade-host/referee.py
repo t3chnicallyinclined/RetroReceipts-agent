@@ -118,6 +118,10 @@ def read_assignment():
 
 def save_state(st):
     st["ts"] = time.time()
+    # 🔍 N5: the referee's own arming state, in every write — the server surfaces it (admin) and the
+    # money_audit liveness check keys off ref_running (the file being FRESH), not this.
+    st["armed"] = bool(REPORT_ARMED and SEAT_P1 in ("challenger", "acceptor"))
+    st["seat_p1"] = SEAT_P1 if st["armed"] else ""
     tmp = STATE_PATH + ".tmp"
     with open(tmp, "w") as f:
         json.dump(st, f)
@@ -128,7 +132,7 @@ def fresh_state(wid):
     # base = the tally values at assignment time — ticks are counted RELATIVE to it, so a stale
     # pre-assignment tally can never leak games into a new set.
     return {"wid": wid, "standby": 0, "s1": 0, "s2": 0, "games": [], "done": False,
-            "seat_evidence": [], "base": None, "ggpo": None}
+            "seat_evidence": [], "base": None, "ggpo": None, "last_report": ""}
 
 
 # ── seat evidence: where do the two assigned SteamIDs sit inside the session block? ─────────────
@@ -165,14 +169,18 @@ def report(winner, loser, wg, lg):
     for attempt in range(5):
         try:
             with urllib.request.urlopen(req, timeout=8) as r:
+                code = r.getcode()
                 resp = r.read().decode()
             log("report -> %s" % resp[:200])
-            if '"ok":true' in resp.replace(" ", ""):
-                return True
+            flat = resp.replace(" ", "")
+            if '"ok":true' in flat:
+                # the server is idempotent: {"already":true} on a re-report of a settled set
+                return "already" if '"already":true' in flat else "settled"
+            return "http_%d" % code
         except Exception as e:
             log("report attempt %d failed: %s" % (attempt + 1, e))
         time.sleep(10)
-    return False
+    return "failed"
 
 
 def main():
@@ -258,7 +266,7 @@ def main():
                 seat2_sid = asg["p2"] if SEAT_P1 == "challenger" else asg["p1"]
                 winner, loser = (seat1_sid, seat2_sid) if p1_wins else (seat2_sid, seat1_sid)
                 log("SET COMPLETE %d-%d — reporting winner=%s" % (wg, lg, winner))
-                report(winner, loser, wg, lg)
+                st["last_report"] = report(winner, loser, wg, lg)
             else:
                 log("OBSERVE: set complete seatP1 %d-%d seatP2 — WOULD report (seat map unvalidated; evidence=%s)"
                     % (st["s1"], st["s2"], json.dumps(st["seat_evidence"])))

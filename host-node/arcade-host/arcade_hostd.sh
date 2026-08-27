@@ -86,16 +86,25 @@ heartbeat(){
   st=$(bash "$AH" status); id=$(jget "$st" lobby_id); owner=$(jget "$st" owner); join=$(jget "$st" join)
   if [ -z "$id" ] || [ "$id" = "0" ]; then echo "[hostd] no lobby to heartbeat"; return 1; fi
   os=$(os_info); sp=$(steam_ping)
-  # 🎟 referee feed: the match monitor's live standby flag (1 = a game is being fought on this
-  # cabinet) rides the heartbeat as `active` — it drives the server's IN GAME light and the rail's
-  # betting-close latch for refereed money matches. -1 = monitor absent/stale (server leaves as-is).
-  act=-1; rst="$(dirname "$STATE")/referee_state.json"
+  # 🎟 referee feed: `active` = standby (a game is being fought), and 🔍 N5 `ref` = the referee's
+  # HEALTH snapshot (running = state file FRESH, armed/seat_p1/wid/score/done/last_report). One python
+  # read emits both. absent/stale ref => running:false, so the server sees a dead referee.
+  act=-1; refobj='{}'; rst="$(dirname "$STATE")/referee_state.json"
   if [ -f "$rst" ]; then
-    act=$(python3 -c "import json,time;d=json.load(open('$rst'));print(d.get('standby',0) if time.time()-d.get('ts',0)<20 else -1)" 2>/dev/null || echo -1)
+    read -r act refobj < <(python3 -c '
+import json, time
+d = json.load(open("'"$rst"'"))
+fresh = time.time() - d.get("ts", 0) < 20
+act = d.get("standby", 0) if fresh else -1
+ref = {"running": True, "armed": bool(d.get("armed")), "seat_p1": d.get("seat_p1", ""),
+       "wid": d.get("wid", ""), "s1": d.get("s1", 0), "s2": d.get("s2", 0),
+       "done": bool(d.get("done")), "last_report": d.get("last_report", "")} if fresh else {"running": False}
+print(act, json.dumps(ref))
+' 2>/dev/null) || { act=-1; refobj='{}'; }
   fi
-  body=$(printf '{"steamid":"%s","name":"%s","lobby_id":"%s","owner":"%s","join":"%s","region":"%s","os":"%s","steam_ping_ms":%s,"ft":%s,"one_button":%s,"version":"%s","players":%s,"game":"%s","active":%s}' \
+  body=$(printf '{"steamid":"%s","name":"%s","lobby_id":"%s","owner":"%s","join":"%s","region":"%s","os":"%s","steam_ping_ms":%s,"ft":%s,"one_button":%s,"version":"%s","players":%s,"game":"%s","active":%s,"ref":%s}' \
          "$owner" "$NODE_NAME" "$id" "$owner" "$join" "$REGION" "$os" "${sp:--1}" \
-         "$(cur_ft)" "$(cur_ob)" "$(cur_ver)" "$ARCADE_PLAYERS" "$ARCADE_GAME" "${act:--1}")
+         "$(cur_ft)" "$(cur_ob)" "$(cur_ver)" "$ARCADE_PLAYERS" "$ARCADE_GAME" "${act:--1}" "$refobj")
   hdr=(-H 'content-type: application/json')
   [ -n "$HOST_TOKEN" ] && hdr+=(-H "authorization: Bearer $HOST_TOKEN")
   resp=$(curl -s -m 6 -X POST "$HOST/skinsync/arcade/host/heartbeat" "${hdr[@]}" -d "$body" 2>&1)
