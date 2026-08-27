@@ -112,6 +112,49 @@ fn migrate_legacy_state_dir() {
 /// See the call site in main() for the why. The opened File is deliberately leaked — the OS handle must
 /// outlive every future write to stderr.
 #[cfg(windows)]
+/// ⛔ RETIRE THE OLD APP (Tris 2026-08-27: "make the newest version clear out the old versions"): on
+/// Windows, if a legacy MetaSync install is still registered, uninstall it silently. Idempotent by
+/// construction — the uninstall registry key is present ONLY while MetaSync is installed, so this
+/// no-ops on every run after the first, and no-ops forever on a machine that never had it. HKCU-only,
+/// no elevation. Runs at startup right after the state-dir fold, so EVERY path that lands this agent
+/// (the 0.2.7 shim, THE WALL's direct download, a manual install) clears the old app on its own — the
+/// shim's own uninstall step is then just belt-and-suspenders for an instant transition.
+#[cfg(windows)]
+fn retire_legacy_app() {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let key = match hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MetaSync") {
+        Ok(k) => k,
+        Err(_) => return, // not installed → nothing to retire (the common, steady-state case)
+    };
+    let uninstall: String = match key.get_value("UninstallString") {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    if uninstall.is_empty() {
+        return;
+    }
+    eprintln!("[retire] legacy MetaSync found — uninstalling silently");
+    // stop it first (its single-instance mutex + a live uninstaller don't mix)
+    let _ = std::process::Command::new("taskkill").args(["/F", "/IM", "MetaSync.exe"]).output();
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    // Run the NSIS uninstaller IN PLACE + SILENT + SYNCHRONOUS. `_?=<dir>` is load-bearing: without
+    // it NSIS copies the uninstaller to %TEMP%, re-execs, and the original returns instantly — our
+    // wait would race a background uninstall (verified: the key survived without _?=). With _?= it
+    // runs in the install dir and blocks, leaving the uninstaller behind, so we sweep the dir after.
+    let exe = uninstall.trim_matches('"'); // UninstallString is quoted
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let dir = std::path::PathBuf::from(&local).join("MetaSync");
+        let _ = std::process::Command::new(exe)
+            .arg("/S")
+            .arg(format!("_?={}", dir.display()))
+            .output();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    eprintln!("[retire] MetaSync retired");
+}
+
 fn capture_stderr_to_file() {
     use std::os::windows::io::AsRawHandle;
     use windows::Win32::Foundation::HANDLE;
@@ -139,6 +182,11 @@ fn main() {
     // the user's auth.json / result-outbox / gs-cache across the rename. Runs after the --updated wait so a
     // relaunching old process has released the old dir first.
     migrate_legacy_state_dir();
+    // ⛔ retire the legacy MetaSync app if it's still installed (idempotent; Windows-only). AFTER the
+    // state fold so the user's auth/history is already safely under RetroReceipts before the app dir
+    // is removed.
+    #[cfg(windows)]
+    retire_legacy_app();
 
     // Windows: the tray build has NO console (windows_subsystem="windows"), so every eprintln — updater,
     // migration, panics — was silently DISCARDED, which made "why did it crash?" unanswerable. Point stderr
