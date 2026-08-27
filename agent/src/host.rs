@@ -217,10 +217,33 @@ pub fn refresh_bundle_if_hosting(active: bool) {
         if !active { return; }
         match ensure_materialized() {
             Ok(false) => {}   // marker already current — say nothing, this is every normal launch
-            Ok(true) => eprintln!(
-                "[host] host-node bundle REWRITTEN for this version. Any newly added unit \
-                 (e.g. arcade-refereed.service) is installed but NOT enabled — nothing in the daemon \
-                 loop enables it; that needs a hosting OFF/ON toggle until `ensure-units` exists."),
+            Ok(true) => {
+                eprintln!("[host] host-node bundle REWRITTEN for this version — reconciling units");
+                // `ensure-units` is the non-destructive reconcile added for exactly this moment: it
+                // content-diffs each bundled unit against the installed one and does
+                // cp + daemon-reload + RESTART — never a bare `enable --now`, which does NOT pick up
+                // a changed definition (measured live: same PID, old ExecStart still running) — and
+                // it enables anything installed-but-idle. It never unregisters and never disables,
+                // so the node keeps its place in the host pool and hosting does not blink.
+                //
+                // One commit ago I held this back, on the grounds that a startup path should not
+                // quietly start a service. That reasoning no longer holds: this fires ONLY on the
+                // single launch where an upgrade actually rewrote the bundle, only when the daemon
+                // itself reports hosting active, and the referee's lifecycle is now bound to the
+                // daemon (Requires=/PartOf=) so it can no longer outlive it. Where hosting is ON the
+                // referee is a component of that choice, not a separate one — and the alternative
+                // was installed-but-idle forever, because nothing in the daemon loop ever enables a
+                // newly bundled unit.
+                //
+                // Off-thread: systemctl is slow and this sits on the startup path.
+                std::thread::spawn(|| {
+                    let out = run_hostd("ensure-units");
+                    let out = out.trim();
+                    if !out.is_empty() {
+                        eprintln!("[host] ensure-units: {}", out.lines().last().unwrap_or(out));
+                    }
+                });
+            }
             Err(e) => eprintln!("[host] bundle refresh skipped: {e}"),
         }
     }
