@@ -29,6 +29,9 @@ EXE = "MarvelVsCapcomFightingCollection.exe"
 OFF_SESSION_PTR = 0xacd3a8
 OFF_SETSCORE_PTR = 0x2edf628
 S_STANDBY = 0x1cd
+# GGPO player->seat map (replay lane, UNVERIFIED ONLINE: reads (0,0,0,0) in every offline mode ever
+# measured; the whole point of logging it here is the first-ever capture during a REAL online match).
+OFF_GGPO_SEATMAP = 0xAC6F98  # exe+this: 4 x i32, GGPO player k -> seat index (-1 = unmapped)
 SEAT_SCAN_SPAN = 0xE0000  # bounded session-block window for the SteamID seat-evidence scan
 
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -82,6 +85,10 @@ class Mem:
         b = self.rd(a, 8)
         return struct.unpack("<Q", b)[0] if b else None
 
+    def i32x4(self, a):
+        b = self.rd(a, 16)
+        return list(struct.unpack("<4i", b)) if b else None
+
 
 # ── assignment (from the heartbeat reply hostd dumps) ───────────────────────────────────────────
 def read_assignment():
@@ -105,7 +112,10 @@ def save_state(st):
 
 
 def fresh_state(wid):
-    return {"wid": wid, "standby": 0, "s1": 0, "s2": 0, "games": [], "done": False, "seat_evidence": []}
+    # base = the tally values at assignment time — ticks are counted RELATIVE to it, so a stale
+    # pre-assignment tally can never leak games into a new set.
+    return {"wid": wid, "standby": 0, "s1": 0, "s2": 0, "games": [], "done": False,
+            "seat_evidence": [], "base": None, "ggpo": None}
 
 
 # ── seat evidence: where do the two assigned SteamIDs sit inside the session block? ─────────────
@@ -185,25 +195,44 @@ def main():
             log("read error: %s" % e)
             continue
 
-        if standby != st["standby"]:
-            if standby == 1:  # game start: snapshot the tallies; first game also runs the seat scan
-                snap = (t1, t2)
-                log("game start (tallies %d-%d)" % (t1, t2))
-                if sess and not st["seat_evidence"]:
-                    ev = seat_scan(mem, sess, asg["p1"], asg["p2"])
-                    st["seat_evidence"] = ev
-                    log("seat evidence: %s" % json.dumps(ev))
-            elif snap is not None:  # game end: exactly ONE seat's tally must have advanced
-                d1, d2 = t1 - snap[0], t2 - snap[1]
+        # ── game counting: TALLY-TICK based, not standby-edge based. The standby flag was only
+        # ever live-validated across a SINGLE-game set; if it stays high across a multi-game FT,
+        # edge-paired deltas would see one 3-1 jump at the end and (correctly) refuse it. A tally
+        # tick of exactly +1 on exactly one seat IS a game result (validated: "VICTORY = win-tally
+        # ticks at match end") whenever it happens. Standby stays as the active flag + logging.
+        if st["base"] is None and sc:
+            st["base"] = [t1, t2]
+            save_state(st)
+        if st["base"] is not None and sc:
+            b1, b2 = st["base"]
+            d1, d2 = t1 - b1, t2 - b2
+            if d1 < 0 or d2 < 0:
+                log("tally reset (%d,%d) -> (%d,%d) — new match block, re-baselined" % (b1, b2, t1, t2))
+                st["base"] = [t1, t2]
+                save_state(st)
+            elif d1 + d2 > 0:
                 if d1 == 1 and d2 == 0:
                     st["s1"] += 1
                 elif d2 == 1 and d1 == 0:
                     st["s2"] += 1
                 else:
-                    log("ANOMALY: game end with tally deltas p1=%+d p2=%+d — NOT counted" % (d1, d2))
+                    log("ANOMALY: tally jumped p1=%+d p2=%+d in one poll — NOT counted, re-baselined" % (d1, d2))
                 st["games"].append({"t": int(time.time()), "d1": d1, "d2": d2})
-                log("game end — set score seatP1 %d : %d seatP2 (FT%d)" % (st["s1"], st["s2"], asg["ft"]))
-                snap = None
+                st["base"] = [t1, t2]
+                log("game result — set score seatP1 %d : %d seatP2 (FT%d)" % (st["s1"], st["s2"], asg["ft"]))
+                save_state(st)
+
+        if standby != st["standby"]:
+            if standby == 1:  # game start: log + first game runs the seat scan + the GGPO probe
+                log("game start (tallies %d-%d)" % (t1, t2))
+                if sess and not st["seat_evidence"]:
+                    ev = seat_scan(mem, sess, asg["p1"], asg["p2"])
+                    st["seat_evidence"] = ev
+                    log("seat evidence: %s" % json.dumps(ev))
+                # 🔬 replay-lane request: first-ever ONLINE capture of the GGPO player->seat map.
+                gm = mem.i32x4(base + OFF_GGPO_SEATMAP)
+                st["ggpo"] = gm
+                log("ggpo seat map (G+0x258): %s" % gm)
             st["standby"] = standby
             save_state(st)
 
