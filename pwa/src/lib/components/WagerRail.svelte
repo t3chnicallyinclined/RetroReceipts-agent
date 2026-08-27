@@ -1,7 +1,38 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth.svelte';
 	import { wager } from '$lib/stores/wager.svelte';
+	import { apiGet } from '$lib/net.svelte';
 	import QuarterUpForm from './QuarterUpForm.svelte';
+
+	// ⚖ a HOSTING operator is the neutral referee — while their cabinet is on the floor they don't
+	// put money matches up (Tris 2026-08-27; server mirror: pick_host never lets a fighter's own
+	// cabinet referee their set). Fresh heartbeat (<60s) = actively hosting.
+	let hostingNode = $state(false);
+	async function checkHosting(): Promise<void> {
+		if (!auth.steamid) {
+			hostingNode = false;
+			return;
+		}
+		try {
+			const j = await apiGet<{ hosts?: { steamid?: string; last_seen_ms?: number }[] }>(
+				'/rr/arcade/hosts',
+				{ ttl: 30_000 }
+			);
+			hostingNode = (j?.hosts ?? []).some(
+				(h) => h.steamid === auth.steamid && Date.now() - (h.last_seen_ms ?? 0) < 60_000
+			);
+		} catch {
+			/* keep last-known */
+		}
+	}
+	$effect(() => {
+		void auth.steamid;
+		void checkHosting();
+		const iv = setInterval(() => {
+			if (!document.hidden) void checkHosting();
+		}, 60_000);
+		return () => clearInterval(iv);
+	});
 
 	// 🪙 MONEY MATCH (was "Quarter Match") — the marquee rail (WAGER-MATCH-SPEC Variant A): the single home for the viewer's
 	// wager through its whole lifecycle — offer/pending → incoming → locked (pot + running FT + 🔴 IN GAME)
@@ -180,6 +211,14 @@
 				<span class="line dim">🪙 {w.stake} returned — no result recorded.</span>
 			</div>
 		{/if}
+	{:else if hostingNode}
+		<!-- ⚖ the referee doesn't fight: hosting cabinets can't put quarters up -->
+		<div class="body">
+			<span class="line dim"
+				>🕹 Your cabinet is on the floor — hosts referee for the house, they don't put quarters up.
+				Turn hosting off in the tray to challenge.</span
+			>
+		</div>
 	{:else}
 		<!-- nothing live → the quarter-up affordance (open marquee challenge) -->
 		<div class="cta">
