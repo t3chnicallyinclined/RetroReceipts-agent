@@ -273,6 +273,16 @@ def main():
             st["done"] = True
             save_state(st)
 
+        # 🔍 N5 LIVENESS KEEPALIVE (money-expert F1): refresh referee_state.json's ts EVERY tick on
+        # the read-success path so ref_running reflects PROCESS liveness, not last STATE CHANGE.
+        # Without it a healthy referee mid-game (standby held at 1, no tally tick for the whole game
+        # > 20s) or between games (char-select > 20s) reads stale and trips money_audit check (7) /
+        # the fleet panel on a perfectly healthy cabinet. This is DELIBERATELY past find_pid() + the
+        # mem read: the `if not pid: continue` and read-error `continue` above skip it, so a dead game
+        # or a dead referee still goes stale (> 20s) and DOES alarm — the real failure is preserved.
+        # 1s keepalive << 8s heartbeat << 20s freshness gate → no flap.
+        save_state(st)
+
 
 if __name__ == "__main__":
     main()
