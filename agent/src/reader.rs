@@ -1630,7 +1630,30 @@ fn start_gamestate_capture() {
 
             // ── a game is starting → reset the buffer, locate the guest frame counter (one-time, ~1s), and
             //    snapshot the assist type per slot (chosen at char-select, fixed for the whole match) ──
-            let fc = unsafe { hunt_frame_counter(h, base) };
+            // ⚠⚠ THE FRAME COUNTER IS KNOWN — DO NOT HUNT FOR IT.
+            // hunt_frame_counter picks whatever word looks like it counts, and live on 2026-08-27 it
+            // picked blk+0x4DB0 — which is fighter slot 2's SPRITE ID (H+0x188). Keying the tape on a
+            // sprite id means a row is only stored when that character's sprite changes: two real
+            // games recorded 300 and 308 rows across 55 s and 59 s of play, i.e. ~9% of the frames.
+            // EVERY tape ever produced is undersampled that way, and a re-simulation needs every
+            // frame's input, so this is fatal to the 0.3.24 work and quietly wrong for the stats
+            // layer besides.
+            // blk+0x3CC8 IS the sim frame counter: the replay kit polls it directly and gets 59.7 fps
+            // with ZERO dropped frames across two minutes of play. Use it. The hunt stays as a
+            // fallback for the case where the block pointer is not resolvable, and the advance check
+            // makes a wrong offset fail over instead of silently undersampling again.
+            let fc = {
+                let known = base.checked_sub(BLK_BACK).map(|blk| blk + BLK_FRAME_OFF);
+                let advances = known.map_or(false, |a| unsafe {
+                    let v0 = rpm_u32(h, a);
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                    v0.is_some() && rpm_u32(h, a) != v0
+                });
+                if advances { known } else {
+                    trace("[gamestate] blk+0x3CC8 did not advance — falling back to the counter hunt");
+                    unsafe { hunt_frame_counter(h, base) }
+                }
+            };
             let mut assist = [0u8; 6];
             for i in 0..6 { assist[i] = unsafe { rpm_u8(h, base + i * STRIDE + OFF_ASSIST) }.unwrap_or(0); }
             // Tier-3: snapshot the game's own per-set WINS tally at THIS game's START (read-only, guarded → None
