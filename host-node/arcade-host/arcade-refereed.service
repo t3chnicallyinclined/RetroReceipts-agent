@@ -1,6 +1,13 @@
 [Unit]
 Description=Retro Receipts match referee (watches the assigned money match, counts the set, reports the result)
 After=arcade-hostd.service
+# The referee is a COMPONENT of hosting, not a service in its own right. Without these it outlives a
+# dead arcade-hostd (WantedBy=default.target + Restart=always), and read_assignment() has no
+# freshness gate — so a dead daemon freezes the last assigned_resp.json on disk and the referee keeps
+# counting a stale wager against whatever match happens to be on screen. That is a money path.
+# Requires = start/stop with the daemon; PartOf = a stop/restart of the daemon propagates here.
+Requires=arcade-hostd.service
+PartOf=arcade-hostd.service
 
 [Service]
 Type=simple

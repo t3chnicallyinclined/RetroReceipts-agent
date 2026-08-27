@@ -1644,11 +1644,17 @@ fn start_gamestate_capture() {
             // makes a wrong offset fail over instead of silently undersampling again.
             let fc = {
                 let known = base.checked_sub(BLK_BACK).map(|blk| blk + BLK_FRAME_OFF);
-                let advances = known.map_or(false, |a| unsafe {
+                // Retried, because the FALLBACK is known-harmful. One 40 ms sample is ~2.4 frames;
+                // if the sim happens not to tick in that window we would drop back to
+                // hunt_frame_counter — the path that produced the 9%-sampled tapes. Three tries make
+                // a transient stall cost 120 ms instead of a ruined recording.
+                // (A failed SECOND read reads as "advanced" here, which is deliberate: it prefers the
+                // known-correct counter over the known-bad hunt.)
+                let advances = known.map_or(false, |a| (0..3).any(|_| unsafe {
                     let v0 = rpm_u32(h, a);
                     std::thread::sleep(std::time::Duration::from_millis(40));
                     v0.is_some() && rpm_u32(h, a) != v0
-                });
+                }));
                 if advances { known } else {
                     trace("[gamestate] blk+0x3CC8 did not advance — falling back to the counter hunt");
                     unsafe { hunt_frame_counter(h, base) }

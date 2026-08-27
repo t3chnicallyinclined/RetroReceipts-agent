@@ -116,15 +116,18 @@ fn write_exec(path: &std::path::Path, body: &str) -> Result<(), String> {
 /// `BUNDLE_VERSION` marker). Writes the arcade-host scripts + the systemd unit + the injector
 /// (`setup_proxy.sh`, and `version.dll` when a real one was bundled). The marker is written LAST so a
 /// partial materialize is retried next time, not skipped.
+/// Returns Ok(true) when it actually rewrote the tree, Ok(false) when the marker already matched
+/// and nothing was touched. The caller NEEDS that distinction: logging "bundle refreshed" on the
+/// no-op path misreports on every single launch of a hosting box, and bug reports ship log tails.
 #[cfg(target_os = "linux")]
-fn ensure_materialized() -> Result<(), String> {
+fn ensure_materialized() -> Result<bool, String> {
     let hd = host_dir().ok_or_else(|| "no HOME dir".to_string())?;
     let marker = hd.join(".bundle_version");
     if std::fs::read_to_string(&marker)
         .map(|s| s.trim() == bundled::BUNDLE_VERSION)
         .unwrap_or(false)
     {
-        return Ok(()); // already current
+        return Ok(false); // already current — nothing written
     }
 
     // arcade-host scripts
@@ -175,7 +178,7 @@ fn ensure_materialized() -> Result<(), String> {
     }
     let _ = reload.status();
     std::fs::write(&marker, bundled::BUNDLE_VERSION).map_err(|e| format!("write marker: {e}"))?;
-    Ok(())
+    Ok(true)
 }
 
 /// Re-lay the bundled host-node runtime on a node where hosting is ALREADY enabled. Files only.
@@ -192,12 +195,19 @@ fn ensure_materialized() -> Result<(), String> {
 /// hosting active, refresh the files in place. The `BUNDLE_VERSION` marker makes it a no-op once
 /// the bundle already matches, so it costs one file read per launch.
 ///
-/// ⚠ FILES ONLY, deliberately. It does not register, enable, or start anything — starting a service
-/// on someone's machine is not a decision a startup path should make quietly. A newly materialized
-/// `arcade-refereed.service` therefore sits installed-but-not-enabled until the next
-/// `arcade_hostd.sh register` (tray toggle, or the daemon's own re-register) runs
-/// `systemctl --user enable --now arcade-refereed`. The log line below says so explicitly rather
-/// than leaving someone to wonder why the referee is present and idle.
+/// ⚠ FILES ONLY. It does not register, enable, or start anything.
+/// ⚠⚠ AND THAT CURRENTLY MEANS A NEWLY ADDED UNIT NEVER RUNS ON AN ALREADY-HOSTING NODE. Verified:
+/// `systemctl --user enable --now arcade-refereed` appears ONLY in `arcade_hostd.sh`'s CLI
+/// `register)` case, and the daemon's own loop never calls it — `tick()` runs the *curl* registration,
+/// not the CLI case. The only caller is `host_enable()` ← the tray toggle. So "it will be enabled on
+/// the next register" means "on the next OFF→ON toggle", which is exactly the hosting outage this
+/// function exists to avoid. Installed-but-idle, indefinitely.
+/// Holding here anyway, for a specific reason: the unit's lifecycle is only now being fixed
+/// (`Requires=`/`PartOf=`), and auto-enabling would have propagated the flawed definition to every
+/// host node before anyone chose that. The fix is a non-destructive `arcade_hostd.sh ensure-units`
+/// case that enables bundled-but-not-enabled units WITHOUT unregistering — that belongs to the
+/// host-node lane, and until it exists the log below tells the truth instead of giving advice that
+/// cannot be followed.
 /// ⚠ Also note (verified live): `daemon-reload` + `enable --now` does NOT restart an already-running
 /// unit, so a CHANGED unit definition needs an explicit restart to take effect. First install is
 /// unaffected — there is nothing running to restart.
@@ -206,8 +216,11 @@ pub fn refresh_bundle_if_hosting(active: bool) {
     {
         if !active { return; }
         match ensure_materialized() {
-            Ok(()) => eprintln!("[host] bundle refreshed for the active host node \
-                                 (units are installed; `register` enables a newly added one)"),
+            Ok(false) => {}   // marker already current — say nothing, this is every normal launch
+            Ok(true) => eprintln!(
+                "[host] host-node bundle REWRITTEN for this version. Any newly added unit \
+                 (e.g. arcade-refereed.service) is installed but NOT enabled — nothing in the daemon \
+                 loop enables it; that needs a hosting OFF/ON toggle until `ensure-units` exists."),
             Err(e) => eprintln!("[host] bundle refresh skipped: {e}"),
         }
     }
@@ -266,7 +279,7 @@ pub fn host_enable() -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         // 1) lay down / refresh the bundled host-node runtime — no more "scripts not installed".
-        ensure_materialized()?;
+        ensure_materialized()?;   // Ok(bool) — the toggle path does not care which
         // 2) deploy + verify the injector SYNCHRONOUSLY so we only claim ON when hosting can actually
         //    work. On failure this surfaces the real reason (prefix not built / game running / no bundled
         //    dll) as the Err the tray shows — it must NOT flip to ON.
