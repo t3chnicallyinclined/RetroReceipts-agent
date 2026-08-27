@@ -83,7 +83,7 @@ impl std::error::Error for UpdateError {}
 /// Fetch latest.json and return Some(Update) iff the advertised version is strictly newer than `current`.
 /// Network/parse failures return None (a failed update check must never break the tray).
 pub fn check_for_update(current: &str) -> Option<Update> {
-    let manifest = match fetch_manifest(config::UPDATE_MANIFEST) {
+    let manifest = match fetch_manifest(&config::update_manifest()) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("[updater] manifest fetch failed: {e}");

@@ -39,6 +39,33 @@ pub fn load_apply_skins() -> bool {
     load_obj().get("apply_skins").and_then(|x| x.as_bool()).unwrap_or(false)
 }
 
+/// 🎛 Coin Door: "Pause reporting" as a PERSISTED pref (the tray toggle stays session-only; this is
+/// the baseline applied at startup and on prefs_reload — a user who paused stays paused).
+pub fn load_paused() -> bool {
+    load_obj().get("paused").and_then(|x| x.as_bool()).unwrap_or(false)
+}
+
+pub fn save_paused(on: bool) {
+    let mut o = load_obj();
+    o.insert("paused".into(), serde_json::Value::Bool(on));
+    save_obj(&o);
+}
+
+/// 🎛 Update channel: "stable" (default) or "beta" — anything else reads as stable. Drives which
+/// update manifest the self-updater fetches (split-plan R0's beta channel).
+pub fn load_channel() -> String {
+    match load_obj().get("channel").and_then(|x| x.as_str()) {
+        Some("beta") => "beta".into(),
+        _ => "stable".into(),
+    }
+}
+
+pub fn save_channel(ch: &str) {
+    let mut o = load_obj();
+    o.insert("channel".into(), serde_json::Value::String(if ch == "beta" { "beta" } else { "stable" }.into()));
+    save_obj(&o);
+}
+
 /// Persist "Apply my skins" (preserves the other keys).
 pub fn save_apply_skins(on: bool) {
     let mut m = load_obj();

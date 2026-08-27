@@ -163,6 +163,7 @@ mod icon_tests {
 struct MenuHandles {
     // Clickable / checkable item IDs (matched against incoming MenuEvents).
     open_id: MenuId,
+    settings_id: MenuId, // 🎛 the Coin Door
     apply_skins_id: MenuId,
     pause_id: MenuId,
     host_id: MenuId,
@@ -216,6 +217,7 @@ fn build_menu() -> (Menu, MenuHandles) {
     let sep1 = PredefinedMenuItem::separator();
 
     let open = MenuItem::new("Open Retro Receipts", true, None);
+    let settings_item = MenuItem::new("Settings…", true, None); // 🎛 spawns `rr-agent --settings` (the Coin Door)
     // Initial check states read the flags main.rs already restored (skins) / the process default (pause).
     let apply_skins = CheckMenuItem::new(
         // "Skin sync" by name (Tris 2026-08-25): stats-only users must be able to FIND the off switch.
@@ -257,6 +259,7 @@ fn build_menu() -> (Menu, MenuHandles) {
         &host_indicator,
         &sep1,
         &open,
+        &settings_item,
         &apply_skins,
         &pause,
         &host_toggle,
@@ -271,6 +274,7 @@ fn build_menu() -> (Menu, MenuHandles) {
 
     let handles = MenuHandles {
         open_id: open.id().clone(),
+        settings_id: settings_item.id().clone(),
         apply_skins_id: apply_skins.id().clone(),
         pause_id: pause.id().clone(),
         host_id: host_toggle.id().clone(),
@@ -391,6 +395,14 @@ pub fn run() -> ! {
                 } else if ev.id == handles.open_id {
                     if let Err(e) = open::that_detached(config::WEB_APP) {
                         eprintln!("[tray] failed to open {}: {e}", config::WEB_APP);
+                    }
+                } else if ev.id == handles.settings_id {
+                    // 🎛 the Coin Door runs as its OWN PROCESS (tao here + winit there never share
+                    // one event loop). Reap the child on a throwaway thread — zombie lesson 2026-08-27.
+                    if let Ok(exe) = std::env::current_exe() {
+                        if let Ok(mut c) = std::process::Command::new(exe).arg("--settings").spawn() {
+                            std::thread::spawn(move || { let _ = c.wait(); });
+                        }
                     }
                 } else if ev.id == handles.apply_skins_id {
                     // muda already flipped the check state; mirror it into the painter's gate + persist the pref.
