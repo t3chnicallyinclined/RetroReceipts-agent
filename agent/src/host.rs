@@ -82,6 +82,11 @@ mod bundled {
     pub const ARCADE_HOSTD_SH: &str = include_str!("../../host-node/arcade-host/arcade_hostd.sh");
     pub const ACT_SHOT_SH: &str = include_str!("../../host-node/arcade-host/act_shot.sh");
     pub const HOSTD_SERVICE: &str = include_str!("../../host-node/arcade-host/arcade-hostd.service");
+    // The match referee + its unit. The unit's ExecStart is
+    // `%h/.local/share/retro-receipts/arcade-host/referee.py`, which is exactly `host_dir()` — the
+    // unit and the materializer below must never drift apart.
+    pub const REFEREE_PY: &str = include_str!("../../host-node/arcade-host/referee.py");
+    pub const REFEREED_SERVICE: &str = include_str!("../../host-node/arcade-host/arcade-refereed.service");
     pub const SETUP_PROXY_SH: &str = include_str!("../../host-node/injector/setup_proxy.sh");
     // Only embed the dll when build.rs actually staged a real one — its sole use (in ensure_materialized)
     // is behind the same cfg, so gating the const keeps a dev build (no dll) warning-clean.
@@ -127,12 +132,22 @@ fn ensure_materialized() -> Result<(), String> {
     write_exec(&hd.join("arcade_host.sh"), bundled::ARCADE_HOST_SH)?;
     write_exec(&hd.join("arcade_hostd.sh"), bundled::ARCADE_HOSTD_SH)?;
     write_exec(&hd.join("act_shot.sh"), bundled::ACT_SHOT_SH)?;
+    write_exec(&hd.join("referee.py"), bundled::REFEREE_PY)?;
 
     // systemd --user unit
     let sd = systemd_user_dir().ok_or_else(|| "no HOME dir".to_string())?;
     std::fs::create_dir_all(&sd).map_err(|e| format!("mkdir {}: {e}", sd.display()))?;
     std::fs::write(sd.join("arcade-hostd.service"), bundled::HOSTD_SERVICE)
         .map_err(|e| format!("write unit: {e}"))?;
+    // ⚠ THE REFEREE UNIT MUST BE INSTALLED HERE, not just its script. `arcade_hostd.sh register`
+    // runs `systemctl --user enable --now arcade-refereed`, which fails unless the unit file is
+    // already in this directory. Without this write, every fresh host node — and every
+    // re-materialize on an agent upgrade — silently loses the referee. That is exactly what
+    // happened on the cabinet 2026-08-26: host_enable laid the bundled files back down over a
+    // hand-installed referee and nothing reported it. The daemon-reload below is what makes
+    // systemd notice the new unit.
+    std::fs::write(sd.join("arcade-refereed.service"), bundled::REFEREED_SERVICE)
+        .map_err(|e| format!("write referee unit: {e}"))?;
 
     // injector (setup_proxy.sh always; version.dll only when a real one was bundled)
     let inj = inj_dir().ok_or_else(|| "no HOME dir".to_string())?;
