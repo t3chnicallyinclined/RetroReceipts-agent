@@ -11,6 +11,13 @@ PartOf=arcade-hostd.service
 
 [Service]
 Type=simple
+# ⚖ ARMING IS DATA, NEVER CODE (money-expert N2): REFEREE_SEAT_P1 + REFEREE_REPORT live ONLY in
+# referee.env — a file no bundle, materializer, or ensure-units pass ever writes. Without this, every
+# agent update rewrote the unit and silently DISARMED the referee (sets fought + counted, "WOULD
+# report" logged, nothing settled, 30-min refunds — conservation clean, so no audit catches it). The
+# mirror risk is worse: arming baked into the bundled unit would arm the whole fleet in one release.
+# `-` prefix: absent file = observe mode, the safe default.
+EnvironmentFile=-%h/.local/share/retro-receipts/arcade-host/referee.env
 ExecStart=/usr/bin/python3 %h/.local/share/retro-receipts/arcade-host/referee.py
 Restart=always
 RestartSec=5
