@@ -2474,6 +2474,23 @@ fn plausible_opponent_name(nm: &str) -> bool {
 // flags (ocv/perfect/comeback) always describe the WINNER — computed symmetrically from both sides' health,
 // so we credit them correctly whether we won or lost.
 fn on_game_win(winner: u8, opp: &Option<(String, String)>, my_side: u8, ocv: bool, perfect: bool, comeback: bool, rich: &GameRich, session_id: &str, match_index: u32) {
+    // ⚠⚠ A HOST-MODE box must NEVER report a result. 0.3.19 added exactly this gate to /match/live
+    // — "a cabinet is furniture: it referees from a spectator seat and must never claim to be IN a
+    // match" — but deliberately left results alone. A live money match (2026-08-26, Tris vs JFRESH in
+    // the cabinet lobby) proved that wrong: the cabinet's agent logged FOUR rows for a two-game set
+    // it only WATCHED — each real game double-reported, once against each seat's player, with the
+    // arcade claiming a seat in both. The PLAYERS' own agents report their own games; a cabinet's
+    // job is refereeing, and that reports through host-node, not through here.
+    //
+    // ⚠ Gated on HOST_MODE ALONE, deliberately. Also gating on localPlayerNum == -1 (spectator) was
+    // suggested and is tempting, but that read falls back to 255 on failure, so a real player whose
+    // read failed would have every game silently dropped — strictly worse than a cabinet posting
+    // rows we can identify and filter. HOST_MODE is explicit, configured, and cannot misfire on a
+    // player's machine.
+    if crate::host::HOST_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        trace("[record] SKIP — HOST_MODE: this box only watched the game (see the /match/live gate)");
+        return;
+    }
     if my_side != 1 && my_side != 2 { return; }
     // Belt-and-suspenders: NEVER record unless the side is confirmed (manual toggle / deterministic lock). The
     // fuzzy auto-detectors set local_side for the UI label only — a confidently-WRONG side must never post stats.
