@@ -1,3 +1,8 @@
+// 0.3.24: the gamestate record envelope grew past serde_json::json!'s default expansion depth
+// (it expands recursively per token, and that envelope now carries the re-simulation fields).
+// Raising the limit is the documented fix; it costs nothing at runtime.
+#![recursion_limit = "256"]
+
 // Retro Receipts tray agent (rr-agent) — headless companion (no window; tray icon only).
 //
 // Replaces the heavy Tauri webview: the UI moves to the web app (nobd.net/app) and this tiny native agent
@@ -296,6 +301,10 @@ fn main() {
     // The saved pref (load_host_mode) is a breadcrumb of intent, surfaced in the startup log; the service wins.
     let host_st = host::host_status();
     host::HOST_MODE.store(host_st.active, std::sync::atomic::Ordering::Relaxed);
+    // A bundle fix in a new agent version only ever reached FRESH installs, because materializing
+    // happened solely inside the tray's enable path. Refresh the files on a node that is already
+    // hosting, so an upgrade actually delivers them. Files only — nothing is registered or started.
+    host::refresh_bundle_if_hosting(host_st.active);
     if host_st.supported {
         eprintln!(
             "[host] startup: active={} installed={} (saved intent={}) — {}",
