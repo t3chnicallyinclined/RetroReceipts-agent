@@ -249,7 +249,9 @@ pub fn refresh_bundle_if_hosting(active: bool) {
                 //
                 // Off-thread: systemctl is slow and this sits on the startup path.
                 std::thread::spawn(|| {
-                    let out = run_hostd("ensure-units");
+                    // run_hostd returns Result<String,String>; take either arm's text (a non-zero
+                    // ensure-units still prints useful lines) and log the last line.
+                    let out = run_hostd("ensure-units").unwrap_or_else(|e| e);
                     let out = out.trim();
                     if !out.is_empty() {
                         eprintln!("[host] ensure-units: {}", out.lines().last().unwrap_or(out));

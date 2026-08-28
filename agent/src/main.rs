@@ -116,7 +116,6 @@ fn migrate_legacy_state_dir() {
 
 /// See the call site in main() for the why. The opened File is deliberately leaked — the OS handle must
 /// outlive every future write to stderr.
-#[cfg(windows)]
 /// ⛔ RETIRE THE OLD APP (Tris 2026-08-27: "make the newest version clear out the old versions"): on
 /// Windows, if a legacy MetaSync install is still registered, uninstall it silently. Idempotent by
 /// construction — the uninstall registry key is present ONLY while MetaSync is installed, so this
@@ -160,6 +159,10 @@ fn retire_legacy_app() {
     eprintln!("[retire] MetaSync retired");
 }
 
+// ⚠ Windows-only: its body uses windows::Win32 + std::os::windows. The #[cfg(windows)] here was
+// orphaned onto retire_legacy_app when that fn was inserted above (2026-08-27) — restored so the
+// agent compiles on Linux, where this whole function is excluded.
+#[cfg(windows)]
 fn capture_stderr_to_file() {
     use std::os::windows::io::AsRawHandle;
     use windows::Win32::Foundation::HANDLE;
