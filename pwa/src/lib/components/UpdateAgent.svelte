@@ -15,6 +15,12 @@
 	const WIN_URL_FALLBACK =
 		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/rr-agent.exe';
 	let winUrl = $state(WIN_URL_FALLBACK);
+
+	// LEGACY MIGRATION INSTALLER — the retired MetaSync generation gets a real INSTALLER, not the bare
+	// self-update exe: it uninstalls MetaSync, installs the new agent as a findable Windows citizen, and
+	// launches it (zero manual steps). Modern stale agents keep the bare exe (their own updater swaps it).
+	const MIGRATE_INSTALLER =
+		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/download/v0.3.28/RetroReceipts-Setup.exe';
 	async function resolveWinUrl() {
 		try {
 			const res = await fetch(api('/rr/update/agent-latest.json'), { cache: 'no-store' });
@@ -51,11 +57,11 @@
 				money matches, receipts, ranked tracking and skins have moved on. To keep playing, install
 				the new <b>RETRO RECEIPTS agent</b>{latest ? ` (v${latest})` : ''}.
 			</p>
-			<a class="wbtn" href={winUrl}>⬇ DOWNLOAD THE NEW AGENT</a>
+			<a class="wbtn" href={MIGRATE_INSTALLER}>⬇ DOWNLOAD &amp; INSTALL</a>
 			<ol class="wsteps">
-				<li>Run the download — no installer wizard, it's the app itself. Your sign-in and history carry over.</li>
-				<li>Uninstall “MetaSync” from Windows Settings → Apps (the old app stops getting updates today).</li>
-				<li>This screen disappears on its own once the new agent checks in.</li>
+				<li>Run the downloaded installer. It removes the old MetaSync app and installs the new one for you — no wizard, nothing to click through.</li>
+				<li>Your sign-in and full match history carry over automatically (they're tied to your Steam account, not the app).</li>
+				<li>This screen disappears on its own the moment the new agent checks in.</li>
 			</ol>
 			<p class="wfoot">Signed in as {agent.status ? 'this account' : ''} — wrong account? Sign out from the top bar.</p>
 		</div>
