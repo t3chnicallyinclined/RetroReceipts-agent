@@ -1106,7 +1106,15 @@ static SHARE_GAMEPLAY: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 static GS_IN_MATCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 fn share_file() -> std::path::PathBuf { crate::runtime_dir().join("share_gameplay.txt") }
 const GS_CAP: usize = 20_000;                       // max unique frames buffered per game (~5.5 min @60fps)
-const GS_SPOOL_CAP: usize = 300;                    // max pending recordings on disk (soft backpressure)
+// ⚠ The spool cap is a DISK BUDGET, not a file count — deliberately.
+// It used to be `300 pending recordings`. That was chosen when a tape was ~188 KB (≈54 MB). The
+// 0.3.28 tape is ~543 KB measured, so the same 300 silently became **159 MB** on a user's disk — a
+// number nobody agreed to. A count cap cannot hold a promise about disk; it drifts every time the
+// tape format changes, and the format WILL change again. Bytes hold.
+// 250 MB ≈ 470 matches at the current size, i.e. ~2 days of the heaviest observed player (200
+// matches/day) with the server unreachable the whole time. The spool sits near ZERO in normal
+// operation — the uploader drains it between matches — so this only bites during an outage.
+const GS_SPOOL_MAX_BYTES: u64 = 250 * 1024 * 1024;
 const RR_GAMESTATE: &str = "https://nobd.net/rr/gamestate";
 
 // Per-user spool for finished recordings, drained by the uploader between matches. Under rr_state_dir() so it
@@ -1984,11 +1992,8 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
                    winner: &str, loser: &str, gs: &GsSnapshot, session_id: &str, match_index: u32,
                    set_end: Option<(u8, u8)>) {
     let dir = gs_cache_dir();
-    // soft backpressure: if uploads are failing and the spool is huge, stop piling on.
-    let pending = std::fs::read_dir(&dir)
-        .map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".meta")).count())
-        .unwrap_or(0);
-    if pending >= GS_SPOOL_CAP { trace(&format!("[gamestate] spool full ({pending}) — dropping {match_key}")); return; }
+    // (spool room is made AFTER the tape is built, once its real size is known — see
+    //  gs_spool_make_room below.)
 
     let ts = gs_now_ms();
     let id = format!("{}_{}", match_key, reporter);
@@ -2125,10 +2130,54 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         "ts": ts, "schema": GS_SCHEMA,
         "designated": designated, "spool_ts": ts,
     });
+    // Make room for this tape by evicting the OLDEST, then write it.
+    gs_spool_make_room(&dir, gz.len() as u64, GS_SPOOL_MAX_BYTES);
     let base = format!("{}_{}", match_key, reporter);
     let _ = atomic_write(&dir.join(format!("{base}.json.gz")), &gz);
     let _ = atomic_write(&dir.join(format!("{base}.meta")), &serde_json::to_vec(&meta).unwrap_or_default());
     trace(&format!("[gamestate] spooled {} frames -> {base} (designated={designated})", frames.len()));
+}
+
+/// Evict the OLDEST spooled recordings until `incoming` bytes fit inside `GS_SPOOL_MAX_BYTES`.
+///
+/// ⚠ THE OLD BEHAVIOUR WAS BACKWARDS. At the cap it refused to write the NEW tape and kept the
+/// existing 300 — so a user who went offline filled the spool once and then silently lost EVERY
+/// subsequent match while stale ones aged toward their 7-day prune. The most recent match is the one
+/// most likely to be asked about, so a full spool must degrade into "we kept your recent matches",
+/// never "we kept the stale ones and lost everything since".
+///
+/// Age is taken from the .json.gz mtime rather than the meta's `spool_ts`: it needs no parse, cannot
+/// be defeated by a corrupt meta, and the two are written together. A pair is evicted as a unit.
+/// Note the 7-day TTL in the drainer still applies independently; this is the size bound, that is the
+/// age bound, and neither substitutes for the other.
+fn gs_spool_make_room(dir: &std::path::Path, incoming: u64, budget: u64) {
+    let mut items: Vec<(std::time::SystemTime, u64, String)> = Vec::new();
+    let mut total: u64 = 0;
+    let rd = match std::fs::read_dir(dir) { Ok(r) => r, Err(_) => return };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !name.ends_with(".json.gz") { continue; }
+        let md = match e.metadata() { Ok(m) => m, Err(_) => continue };
+        let len = md.len();
+        total += len;
+        let age = md.modified().unwrap_or(std::time::UNIX_EPOCH);
+        items.push((age, len, name[..name.len() - 8].to_string())); // strip ".json.gz"
+    }
+    if total + incoming <= budget { return; }
+
+    items.sort_by_key(|(age, _, _)| *age);                 // oldest first
+    let mut freed = 0u64;
+    let mut n = 0u32;
+    for (_, len, base) in &items {
+        if total - freed + incoming <= budget { break; }
+        let _ = std::fs::remove_file(dir.join(format!("{base}.json.gz")));
+        let _ = std::fs::remove_file(dir.join(format!("{base}.meta")));
+        freed += len;
+        n += 1;
+    }
+    trace(&format!("[gamestate] spool over budget ({:.0} MB + {:.0} MB incoming > {:.0} MB) — evicted {} oldest, freed {:.0} MB",
+                   total as f64 / 1048576.0, incoming as f64 / 1048576.0,
+                   budget as f64 / 1048576.0, n, freed as f64 / 1048576.0));
 }
 
 // Does the server already hold a recording for this match_key (either side)? Clients check this before
@@ -4237,6 +4286,69 @@ mod gs_stats_tests {
                 sx: [0.0; 6], sy: [0.0; 6], zx: [0.0; 6], zy: [0.0; 6],
                 flash: [0; 6], glow: [0; 6], layer: [0; 6], timer: 0 }
     }
+    // ── the spool disk budget ─────────────────────────────────────────────────────────────────
+    // gs_spool_make_room had never RUN before this test — only compiled. The behaviour it replaces
+    // was backwards (refuse the newest, keep the stale), so "it compiles" says nothing about whether
+    // it evicts the right end. Writes real files into a temp dir and checks which survive.
+    // ⚠ 40 ms, not 8. Windows' system-clock tick is ~15.6 ms, so 8 ms sleeps produced files with
+    // IDENTICAL mtimes — sort_by_key is stable, so eviction order silently became read_dir order and
+    // the test failed with "oldest tape survived". The bug was in the test, not the evictor; the
+    // sleep must clear the clock granularity or there is nothing to sort by.
+    fn spool_fixture(dir: &std::path::Path, n: usize, each: usize) -> Vec<String> {
+        let _ = std::fs::create_dir_all(dir);
+        let mut names = Vec::new();
+        for i in 0..n {
+            let base = format!("m{i:03}");
+            std::fs::write(dir.join(format!("{base}.json.gz")), vec![0u8; each]).unwrap();
+            std::fs::write(dir.join(format!("{base}.meta")), b"{}").unwrap();
+            names.push(base);
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
+        names
+    }
+    fn spool_bytes(dir: &std::path::Path) -> u64 {
+        std::fs::read_dir(dir).unwrap().flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".json.gz"))
+            .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0)).sum()
+    }
+
+    #[test]
+    fn spool_evicts_oldest_and_keeps_newest() {
+        let dir = std::env::temp_dir().join(format!("rr_spool_evict_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // Budget is a PARAMETER so this runs on bytes, not hundreds of megabytes of real disk:
+        // 10 tapes x 100 B = 1000 B against a 600 B budget with 100 B incoming.
+        let each = 100usize;
+        let budget = 600u64;
+        let names = spool_fixture(&dir, 10, each);
+        assert_eq!(spool_bytes(&dir), 1000);
+
+        gs_spool_make_room(&dir, each as u64, budget);
+
+        let total = spool_bytes(&dir);
+        assert!(total + each as u64 <= budget,
+                "still over budget after eviction: {total} + {each} > {budget}");
+        // the OLDEST must be gone and the NEWEST must survive — this is the whole point
+        assert!(!dir.join(format!("{}.json.gz", names[0])).exists(), "oldest tape survived eviction");
+        assert!(!dir.join(format!("{}.meta", names[0])).exists(), "oldest meta left orphaned");
+        let newest = names.last().unwrap();
+        assert!(dir.join(format!("{newest}.json.gz")).exists(), "NEWEST tape was evicted - regression to refuse-newest");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn spool_under_budget_evicts_nothing() {
+        let dir = std::env::temp_dir().join(format!("rr_spool_keep_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let each = 100usize;                       // 300 B total, far under a 100 kB budget
+        let names = spool_fixture(&dir, 3, each);
+        gs_spool_make_room(&dir, each as u64, 100 * 1024);
+        for b in &names {
+            assert!(dir.join(format!("{b}.json.gz")).exists(), "evicted {b} while under budget");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn attribution_sides_chip_ko() {
         let full = [144u16; 6];
