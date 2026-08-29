@@ -12,7 +12,7 @@
 	// migrate ONCE, not onto an interim. Until then legacy users get THIS same broad banner — a loud
 	// nudge, not a lockout — pointing at the migration installer. Flip LEGACY_WALL_ENABLED to true
 	// when the final tape ships to turn the forced wall back on.
-	const LEGACY_WALL_ENABLED = false;
+	const LEGACY_WALL_ENABLED = true; // Tris 2026-08-29: forced ON — migrate the retired MetaSync generation ahead of the replay-system launch (stable tape settled: reader.rs 0.3.29 == 0.3.31; installer uninstalls MetaSync → no boot-loop; migrate-once, then auto-updates ride agent-latest.json)
 
 	const WIN_URL_FALLBACK =
 		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/rr-agent.exe';
@@ -54,20 +54,20 @@
 {#if showWall}
 	<div class="wall" role="alertdialog" aria-modal="true" aria-label="Update required">
 		<div class="wallbox">
-			<div class="wk">RETRO RECEIPTS · REQUIRED UPDATE</div>
-			<h1>MetaSync is retired.</h1>
+			<div class="wk">RETRO RECEIPTS · ONE QUICK UPDATE</div>
+			<h1>Match replays are coming.</h1>
 			<p class="wp">
-				Your desktop app (v{ver}) is a generation behind and no longer works right with the arcade —
-				money matches, receipts, ranked tracking and skins have moved on. To keep playing, install
-				the new <b>RETRO RECEIPTS agent</b>{latest ? ` (v${latest})` : ''}.
+				We're about to launch full <b>match replays</b> — watch any game back and study it, round by round. Your
+				desktop app (v{ver}) is a generation behind and can't record them. Install the new <b>Retro Receipts agent</b>{latest ? ` (v${latest})` : ''} now, so
+				every match you play from here is ready to replay the day it goes live. Your history carries over — tied to your Steam account, not the app.
 			</p>
-			<a class="wbtn" href={MIGRATE_INSTALLER}>⬇ DOWNLOAD &amp; INSTALL</a>
+			<a class="wbtn" href={MIGRATE_INSTALLER}>⬇ INSTALL THE NEW AGENT</a>
 			<ol class="wsteps">
-				<li>Run the downloaded installer. It removes the old MetaSync app and installs the new one for you — no wizard, nothing to click through.</li>
-				<li>Your sign-in and full match history carry over automatically (they're tied to your Steam account, not the app).</li>
-				<li>This screen disappears on its own the moment the new agent checks in.</li>
+				<li>Run the installer — it removes the old <b>MetaSync</b> app and sets up the new one for you. No wizard, nothing to click through.</li>
+				<li>Your account, stats and match history carry over automatically.</li>
+				<li>This screen clears itself the moment the new agent checks in.</li>
 			</ol>
-			<p class="wfoot">Signed in as {agent.status ? 'this account' : ''} — wrong account? Sign out from the top bar.</p>
+			<p class="wfoot">Wrong account? Sign out from the top bar.</p>
 		</div>
 	</div>
 {/if}
