@@ -207,6 +207,35 @@ fn main() {
     // while the real agent is running: "something's wrong, send the team your logs"), and BEFORE the stderr
     // capture below (whose startup rotation would steal the RUNNING agent's stderr.log — Rust opens files
     // share-delete on Windows, so the rename would succeed and strand the live agent writing into .1).
+    // ⚠⚠ `--version` / `-V` / `--help` / `-h`: PRINT AND EXIT. This must come before every other
+    // arg check and before anything that starts a daemon.
+    //
+    // Why it exists: the binary previously implemented NO version flag, and an unrecognised argument
+    // was simply ignored — so `metasync-agent --version`, the most natural thing anyone types when
+    // probing a binary, silently STARTED A FULL AGENT. That happened for real on the live cabinet
+    // (2026-08-28): a verification pass ran `--version` to identify the staged build and instead
+    // launched a second agent, which then had to be killed. Probing a binary must never start a
+    // service. An unknown flag is likewise no longer a silent no-op — it prints usage and exits
+    // non-zero rather than booting the tray.
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if args.iter().any(|a| a == "--version" || a == "-V") {
+            println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+            std::process::exit(0);
+        }
+        const KNOWN: [&str; 7] = ["--updated", "--bugreport", "--settings", "--version", "-V", "--help", "-h"];
+        let unknown: Vec<&String> = args.iter()
+            .filter(|a| a.starts_with('-') && !KNOWN.contains(&a.as_str())).collect();
+        if args.iter().any(|a| a == "--help" || a == "-h") || !unknown.is_empty() {
+            let bad = !unknown.is_empty();
+            if bad { eprintln!("unknown option: {}", unknown[0]); }
+            eprintln!("{} {}\n\nUSAGE: {} [--version] [--settings] [--bugreport]\n\n\
+                       With no arguments it runs as the tray agent.",
+                      env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"));
+            std::process::exit(if bad { 2 } else { 0 });
+        }
+    }
+
     if std::env::args().any(|a| a == "--bugreport") {
         std::process::exit(reader::cli_bug_report());
     }
