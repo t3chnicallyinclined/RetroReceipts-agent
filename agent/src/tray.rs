@@ -28,11 +28,17 @@
 
 use crate::{autostart, config, host, painter, prefs, reader, updater};
 use muda::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+// 🎛 GUI→agent command signal: the Coin Door (a separate process) writes runtime_dir()/agent_cmd
+// ("quit" / "check_update" / "host_on" / "host_off"); main.rs's watcher dispatches. QUIT must be
+// honored by THIS event loop (it owns the tray + control flow), so the watcher just flips this and
+// the 1s tick exits cleanly (drops the tray icon). The other commands act off-thread in the watcher.
+pub static CMD_QUIT: AtomicBool = AtomicBool::new(false);
 use std::time::{Duration, Instant};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 /// Events funneled into the tao loop from the tray + menu global handlers.
 enum UserEvent {
@@ -384,6 +390,13 @@ pub fn run() -> ! {
 
             // 1s timer tick (from WaitUntil above) — refresh the status + identity rows from the reader.
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                // 🎛 Coin Door asked us to quit (via agent_cmd → main.rs watcher → CMD_QUIT). Drop the
+                // tray first so the icon vanishes immediately, then exit — same clean path as the menu Quit.
+                if CMD_QUIT.load(Ordering::Relaxed) {
+                    tray.take();
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                }
                 refresh_dynamic(&handles, &tray, updates_busy_until);
             }
 
@@ -551,8 +564,23 @@ pub fn run() -> ! {
                 updates_busy_until = Some(Instant::now() + Duration::from_secs(6));
             }
 
-            Event::UserEvent(UserEvent::Tray(_ev)) => {
-                // Left-click could open the web app; right-click already shows the menu natively.
+            Event::UserEvent(UserEvent::Tray(ev)) => {
+                // 🎛 Left-click the tray icon → open the Coin Door (Tris 2026-08-29: the GUI is the
+                // primary surface now). Fire on button RELEASE so a click isn't counted twice. Right-click
+                // still shows the native menu. (Linux/appindicator routes clicks to the menu, so this is
+                // effectively a Windows affordance — harmless where it never fires.)
+                let open_door = matches!(
+                    ev,
+                    TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. }
+                        | TrayIconEvent::DoubleClick { button: MouseButton::Left, .. }
+                );
+                if open_door {
+                    if let Ok(exe) = std::env::current_exe() {
+                        if let Ok(mut c) = std::process::Command::new(exe).arg("--settings").spawn() {
+                            std::thread::spawn(move || { let _ = c.wait(); });
+                        }
+                    }
+                }
             }
 
             _ => {}

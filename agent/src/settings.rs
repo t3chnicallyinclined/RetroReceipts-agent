@@ -234,6 +234,14 @@ fn read_auth() -> (String, String) {
     (get("steamid"), get("token"))
 }
 
+/// 🎛 Signal the resident agent to perform an ACTION (quit / check_update / host_on / host_off).
+/// The Coin Door is its OWN process, so it can't drop the tray or self-replace the binary — it drops
+/// a one-shot command file that the agent's watcher (main.rs) dispatches within ~1s. Prefs still go
+/// through prefs.json + prefs_reload; this is only for things the resident agent must do itself.
+fn send_cmd(cmd: &str) {
+    let _ = std::fs::write(crate::runtime_dir().join("agent_cmd"), cmd.as_bytes());
+}
+
 fn vi(v: &serde_json::Value, path: &[&str]) -> i64 {
     let mut cur = v;
     for p in path {
@@ -555,10 +563,22 @@ impl Door {
                 });
             }
             card(ui, "HOSTING", |ui| {
-                ui.label(RichText::new(if self.host_mode { "Host node: ON" } else { "Host node: off" })
-                    .color(if self.host_mode { GOLD } else { INK })
-                    .font(semi(13.0)));
-                ui.label(RichText::new("Hosting turns this machine into a referee cabinet — it stops playing and starts judging. Toggle it from the tray; while hosting, the settings above are ignored.").color(DIM).size(10.5));
+                #[cfg(target_os = "linux")]
+                {
+                    let mut hm = self.host_mode;
+                    if switch_row(ui, &mut hm, "Host lobbies (this machine)",
+                        Some(("Turns this box into a referee cabinet — it stops playing and starts judging. Don't play on it while hosting is on.", DIM))) {
+                        self.host_mode = hm;
+                        send_cmd(if hm { "host_on" } else { "host_off" });
+                        self.saved = Some(std::time::Instant::now());
+                    }
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    let _ = self.host_mode; // read so the field isn't "unused" on Windows
+                    ui.label(RichText::new("Host lobbies — Linux only (Windows soon)").color(DIM).font(semi(13.0)));
+                    ui.label(RichText::new("Auto-hosting a referee cabinet isn't supported on Windows yet.").color(FAINT).size(10.5));
+                }
             });
 
             ui.horizontal(|ui| {
@@ -583,6 +603,16 @@ impl Door {
                         let _ = open::that(config::WEB_APP);
                     }
                 });
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button(RichText::new("Check for updates").size(11.0)).clicked() {
+                    send_cmd("check_update"); // the agent checks + installs; it notifies you of the result
+                }
+                if ui.button(RichText::new("Quit agent").size(11.0)).clicked() {
+                    send_cmd("quit");
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close); // close the door too
+                }
             });
             if let Some(t) = self.saved {
                 if t.elapsed().as_secs() < 3 {

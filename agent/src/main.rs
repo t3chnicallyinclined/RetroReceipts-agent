@@ -315,7 +315,7 @@ fn main() {
     // touches runtime_dir()/prefs_reload; apply within ~3s. FOLLOWS THE OPERATOR: this only ever
     // applies prefs — it never starts/stops anything.
     std::thread::spawn(|| loop {
-        std::thread::sleep(std::time::Duration::from_secs(3));
+        std::thread::sleep(std::time::Duration::from_secs(1));
         let flag = runtime_dir().join("prefs_reload");
         if flag.exists() {
             let _ = std::fs::remove_file(&flag);
@@ -324,6 +324,57 @@ fn main() {
             painter::SKINS_ENABLED.store(skins, std::sync::atomic::Ordering::Relaxed);
             reader::PAUSED.store(paused, std::sync::atomic::Ordering::Relaxed);
             eprintln!("[prefs] 🎛 coin door applied: skins={} paused={} channel={}", skins, paused, prefs::load_channel());
+        }
+        // 🎛 GUI ACTION commands (agent_cmd): the Coin Door is a separate process, so actions the
+        // RESIDENT agent must own — quit (drops the tray), self-update (self-replaces), host on/off
+        // (systemd) — are signalled through this one-shot file. Still FOLLOWS THE OPERATOR: every
+        // command is a deliberate click in the GUI. One command per write; read → consume → dispatch.
+        let cmd_path = runtime_dir().join("agent_cmd");
+        if let Ok(cmd) = std::fs::read_to_string(&cmd_path) {
+            let _ = std::fs::remove_file(&cmd_path);
+            match cmd.trim() {
+                "quit" => {
+                    eprintln!("[cmd] 🎛 coin door: quit");
+                    tray::CMD_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                "check_update" => {
+                    eprintln!("[cmd] 🎛 coin door: check for updates");
+                    std::thread::spawn(|| match updater::check_for_update(config::VERSION) {
+                        None => updater::notify("Retro Receipts", &format!("You're on the latest version (v{}).", config::VERSION)),
+                        Some(u) if !updater::safe_to_apply() => updater::note_deferred_update(&u.version, true),
+                        Some(u) => {
+                            updater::notify("Retro Receipts Update", &format!("Installing update v{}…", u.version));
+                            match updater::apply_update(&u) {
+                                Ok(()) => updater::restart(),
+                                Err(e) => updater::notify("Retro Receipts Update", &format!("Update failed:\n\n{e}")),
+                            }
+                        }
+                    });
+                }
+                c @ ("host_on" | "host_off") => {
+                    let on = c == "host_on";
+                    eprintln!("[cmd] 🎛 coin door: host {}", if on { "ON" } else { "off" });
+                    if on {
+                        match host::host_enable() {
+                            Ok(()) => {
+                                host::HOST_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
+                                prefs::save_host_mode(true);
+                                updater::toast("Hosting enabled", "This machine is now a host node. Don't play on it while hosting is on.");
+                            }
+                            Err(e) => {
+                                eprintln!("[cmd] host enable refused: {e}");
+                                updater::toast("Hosting not enabled", &e);
+                            }
+                        }
+                    } else {
+                        host::HOST_MODE.store(false, std::sync::atomic::Ordering::Relaxed);
+                        prefs::save_host_mode(false);
+                        host::host_disable();
+                    }
+                }
+                other if !other.is_empty() => eprintln!("[cmd] 🎛 unknown coin door command: {other:?}"),
+                _ => {}
+            }
         }
     });
 

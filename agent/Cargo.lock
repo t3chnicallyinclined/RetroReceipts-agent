@@ -3344,7 +3344,7 @@ dependencies = [
 
 [[package]]
 name = "rr-agent"
-version = "0.3.24"
+version = "0.3.29"
 dependencies = [
  "base64",
  "eframe",
