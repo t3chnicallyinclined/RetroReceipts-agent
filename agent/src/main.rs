@@ -45,7 +45,6 @@ mod host;
 // Persisted tray preferences (prefs.json) — currently just the "Apply my skins" toggle restored below.
 mod prefs;
 // Machine-wide single-instance guard (named mutex on Windows / flock on Unix). Called first in main().
-mod settings; // 🎛 the Coin Door (runs as its own process: `rr-agent --settings`)
 mod single_instance;
 mod tray;
 
@@ -223,13 +222,13 @@ fn main() {
             println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
             std::process::exit(0);
         }
-        const KNOWN: [&str; 7] = ["--updated", "--bugreport", "--settings", "--version", "-V", "--help", "-h"];
+        const KNOWN: [&str; 6] = ["--updated", "--bugreport", "--version", "-V", "--help", "-h"];
         let unknown: Vec<&String> = args.iter()
             .filter(|a| a.starts_with('-') && !KNOWN.contains(&a.as_str())).collect();
         if args.iter().any(|a| a == "--help" || a == "-h") || !unknown.is_empty() {
             let bad = !unknown.is_empty();
             if bad { eprintln!("unknown option: {}", unknown[0]); }
-            eprintln!("{} {}\n\nUSAGE: {} [--version] [--settings] [--bugreport]\n\n\
+            eprintln!("{} {}\n\nUSAGE: {} [--version] [--bugreport]\n\n\
                        With no arguments it runs as the tray agent.",
                       env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_NAME"));
             std::process::exit(if bad { 2 } else { 0 });
@@ -238,14 +237,6 @@ fn main() {
 
     if std::env::args().any(|a| a == "--bugreport") {
         std::process::exit(reader::cli_bug_report());
-    }
-
-    // 🎛 `--settings`: open the Coin Door and exit — BEFORE the single-instance guard on purpose
-    // (same reasoning as --bugreport: it must work while the real agent is running; it edits
-    // prefs.json + drops a reload flag, and the resident agent applies within seconds).
-    if std::env::args().any(|a| a == "--settings") {
-        settings::run();
-        std::process::exit(0);
     }
 
     #[cfg(windows)]
@@ -310,73 +301,10 @@ fn main() {
     // Restore the persisted "Apply my skins" preference (default ON) into the painter's gate BEFORE the painter
     // starts, so a user who turned skins off stays off across restarts without a first paint slipping through.
     painter::SKINS_ENABLED.store(prefs::load_apply_skins(), std::sync::atomic::Ordering::Relaxed);
-    reader::PAUSED.store(prefs::load_paused(), std::sync::atomic::Ordering::Relaxed);
-    // 🎛 Coin Door reload watcher: the settings process (separate binary run) writes prefs.json then
-    // touches runtime_dir()/prefs_reload; apply within ~3s. FOLLOWS THE OPERATOR: this only ever
-    // applies prefs — it never starts/stops anything.
-    std::thread::spawn(|| loop {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        let flag = runtime_dir().join("prefs_reload");
-        if flag.exists() {
-            let _ = std::fs::remove_file(&flag);
-            let skins = prefs::load_apply_skins();
-            let paused = prefs::load_paused();
-            painter::SKINS_ENABLED.store(skins, std::sync::atomic::Ordering::Relaxed);
-            reader::PAUSED.store(paused, std::sync::atomic::Ordering::Relaxed);
-            eprintln!("[prefs] 🎛 coin door applied: skins={} paused={} channel={}", skins, paused, prefs::load_channel());
-        }
-        // 🎛 GUI ACTION commands (agent_cmd): the Coin Door is a separate process, so actions the
-        // RESIDENT agent must own — quit (drops the tray), self-update (self-replaces), host on/off
-        // (systemd) — are signalled through this one-shot file. Still FOLLOWS THE OPERATOR: every
-        // command is a deliberate click in the GUI. One command per write; read → consume → dispatch.
-        let cmd_path = runtime_dir().join("agent_cmd");
-        if let Ok(cmd) = std::fs::read_to_string(&cmd_path) {
-            let _ = std::fs::remove_file(&cmd_path);
-            match cmd.trim() {
-                "quit" => {
-                    eprintln!("[cmd] 🎛 coin door: quit");
-                    tray::CMD_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-                "check_update" => {
-                    eprintln!("[cmd] 🎛 coin door: check for updates");
-                    std::thread::spawn(|| match updater::check_for_update(config::VERSION) {
-                        None => updater::notify("Retro Receipts", &format!("You're on the latest version (v{}).", config::VERSION)),
-                        Some(u) if !updater::safe_to_apply() => updater::note_deferred_update(&u.version, true),
-                        Some(u) => {
-                            updater::notify("Retro Receipts Update", &format!("Installing update v{}…", u.version));
-                            match updater::apply_update(&u) {
-                                Ok(()) => updater::restart(),
-                                Err(e) => updater::notify("Retro Receipts Update", &format!("Update failed:\n\n{e}")),
-                            }
-                        }
-                    });
-                }
-                c @ ("host_on" | "host_off") => {
-                    let on = c == "host_on";
-                    eprintln!("[cmd] 🎛 coin door: host {}", if on { "ON" } else { "off" });
-                    if on {
-                        match host::host_enable() {
-                            Ok(()) => {
-                                host::HOST_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
-                                prefs::save_host_mode(true);
-                                updater::toast("Hosting enabled", "This machine is now a host node. Don't play on it while hosting is on.");
-                            }
-                            Err(e) => {
-                                eprintln!("[cmd] host enable refused: {e}");
-                                updater::toast("Hosting not enabled", &e);
-                            }
-                        }
-                    } else {
-                        host::HOST_MODE.store(false, std::sync::atomic::Ordering::Relaxed);
-                        prefs::save_host_mode(false);
-                        host::host_disable();
-                    }
-                }
-                other if !other.is_empty() => eprintln!("[cmd] 🎛 unknown coin door command: {other:?}"),
-                _ => {}
-            }
-        }
-    });
+    // "Pause reporting" is session-only (resets to unpaused each launch) — the same behaviour shipped in 0.3.29.
+    // The tray menu is in-process, so every persisted pref change (skins / host / autostart) is applied by the
+    // menu handler itself — it sets the atomic + writes prefs.json directly. There is no separate settings
+    // process to watch for, so the 0.3.30 Coin Door's prefs_reload + agent_cmd file channel is gone.
 
     // "Host lobbies (this machine)" reflects the LIVE systemd --user service, not a stored flag: reconcile
     // HOST_MODE from the daemon's own `status` so a host enabled in a prior session comes up ON here (and the

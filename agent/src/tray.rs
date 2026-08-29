@@ -28,17 +28,11 @@
 
 use crate::{autostart, config, host, painter, prefs, reader, updater};
 use muda::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
-use std::sync::atomic::{AtomicBool, Ordering};
-
-// 🎛 GUI→agent command signal: the Coin Door (a separate process) writes runtime_dir()/agent_cmd
-// ("quit" / "check_update" / "host_on" / "host_off"); main.rs's watcher dispatches. QUIT must be
-// honored by THIS event loop (it owns the tray + control flow), so the watcher just flips this and
-// the 1s tick exits cleanly (drops the tray icon). The other commands act off-thread in the watcher.
-pub static CMD_QUIT: AtomicBool = AtomicBool::new(false);
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
-use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 /// Events funneled into the tao loop from the tray + menu global handlers.
 enum UserEvent {
@@ -169,7 +163,6 @@ mod icon_tests {
 struct MenuHandles {
     // Clickable / checkable item IDs (matched against incoming MenuEvents).
     open_id: MenuId,
-    settings_id: MenuId, // 🎛 the Coin Door
     apply_skins_id: MenuId,
     pause_id: MenuId,
     host_id: MenuId,
@@ -223,7 +216,6 @@ fn build_menu() -> (Menu, MenuHandles) {
     let sep1 = PredefinedMenuItem::separator();
 
     let open = MenuItem::new("Open Retro Receipts", true, None);
-    let settings_item = MenuItem::new("Settings…", true, None); // 🎛 spawns `rr-agent --settings` (the Coin Door)
     // Initial check states read the flags main.rs already restored (skins) / the process default (pause).
     let apply_skins = CheckMenuItem::new(
         // "Skin sync" by name (Tris 2026-08-25): stats-only users must be able to FIND the off switch.
@@ -265,7 +257,6 @@ fn build_menu() -> (Menu, MenuHandles) {
         &host_indicator,
         &sep1,
         &open,
-        &settings_item,
         &apply_skins,
         &pause,
         &host_toggle,
@@ -280,7 +271,6 @@ fn build_menu() -> (Menu, MenuHandles) {
 
     let handles = MenuHandles {
         open_id: open.id().clone(),
-        settings_id: settings_item.id().clone(),
         apply_skins_id: apply_skins.id().clone(),
         pause_id: pause.id().clone(),
         host_id: host_toggle.id().clone(),
@@ -370,7 +360,9 @@ pub fn run() -> ! {
         match event {
             Event::NewEvents(StartCause::Init) => {
                 let mut builder = TrayIconBuilder::new()
-                    .with_tooltip(format!("RR v{}", config::VERSION));
+                    .with_tooltip(format!("Retro Receipts v{} — click for the menu", config::VERSION));
+                // The native tray menu is the agent's ONLY UI, on every platform (Tris 2026-08-29): all
+                // stats/rank live in the PWA; the menu carries just live status + the local-only controls.
                 if let Some(m) = menu.take() {
                     builder = builder.with_menu(Box::new(m));
                 }
@@ -390,13 +382,6 @@ pub fn run() -> ! {
 
             // 1s timer tick (from WaitUntil above) — refresh the status + identity rows from the reader.
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-                // 🎛 Coin Door asked us to quit (via agent_cmd → main.rs watcher → CMD_QUIT). Drop the
-                // tray first so the icon vanishes immediately, then exit — same clean path as the menu Quit.
-                if CMD_QUIT.load(Ordering::Relaxed) {
-                    tray.take();
-                    *control_flow = ControlFlow::Exit;
-                    return;
-                }
                 refresh_dynamic(&handles, &tray, updates_busy_until);
             }
 
@@ -408,14 +393,6 @@ pub fn run() -> ! {
                 } else if ev.id == handles.open_id {
                     if let Err(e) = open::that_detached(config::WEB_APP) {
                         eprintln!("[tray] failed to open {}: {e}", config::WEB_APP);
-                    }
-                } else if ev.id == handles.settings_id {
-                    // 🎛 the Coin Door runs as its OWN PROCESS (tao here + winit there never share
-                    // one event loop). Reap the child on a throwaway thread — zombie lesson 2026-08-27.
-                    if let Ok(exe) = std::env::current_exe() {
-                        if let Ok(mut c) = std::process::Command::new(exe).arg("--settings").spawn() {
-                            std::thread::spawn(move || { let _ = c.wait(); });
-                        }
                     }
                 } else if ev.id == handles.apply_skins_id {
                     // muda already flipped the check state; mirror it into the painter's gate + persist the pref.
@@ -564,24 +541,9 @@ pub fn run() -> ! {
                 updates_busy_until = Some(Instant::now() + Duration::from_secs(6));
             }
 
-            Event::UserEvent(UserEvent::Tray(ev)) => {
-                // 🎛 Left-click the tray icon → open the Coin Door (Tris 2026-08-29: the GUI is the
-                // primary surface now). Fire on button RELEASE so a click isn't counted twice. Right-click
-                // still shows the native menu. (Linux/appindicator routes clicks to the menu, so this is
-                // effectively a Windows affordance — harmless where it never fires.)
-                let open_door = matches!(
-                    ev,
-                    TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. }
-                        | TrayIconEvent::DoubleClick { button: MouseButton::Left, .. }
-                );
-                if open_door {
-                    if let Ok(exe) = std::env::current_exe() {
-                        if let Ok(mut c) = std::process::Command::new(exe).arg("--settings").spawn() {
-                            std::thread::spawn(move || { let _ = c.wait(); });
-                        }
-                    }
-                }
-            }
+            // Tray-icon clicks: the OS shows the attached context menu on click (all platforms), so there is
+            // nothing to do here. The variant stays wired so the event channel exists for future use.
+            Event::UserEvent(UserEvent::Tray(_ev)) => {}
 
             _ => {}
         }
