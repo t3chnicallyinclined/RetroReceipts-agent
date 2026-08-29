@@ -2,25 +2,27 @@
 	import { agent } from '$lib/stores/agent.svelte';
 	import { api } from '$lib/config';
 
-	// 🔔 "Your desktop app is outdated" banner. Shows only when an agent IS reporting for the signed-in
-	// user AND the server says its build is behind (`update_available`, computed against LATEST_AGENT_VER).
-	// Two intensities:
-	//   • URGENT (red) — 0.1.x / 0.2.x: the legacy MetaSync generation. Its self-updater only offers what
-	//     the legacy manifest advertises, so these users stay stuck until they act (or until the 0.2.7
-	//     migration release lands). No dismiss: being a generation behind breaks receipts/money/skins.
-	//   • NORMAL (gold) — an out-of-date rr-agent. Those self-update within the hour; the banner mentions
-	//     that and offers the manual grab for the builds whose updater was broken (0.3.8-era dir move).
-	// The download link resolves from the SAME manifest the tray self-updater reads (DownloadAgent's
-	// pattern) so a renamed release asset never strands this button.
+	// 🔔 THE UPGRADE NOTICE — Tris 2026-08-28: "big and loud and BROAD".
+	// Shown to EVERY signed-in user whose desktop agent is behind the latest release, tied to the
+	// thing that visibly breaks without it: match replays. 0.3.28 shipped a broken effects/objs
+	// tape column; 0.3.29 fixes it — an out-of-date agent records replays that don't play back right.
+	//
+	// The forced full-viewport LEGACY WALL (a takeover for the retired MetaSync 0.1.x/0.2.x
+	// generation) is HELD until the truly-final tape (0.3.30 / the oracle build) so those users
+	// migrate ONCE, not onto an interim. Until then legacy users get THIS same broad banner — a loud
+	// nudge, not a lockout — pointing at the migration installer. Flip LEGACY_WALL_ENABLED to true
+	// when the final tape ships to turn the forced wall back on.
+	const LEGACY_WALL_ENABLED = false;
+
 	const WIN_URL_FALLBACK =
 		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/rr-agent.exe';
 	let winUrl = $state(WIN_URL_FALLBACK);
 
-	// LEGACY MIGRATION INSTALLER — the retired MetaSync generation gets a real INSTALLER, not the bare
-	// self-update exe: it uninstalls MetaSync, installs the new agent as a findable Windows citizen, and
-	// launches it (zero manual steps). Modern stale agents keep the bare exe (their own updater swaps it).
+	// Legacy MetaSync users get the real INSTALLER (uninstalls MetaSync, installs the agent as a
+	// findable Windows app, launches it — zero manual steps). Modern stale agents get the bare exe
+	// their own updater swaps in.
 	const MIGRATE_INSTALLER =
-		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/download/v0.3.28/RetroReceipts-Setup.exe';
+		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/download/v0.3.29/RetroReceipts-Setup.exe';
 	async function resolveWinUrl() {
 		try {
 			const res = await fetch(api('/rr/update/agent-latest.json'), { cache: 'no-store' });
@@ -34,20 +36,22 @@
 
 	const ver = $derived(agent.status?.ver ?? '');
 	const latest = $derived(agent.status?.latest ?? '');
-	// LEGACY = the retired MetaSync Tauri generation. Gate on the LAST-KNOWN agent version (not on
-	// live reporting) — closing the old app must not dodge the wall; installing the new agent clears
-	// it the moment the new build reports.
+	// LEGACY = the retired MetaSync Tauri generation (gate on last-known version, not live reporting,
+	// so closing the old app can't dodge the notice).
 	const legacy = $derived(ver.startsWith('0.1.') || ver.startsWith('0.2.'));
-	const show = $derived(!legacy && agent.reporting && agent.status?.update_available === true);
+	// BROAD: any signed-in user whose agent is behind the latest release — legacy OR a stale rr-agent.
+	const behind = $derived(agent.reporting && (legacy || agent.status?.update_available === true));
+	const showWall = $derived(LEGACY_WALL_ENABLED && legacy);
+	// Legacy → the installer; everyone else → the bare self-update exe.
+	const dl = $derived(legacy ? MIGRATE_INSTALLER : winUrl);
 	$effect(() => {
-		if (show || legacy) void resolveWinUrl();
+		if (behind || showWall) void resolveWinUrl();
 	});
 </script>
 
-<!-- ⛔ THE WALL (Tris 2026-08-27): a signed-in user whose last agent is the retired MetaSync
-     generation sees NOTHING but this — full-viewport takeover, no dismiss, one path forward.
-     It clears itself the moment a modern agent reports for this account. -->
-{#if legacy}
+<!-- ⛔ THE WALL (held): full-viewport takeover for the retired generation. Off until the final tape;
+     see LEGACY_WALL_ENABLED. Kept intact so re-enabling it is a one-line flip. -->
+{#if showWall}
 	<div class="wall" role="alertdialog" aria-modal="true" aria-label="Update required">
 		<div class="wallbox">
 			<div class="wk">RETRO RECEIPTS · REQUIRED UPDATE</div>
@@ -68,25 +72,30 @@
 	</div>
 {/if}
 
-{#if show}
-	<div class="upd" class:urgent={legacy}>
-		{#if legacy}
-			<span class="txt"
-				><b>Your desktop app is a generation behind (v{ver}).</b> MetaSync became RETRO RECEIPTS —
-				money matches, receipts and skins need the new app. Install it, then MetaSync can be
-				uninstalled.</span
-			>
-		{:else}
-			<span class="txt"
-				><b>Agent update available</b> — v{latest} (you're on v{ver}). It normally installs itself
-				within the hour; if yours hasn't, grab it here.</span
-			>
-		{/if}
-		<a class="get" href={winUrl}>⬇ GET v{latest || 'LATEST'}</a>
+<!-- 📣 BIG · LOUD · BROAD upgrade notice — every signed-in user behind the latest release. -->
+{#if behind && !showWall}
+	<div class="notice" class:legacy role="alert" aria-label="Update your desktop app">
+		<span class="nbolt" aria-hidden="true">⚠</span>
+		<div class="ncore">
+			<div class="nk">UPDATE REQUIRED{ver ? ` · YOU'RE ON v${ver}` : ''}</div>
+			<h2 class="nh">Upgrade now — your replays won't work until you do.</h2>
+			<p class="np">
+				{#if legacy}
+					Your desktop app is a generation behind. Match replays and receipts need the new
+					<b>RETRO RECEIPTS agent</b>{latest ? ` (v${latest})` : ''} — the installer swaps it in and your
+					history carries over.
+				{:else}
+					A newer agent{latest ? ` (v${latest})` : ''} fixes match replays — recordings from an older
+					build don't play back right. It self-installs within the hour; grab it now to skip the wait.
+				{/if}
+			</p>
+		</div>
+		<a class="nbtn" href={dl}>⬇ {legacy ? 'DOWNLOAD & INSTALL' : `GET v${latest || 'LATEST'}`}</a>
 	</div>
 {/if}
 
 <style>
+	/* ── held wall ─────────────────────────────────────────────────────────── */
 	.wall {
 		position: fixed;
 		inset: 0;
@@ -154,36 +163,84 @@
 		font-size: 10.5px;
 		color: var(--faint);
 	}
-	.upd {
+
+	/* ── big · loud · broad notice ─────────────────────────────────────────── */
+	.notice {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		margin: 8px 0;
-		padding: 10px 13px;
-		border: 1px solid color-mix(in srgb, var(--gold) 50%, var(--line));
-		border-radius: 11px;
-		background: var(--gold-soft);
+		gap: 18px;
+		margin: 12px 0 18px;
+		padding: 18px 22px;
+		border: 2px solid color-mix(in srgb, var(--bad, #e0483d) 60%, transparent);
+		border-left-width: 8px;
+		border-radius: 14px;
+		background:
+			radial-gradient(140% 120% at 0% 0%, color-mix(in srgb, var(--bad, #e0483d) 16%, transparent), transparent 60%),
+			var(--card);
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--bad, #e0483d) 22%, transparent), 0 10px 34px rgba(0, 0, 0, 0.35);
+		animation: notice-pulse 2.6s ease-in-out infinite;
 	}
-	.upd.urgent {
-		border-color: color-mix(in srgb, var(--bad, #c33) 55%, var(--line));
-		background: color-mix(in srgb, var(--bad, #c33) 9%, var(--panel));
+	.notice.legacy {
+		border-color: color-mix(in srgb, var(--bad, #e0483d) 80%, transparent);
 	}
-	.txt {
-		font-size: 12.5px;
-		color: var(--dim);
+	.nbolt {
+		flex: none;
+		font-size: 34px;
+		line-height: 1;
+		filter: drop-shadow(0 0 10px color-mix(in srgb, var(--bad, #e0483d) 55%, transparent));
+	}
+	.ncore {
 		min-width: 0;
+		flex: 1;
 	}
-	.txt b {
+	.nk {
+		font-family: ui-monospace, monospace;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		color: var(--bad, #e0483d);
+	}
+	.nh {
+		margin: 5px 0 7px;
+		font-size: clamp(18px, 3.4vw, 25px);
+		font-weight: 900;
+		font-style: italic;
+		line-height: 1.12;
+		color: var(--ink);
+		text-wrap: balance;
+	}
+	.np {
+		margin: 0;
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--dim);
+	}
+	.np b {
 		color: var(--ink);
 	}
-	.get {
-		font-size: 11.5px;
-		font-weight: 800;
-		white-space: nowrap;
+	.nbtn {
+		flex: none;
+		align-self: center;
 		text-decoration: none;
+		white-space: nowrap;
+		font-weight: 900;
+		font-style: italic;
+		font-size: 15px;
 		color: var(--gold-ink);
 		background: linear-gradient(180deg, #ffe084, #c98f0e);
-		border-radius: 999px;
-		padding: 7px 13px;
+		border-radius: 12px;
+		padding: 14px 22px;
+		box-shadow: 0 6px 18px color-mix(in srgb, var(--gold) 30%, transparent);
+	}
+	@keyframes notice-pulse {
+		0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--bad, #e0483d) 22%, transparent), 0 10px 34px rgba(0, 0, 0, 0.35); }
+		50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--bad, #e0483d) 45%, transparent), 0 10px 40px color-mix(in srgb, var(--bad, #e0483d) 22%, transparent); }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.notice { animation: none; }
+	}
+	@media (max-width: 560px) {
+		.notice { flex-wrap: wrap; gap: 12px; padding: 16px; }
+		.nbtn { width: 100%; text-align: center; }
 	}
 </style>
