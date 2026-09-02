@@ -149,6 +149,16 @@ const H_GFX2:                usize = 0x1a4;     // Dat_GFX2 handle (DC +0x160, +
 const H_SORT:       usize = 0x4d;
 const H_DATPAL:     usize = 0x1b8;
 const H_DEPTH:      usize = 0x12c;   // DC node+0xE8 (screen Z / 1-W numerator), +0x44 -> Steam 0x12C. f32.
+// ── TAPE v4 (2026-09-02) ──
+// ⭐ H_ANGLE = the sprite's ROTATION ANGLE, a plain u16 with 0x10000 = 360 deg (DC node+0x104, +0x44).
+// SH4 bank03 loc_8c03481c: gated by `!= 0` (NOT a bit-15 flag), facing negates it, every quad
+// corner rotates rigidly about the HOTSPOT after placement. Every rotated node captured so far is
+// exactly 0x8000 (a point reflection through the origin pixel); the renderer needs the value, not a
+// flag, so it can apply the general case when the data shows one. Without it the super frames
+// render at 88.8% (v3gate falsification, 30/30 frames at 100.000% with it).
+const H_ANGLE:      usize = 0x148;
+// H_HOTSPOT = the rotation pivot, two s16 (DC node+0x134/+0x136, +0x44): P = floor(sx) + scale*hot.
+const H_HOTSPOT:    usize = 0x178;
                                      //   render-composite z-order (RENDER-ACCURACY-PROGRAM.md, sh4-re). Re-confirm at build.
 // is_effect value-test (fxprobe.py, CONFIRMED-live mechanism): B=*(u32)(blk+0x6CE8); a node is an
 // effect iff some word in H+0x180..0x1BC masked &0x1FFFFFFF lands in [B, B+0x10000). Per the 0.3.29
@@ -1333,7 +1343,10 @@ struct ObjNode { sid: u16, sx: i16, sy: i16, zx: u16, face: u8, cat: u8, owner: 
                  // native pixel. The fighter columns were always f32; the object rows were not.
                  fsx: f32, fsy: f32,
                  effect_key: u16, // low-16 of the in-bank gfx word (else gfx1&0xffff)
-                 depth: f32 }     // H+0x12C (DC node+0xE8) byte-exact z
+                 depth: f32,      // H+0x12C (DC node+0xE8) byte-exact z
+                 // ── TAPE v4 (append-only; the 44 B v3 layout is the prefix of the 50 B v4 record) ──
+                 angle: u16,      // H+0x148 rotation angle, 0x10000 = 360 deg (0 = axis-aligned)
+                 hotx: i16, hoty: i16 } // H+0x178/+0x17A rotation pivot (hotspot), s16 each
 struct GsCapture {
     frames: std::collections::BTreeMap<u32, GsRow>, // frame_counter -> row (last-write-wins, sorted)
     frame_addr: usize,                              // located guest frame counter (0 = synthetic index)
@@ -1765,6 +1778,8 @@ unsafe fn read_pal(h: &mem::Proc, ptr: u32) -> [u8; 32] {
     pal
 }
 
+const NODES_STRIDE: usize = 50;   // v4 node record: 44 B v3 prefix + 6 B tail (angle, hotx, hoty)
+
 unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flayers: &mut [u8; 6],
                        mut calib: Option<&mut Vec<Vec<u8>>>) {
     let blk = match base.checked_sub(BLK_BACK) { Some(b) => b, None => return };
@@ -1839,6 +1854,9 @@ unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flaye
                 flash: u16le(&buf, H_HITFLASH),
                 glow: buf[H_SUPERGLOW],
                 fsx: lef32(&buf, H_SCREEN_X), fsy: lef32(&buf, H_SCREEN_Y),
+                // ── v4 ──
+                angle: u16le(&buf, H_ANGLE),
+                hotx: u16le(&buf, H_HOTSPOT) as i16, hoty: u16le(&buf, H_HOTSPOT + 2) as i16,
             });
             // 0.3.29 calibration: keep this drawn node's raw prefix (cat = prefix[H_CATEGORY]) for offline derivation.
             if let Some(cal) = calib.as_mut() { cal.push(buf[..CALIB_PREFIX_LEN].to_vec()); }
@@ -2095,7 +2113,14 @@ fn start_gamestate_capture() {
                 if wipe_since.map_or(false, |t| t.elapsed().as_millis() > 600) { why = "team-wiped"; break; }  // a team wiped → game over
                 if last_new.elapsed().as_millis() > 2500 { why = "counter-stalled"; break; }   // frame counter froze → moved on
                 if !unsafe { array_valid(h, base) } { why = "array-invalid"; break; }          // array relocated/gone
-                std::thread::sleep(std::time::Duration::from_millis(3));                        // ~gentle fast poll, dedup by frame
+                // ⭐ v4 EDGE-TRIGGERED SAMPLING. The walker writes the screen coords (+0x124/+0x128)
+                // DURING the render, so a read at a random phase of the 16.7 ms frame lands before or
+                // after that write at random -- that is the "one-frame stale placement" wobble in every
+                // tape. Poll the 4-byte clock as tightly as the OS timer allows and read the draw list
+                // the moment it ticks: the phase becomes DETERMINISTIC (and is measured from the tape:
+                // fsx against px(N) vs px(N-1)). Cost: one 4 B RPM per poll. A synthetic clock keeps
+                // the old cadence -- there is nothing to trigger on.
+                std::thread::sleep(std::time::Duration::from_micros(if fc.is_some() { 500 } else { 3000 }));
             }
             GS_IN_MATCH.store(false, SeqCst);  // fight over → the uploader may drain the spool again
             // 0.3.24 tape-quality signal: GGPO's load_game_state counter. >0 means the netcode rewound during
@@ -2282,6 +2307,10 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
                 b.extend_from_slice(&nd.depth.to_le_bytes());
                 b.extend_from_slice(&nd.gfx1.to_le_bytes());
                 b.extend_from_slice(&nd.gfx2.to_le_bytes());
+                // v4 tail (6 B): consumers read `nodes_stride` and must accept 44 (v3) and 50 (v4).
+                b.extend_from_slice(&nd.angle.to_le_bytes());
+                b.extend_from_slice(&nd.hotx.to_le_bytes());
+                b.extend_from_slice(&nd.hoty.to_le_bytes());
             }
         }
         b
@@ -2350,7 +2379,9 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         // The consumer paints by index -- no sort key to apply, no layer direction to choose, no
         // registration model to reproduce. `pals` is the palette table `pal` indexes into.
         "nodes": nodes_b64, "nodes_frames": gs.objs.len(), "pals": pals_b64, "pals_n": pal_tab.len(),
-        "nodes_enc": "TAPE v3 -- gzip+base64 of per-frame [u32 frame, u16 count, count x 44B {u8 kind(0=fighter,1=pool), u8 slot(0..5 or 0xFF), u8 cat(H+0x03), i8 sort(H+0x4D SIGNED -- the engine's intra-layer key), u8 layer(H+0x38), u8 face(H+0x154), u8 owner(slot|0xFF), u8 drawn(H+0x170), u16 sid(H+0x188 RAW, bit15=xform), u16 pal(index into `pals`; 0xFFFF=none), u16 flash(H+0x172), u8 glow(H+0x5C), u8 is_effect, u8 blend(0x11 add/0x45 alpha/0x00 opaque), u8 atimer(H+0x186), u16 zx(scaleX x4096, H+0x130), u16 zy(scaleY x4096, H+0x134), u16 effect_key, f32 fsx(H+0x124), f32 fsy(H+0x128), f32 depth(H+0x12C), u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4)}]. ORDER IS THE PAYLOAD: index = paint order, back to front, exactly as FUN_140620F10 walks it (layer 0..15 ascending, then array index 0..count-1).",
+        "nodes_stride": NODES_STRIDE,
+        "nodes_ver": 4,
+        "nodes_enc": "TAPE v4 -- gzip+base64 of per-frame [u32 frame, u16 count, count x `nodes_stride` B (44 = v3 prefix, +6 B v4 tail: u16 angle(H+0x148, 0x10000=360deg), i16 hotx(H+0x178), i16 hoty(H+0x17A)) {u8 kind(0=fighter,1=pool), u8 slot(0..5 or 0xFF), u8 cat(H+0x03), i8 sort(H+0x4D SIGNED -- the engine's intra-layer key), u8 layer(H+0x38), u8 face(H+0x154), u8 owner(slot|0xFF), u8 drawn(H+0x170), u16 sid(H+0x188 RAW, bit15=xform), u16 pal(index into `pals`; 0xFFFF=none), u16 flash(H+0x172), u8 glow(H+0x5C), u8 is_effect, u8 blend(0x11 add/0x45 alpha/0x00 opaque), u8 atimer(H+0x186), u16 zx(scaleX x4096, H+0x130), u16 zy(scaleY x4096, H+0x134), u16 effect_key, f32 fsx(H+0x124), f32 fsy(H+0x128), f32 depth(H+0x12C), u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4)}]. ORDER IS THE PAYLOAD: index = paint order, back to front, exactly as FUN_140620F10 walks it (layer 0..15 ascending, then array index 0..count-1).",
         "pals_enc": "gzip+base64 of pals_n x 32 B ARGB4444 (16 colours), first-seen order. Read from the node's live palette pointer at H+0x1B8 -- NOT reconstructed from costume, because the sub-row within a costume's 8-row block is still an open gap (node+0x12d/+0x12e).",
         "objs_enc": "gzip+base64 of per-frame [u32 frame, u16 count, count x 32B {u16 sid, i16 sx, i16 sy, u16 zx(scaleX x4096; /4096), u8 face, u8 cat(render/blend class), u8 owner(slot|0xFF), u8 layer, u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4), u8 is_effect(blk+0x6CE8 value-test; 3D-class), u8 blend(sprite-gpu nibble 0x11 add/0x45 alpha/0x00 opaque, computeObjectBlend), u8 drawn(H+0x170!=0), u8 atimer(H+0x186), u16 zy(scaleY x4096, H+0x134), u16 effect_key(in-bank gfx low16 else gfx1&0xffff), f32 depth(H+0x12C=DC node+0xE8)}]",
         // 0.3.29 self-describing calibration blob (raw effect-node prefixes) + offline owner ground-truth + the
