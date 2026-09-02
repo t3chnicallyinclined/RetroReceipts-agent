@@ -131,6 +131,33 @@ const H_GFX1:                usize = 0x1a0;     // Dat_GFX1 handle (DC +0x15C, +
                                                 //   effect type live. Small recompile handle, NOT a 0x0CED pointer.
 const H_GFX2:                usize = 0x1a4;     // Dat_GFX2 handle (DC +0x160, +0x44). the (GFX2,sel=sid) bank the
                                                 //   sprite-class part-assembly path keys on; shipped alongside sid.
+// 0.3.32 FULL EFFECT WIRE — all read from the SAME 0x1C0 harvest_objs buffer (no extra per-node read).
+// ⭐ TAPE v3. Both CONFIRMED in STEAM's own disassembly (senior-re-generalist, Ghidra), then
+// re-checked against a 300-frame state capture.
+//   H_SORT  = the intra-layer draw sort key. FUN_14061e560 @0x14061E61F/@0x14061E66F compares
+//             `byte ptr [reg+0x4D]` with JLE/JG -- SIGNED -- and swaps on strict >, so the sort is
+//             ASCENDING and STABLE. DC calls it node+0x31; the delta here is +0x1C, the SAME segment
+//             that maps DC +0x40 -> H_SUPERGLOW 0x5C. It is NOT the +0x44 segment.
+//             ⚠ Reading the DC offset directly gives 0 on every node -- a convincing false negative.
+//   H_DATPAL = the node's live 16-colour ARGB4444 palette pointer. This is OFF_DATPAL (0x4C) seen
+//             from the H base: the legacy fighter reads use the 0x3F24 array, and 0x3F24-0x3DB8 =
+//             0x16C, so 0x4C + 0x16C = 0x1B8. Verified on the capture: +0x1B8 is pointer-sized on
+//             4080/4080 nodes with exactly 4 distinct values (the four on-screen characters), while
+//             +0x4C holds only 8 small values (0xF801, 0x1, 0x801, ...) whose byte 1 is the sort key.
+//             ⚠ Without the 0x16C correction these two fields appear to OVERLAP, and the sort key
+//             looks like a byte inside a pointer.
+const H_SORT:       usize = 0x4d;
+const H_DATPAL:     usize = 0x1b8;
+const H_DEPTH:      usize = 0x12c;   // DC node+0xE8 (screen Z / 1-W numerator), +0x44 -> Steam 0x12C. f32.
+                                     //   render-composite z-order (RENDER-ACCURACY-PROGRAM.md, sh4-re). Re-confirm at build.
+// is_effect value-test (fxprobe.py, CONFIRMED-live mechanism): B=*(u32)(blk+0x6CE8); a node is an
+// effect iff some word in H+0x180..0x1BC masked &0x1FFFFFFF lands in [B, B+0x10000). Per the 0.3.29
+// note this primarily catches 3D-class (cat 5-13) effects; sprite-class (cat 1-4, e.g. Inferno) usually
+// read 0 (Steam handle is not a 0x0CED ptr) -- gfx1/effect_key still carry the discriminator.
+const GFX_B_OFF:    usize = 0x6ce8;  // blk-rel: B = *(u32)(blk+this)             (fxprobe.py / spec §3)
+const FX_BANK_WIN:  usize = 0x10000; // [B, B+win)                                 (fxprobe.py)
+const H_FX_SCAN_LO: usize = 0x180;   // node gfx-key scan window start
+const H_FX_SCAN_HI: usize = 0x1bc;   // last u32 wholly inside the 0x1C0 buffer (0x1bc+4=0x1c0)
 // DROPPED 0.3.29: H_GFX1_PTR=0x1a8 (=Dat_Pal) and the blk+0x6CE8 / [0x0CED0000] value-test — that model dir keys
 // ONLY 3D-class effects (cat 5-13, NaomiLib); none were captured. Sprite-class (cat 1-4) render via GFX2+sid.
 
@@ -1280,7 +1307,33 @@ struct ObjNode { sid: u16, sx: i16, sy: i16, zx: u16, face: u8, cat: u8, owner: 
                  // (cat 1-4) render like a body via the (GFX2, sel=sid) part-assembly, so BOTH the bank handle
                  // and sid are needed — sid alone is ambiguous (effect sids overlap the body sid space).
                  gfx1: u32,   // Dat_GFX1 handle (H+0x1A0) — clusters by effect type
-                 gfx2: u32 }  // Dat_GFX2 handle (H+0x1A4) — the part-assembly bank
+                 gfx2: u32,   // Dat_GFX2 handle (H+0x1A4) — the part-assembly bank
+                 // 0.3.32 FULL EFFECT WIRE (append-only):
+                 is_effect: u8,   // blk+0x6CE8 value-test (3D-class); feeds computeObjectBlend
+                 blend: u8,       // sprite-gpu blend NIBBLE {0x00 opaque, 0x45 alpha, 0x11 additive}
+                 drawn: u8,       // H+0x170 (draw gate) — 1 for every emitted node; honors future relax
+                 atimer: u8,      // H+0x186 anim-cell countdown
+                 zy: u16,         // scaleY x4096 (H+0x134)
+                 // ── TAPE v3 (append-only; the 32 B objs_enc wire above is untouched) ──
+                 // ⭐ THE ORDERING FIX. v2 SKIPPED fighters here, so the one thing the engine
+                 // actually has -- a single ordered list with fighters and objects interleaved --
+                 // was split into two and could not be put back. On a layer tie the fighter
+                 // registers FIRST, so a same-layer object lands on top of its own body: measured,
+                 // 4,722 objects share their owner's layer exactly, and 43% of nodes carry the
+                 // "draw behind" sort value. That is a cape drawing through a character.
+                 kind: u8,        // 0 = fighter slot, 1 = pool object
+                 slot: u8,        // fighter slot 0..5, or 0xFF for a pool object
+                 sort: i8,        // H+0x4D, SIGNED -- the engine's own intra-layer key
+                 pal: [u8; 32],   // the node's live 16-colour ARGB4444 palette, interned at serialise time
+                 flash: u16,      // H+0x172 hit/hurt flash word -- was fighters-only in v2
+                 glow: u8,        // H+0x5C  char_pal_effect  -- was fighters-only in v2
+                 // ⚠ FULL PRECISION. objs_enc rounds screen coords to i16 and that is not good
+                 // enough: the captured origins carry a constant sub-pixel camera offset (x .80,
+                 // y .067) and native is 0.6x of this space, so rounding shifts sampling by up to a
+                 // native pixel. The fighter columns were always f32; the object rows were not.
+                 fsx: f32, fsy: f32,
+                 effect_key: u16, // low-16 of the in-bank gfx word (else gfx1&0xffff)
+                 depth: f32 }     // H+0x12C (DC node+0xE8) byte-exact z
 struct GsCapture {
     frames: std::collections::BTreeMap<u32, GsRow>, // frame_counter -> row (last-write-wins, sorted)
     frame_addr: usize,                              // located guest frame counter (0 = synthetic index)
@@ -1696,6 +1749,22 @@ unsafe fn harvest_confirmed_in(h: &mem::Proc, exe_base: usize, next: &mut i64) {
 // THIS frame, in the engine's own layer order. Fighters are skipped (they are captured in `frames`). A pool
 // node reads through the SAME H-offsets as a fighter (node = fighter-struct prefix). Read-only RPM. `base`
 // is the fighter-array base (blk + BLK_BACK), so blk = base − BLK_BACK.
+// ⭐ v3 PALETTE: record the RESOLVED palette, not the rule that picks it. `costume c -> row block
+// 8*c` is confirmed, but the SUB-ROW (0..7) within the block is a documented gap -- a captured PL32
+// body needs sub-row 2 while every record in its assembly carries FLAGS 0x0000, and the spec marks
+// node+0x12d/+0x12e "NO -- GAP". Shipping the 32 bytes the engine is actually pointing at removes
+// the need to reproduce a rule we have not derived. Interned, because a match has a handful of
+// distinct palettes and thousands of nodes.
+unsafe fn read_pal(h: &mem::Proc, ptr: u32) -> [u8; 32] {
+    let mut pal = [0u8; 32];
+    if ptr != 0 {
+        if let Some(v) = read_at(h, ptr as usize, 32) {
+            if v.len() >= 32 { pal.copy_from_slice(&v[..32]); }
+        }
+    }
+    pal
+}
+
 unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flayers: &mut [u8; 6],
                        mut calib: Option<&mut Vec<Vec<u8>>>) {
     let blk = match base.checked_sub(BLK_BACK) { Some(b) => b, None => return };
@@ -1705,20 +1774,50 @@ unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flaye
         .map(|b| u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]) as usize);
     let rd_u64 = |buf: &[u8], o: usize| -> u64 {
         u64::from_le_bytes([buf[o], buf[o+1], buf[o+2], buf[o+3], buf[o+4], buf[o+5], buf[o+6], buf[o+7]]) };
+    // 0.3.32: effect-bank base for the per-node is_effect value-test (fxprobe.py). One read per frame.
+    let fx_b: u32 = read_at(h, blk + GFX_B_OFF, 4).filter(|b| b.len() >= 4).map(|b| le32(&b, 0)).unwrap_or(0);
     for l in 0..N_LAYERS {
         let count = (rpm_u8(h, blk + DRAWLIST_COUNTS + l).unwrap_or(0) as usize).min(DRAWLIST_MAX_PER_LAYER);
         for i in 0..count {
             let handle = match u64_at(blk + DRAWLIST_OFF + l * DRAWLIST_LAYER + i * 8) { Some(v) if v > 0x10000 => v, _ => continue };
-            if let Some(slot) = fighters.iter().position(|&f| f == handle) { flayers[slot] = l as u8; continue; }  // fighter → record its layer, skip
+            // ⭐ v3: a fighter is a node in this list like any other. v2 recorded its layer and
+            // `continue`d, which is exactly where the interleaving was lost. Emit it in place; the
+            // index it lands at IS its paint order.
+            let fslot = fighters.iter().position(|&f| f == handle);
+            if let Some(slot) = fslot { flayers[slot] = l as u8; }
             // 0.3.29: read CALIB_PREFIX_LEN (0x1C0) — covers owner (0x28), gfx1/gfx2 (0x1A0/0x1A4) AND the raw
             // calibration prefix H+0x00..0x1C0 in ONE read (was 0x1b0).
             let buf = match read_at(h, handle, CALIB_PREFIX_LEN).filter(|b| b.len() >= CALIB_PREFIX_LEN) { Some(b) => b, None => continue };
+            // ⚠ node+0x170 is checked TWICE by the engine -- once at registration (FUN_14061e560
+            // @0x14061E590) and again in the walker (FUN_140620F10). A node can be registered and
+            // then hidden before the walk, so honouring only the first would emit PHANTOMS. We read
+            // after both, which is the conservative side.
             if buf[H_DRAWN] == 0 { continue; }                                // not actually rendered this frame
             let sid = u16le(&buf, H_SPRITE_ID);
-            if sid == 0 { continue; }                                         // inactive node
+            if sid == 0 && fslot.is_none() { continue; }                      // inactive pool node
             // 0.3.29 owner (CONFIRMED live fxprobe): u64 @ H+0x28 == the owning fighter's H-base; 0xFF = ownerless global.
             let ow = rd_u64(&buf, H_OBJ_OWNER) as usize;
             let owner = fighters.iter().position(|&f| f == ow).map(|p| p as u8).unwrap_or(0xFF);
+            // 0.3.32 is_effect + effect_key: scan H+0x180..0x1BC for a word landing in [B, B+0x10000).
+            let mut is_effect: u8 = 0;
+            let mut effect_key: u16 = (le32(&buf, H_GFX1) & 0xffff) as u16;   // fallback discriminator
+            if fx_b != 0 {
+                let mut o = H_FX_SCAN_LO;
+                while o <= H_FX_SCAN_HI {
+                    let w = le32(&buf, o) & 0x1FFF_FFFF;
+                    if w >= fx_b && w < fx_b.wrapping_add(FX_BANK_WIN as u32) {
+                        is_effect = 1;
+                        effect_key = (w & 0xffff) as u16;   // DC-style dir key low-16 for _resolveFxSprite
+                        break;
+                    }
+                    o += 4;
+                }
+            }
+            // 0.3.32 per-object blend (port of maplecast computeObjectBlend) -> the sprite-gpu NIBBLE the
+            // tape-adapter/sprite-gpu consume directly (0x11 additive / 0x45 alpha / 0x00 opaque).
+            let list_type: u8 = if is_effect != 0 { 2 }
+                else { match buf[H_CATEGORY] { 0x05|0x06|0x0B|0x0C|0x0D|0x01 => 0, _ => 1 } };
+            let blend: u8 = match list_type { 2 => 0x11, 1 => 0x45, _ => 0x00 };
             out.push(ObjNode {
                 sid,
                 sx: lef32(&buf, H_SCREEN_X).round().clamp(-32768.0, 32767.0) as i16,
@@ -1727,6 +1826,19 @@ unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flaye
                 face: buf[H_FACING], cat: buf[H_CATEGORY], owner, layer: l as u8,
                 gfx1: le32(&buf, H_GFX1),                                     // Dat_GFX1 handle (H+0x1A0)
                 gfx2: le32(&buf, H_GFX2),                                     // Dat_GFX2 handle (H+0x1A4)
+                // 0.3.32 FULL EFFECT WIRE:
+                is_effect, blend, drawn: buf[H_DRAWN], atimer: buf[H_ANIM_TMR],
+                zy: (lef32(&buf, H_SCALE_Y).clamp(0.0, 15.999) * 4096.0) as u16,
+                effect_key,
+                depth: lef32(&buf, H_DEPTH),
+                // ── v3 ──
+                kind: if fslot.is_some() { 0 } else { 1 },
+                slot: fslot.map(|s| s as u8).unwrap_or(0xFF),
+                sort: buf[H_SORT] as i8,
+                pal: read_pal(h, le32(&buf, H_DATPAL)),
+                flash: u16le(&buf, H_HITFLASH),
+                glow: buf[H_SUPERGLOW],
+                fsx: lef32(&buf, H_SCREEN_X), fsy: lef32(&buf, H_SCREEN_Y),
             });
             // 0.3.29 calibration: keep this drawn node's raw prefix (cat = prefix[H_CATEGORY]) for offline derivation.
             if let Some(cal) = calib.as_mut() { cal.push(buf[..CALIB_PREFIX_LEN].to_vec()); }
@@ -2103,7 +2215,12 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
     //   u8 layer, u32 gfx1(H+0x1A0 Dat_GFX1 handle), u32 gfx2(H+0x1A4 Dat_GFX2 handle)}].
     let objs_raw: Vec<u8> = {
         let mut b = Vec::new();
-        for (f, nodes) in &gs.objs {
+        for (f, all) in &gs.objs {
+            // ⚠ BACK-COMPAT: v3 harvest now emits FIGHTERS into this list too, but objs_enc has
+            // always been "pool objects only" at a fixed 32 B stride, and existing consumers parse
+            // it positionally. Filter them back out so this wire stays byte-identical; the v3
+            // nodes_enc below is where the interleaved list lives.
+            let nodes: Vec<&ObjNode> = all.iter().filter(|n| n.kind != 0).collect();
             let n = nodes.len().min(0xffff);
             b.extend_from_slice(&f.to_le_bytes());
             b.extend_from_slice(&(n as u16).to_le_bytes());
@@ -2115,11 +2232,64 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
                 b.push(nd.face); b.push(nd.cat); b.push(nd.owner); b.push(nd.layer);
                 b.extend_from_slice(&nd.gfx1.to_le_bytes());   // 0.3.29: Dat_GFX1 handle (H+0x1A0)
                 b.extend_from_slice(&nd.gfx2.to_le_bytes());   // 0.3.29: Dat_GFX2 handle (H+0x1A4)
+                // 0.3.32 FULL EFFECT WIRE (append-only, 12 B):
+                b.push(nd.is_effect); b.push(nd.blend); b.push(nd.drawn); b.push(nd.atimer);
+                b.extend_from_slice(&nd.zy.to_le_bytes());
+                b.extend_from_slice(&nd.effect_key.to_le_bytes());
+                b.extend_from_slice(&nd.depth.to_le_bytes());
             }
         }
         b
     };
     let objs_b64 = b64_encode(&gzip_bytes(&objs_raw));
+    // ⭐ TAPE v3 — ONE ORDERED LIST. Same frames, but fighters and pool objects interleaved in the
+    // engine's own draw order, so the consumer paints by INDEX and needs no sort key, no layer
+    // direction rule and no registration model. Everything that made ordering hard is a hazard of
+    // RECONSTRUCTING the order; recording it removes all of them at once:
+    //   * registration order is fighters -> list 3 -> 4 -> 1 -> 2 (NOT 1,2,3,4), and the sort is
+    //     stable, so tie order IS draw order for ~86% of nodes;
+    //   * the writer that SETS the sort key was never located, so the key can be read but not
+    //     predicted -- a derive-client-side design would need it, this does not.
+    // objs_enc above is left byte-identical for existing consumers.
+    //   [u32 frame][u16 count][count x 44B {u8 kind, u8 slot, u8 cat, i8 sort, u8 layer, u8 face,
+    //    u8 owner, u8 drawn, u16 sid, u16 pal, u16 flash, u8 glow, u8 is_effect, u8 blend,
+    //    u8 atimer, u16 zx, u16 zy, u16 effect_key, f32 fsx, f32 fsy, f32 depth,
+    //    u32 gfx1, u32 gfx2}]
+    let mut pal_tab: Vec<[u8; 32]> = Vec::new();
+    let nodes_raw: Vec<u8> = {
+        let mut b = Vec::new();
+        for (f, nodes) in &gs.objs {
+            let n = nodes.len().min(0xffff);
+            b.extend_from_slice(&f.to_le_bytes());
+            b.extend_from_slice(&(n as u16).to_le_bytes());
+            for nd in nodes.iter().take(n) {
+                b.push(nd.kind); b.push(nd.slot); b.push(nd.cat); b.push(nd.sort as u8);
+                b.push(nd.layer); b.push(nd.face); b.push(nd.owner); b.push(nd.drawn);
+                b.extend_from_slice(&nd.sid.to_le_bytes());
+                let pi = match pal_tab.iter().position(|p| *p == nd.pal) {
+                    Some(i) => i as u16,
+                    None if pal_tab.len() < 0xFFFE => { pal_tab.push(nd.pal); (pal_tab.len() - 1) as u16 }
+                    None => 0xFFFF,
+                };
+                b.extend_from_slice(&pi.to_le_bytes());
+                b.extend_from_slice(&nd.flash.to_le_bytes());
+                b.push(nd.glow); b.push(nd.is_effect); b.push(nd.blend); b.push(nd.atimer);
+                b.extend_from_slice(&nd.zx.to_le_bytes());
+                b.extend_from_slice(&nd.zy.to_le_bytes());
+                b.extend_from_slice(&nd.effect_key.to_le_bytes());
+                b.extend_from_slice(&nd.fsx.to_le_bytes());
+                b.extend_from_slice(&nd.fsy.to_le_bytes());
+                b.extend_from_slice(&nd.depth.to_le_bytes());
+                b.extend_from_slice(&nd.gfx1.to_le_bytes());
+                b.extend_from_slice(&nd.gfx2.to_le_bytes());
+            }
+        }
+        b
+    };
+    let nodes_b64 = b64_encode(&gzip_bytes(&nodes_raw));
+    // the palette table the nodes' `pal` indexes into: 32 B of ARGB4444 each, in first-seen order.
+    let pals_raw: Vec<u8> = pal_tab.iter().flat_map(|p| p.iter().copied()).collect();
+    let pals_b64 = b64_encode(&gzip_bytes(&pals_raw));
     // 0.3.29 CALIBRATION BLOB (self-describing): first CALIB_MAX_FRAMES effect-frames, each drawn node's raw
     //   prefix H+0x00..0x1C0 (cat = prefix[0x03]). Lets gfx/scale/owner be re-derived OFFLINE from any uploaded
     //   match — no live session — and survive a build shifting an offset. Format:
@@ -2176,7 +2346,13 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         // draw list, in layer order (z = layer). owner = fighter slot 0..5 or 0xFF. The renderer draws these
         // via onOBJS (own-origin anchor) — no reconstruction. Fighters are NOT here (they are in `frames`).
         "objs": objs_b64, "objs_frames": gs.objs.len(),
-        "objs_enc": "gzip+base64 of per-frame [u32 frame, u16 count, count x 20B {u16 sid, i16 sx, i16 sy, u16 zx(scale x4096; decode /4096), u8 face, u8 cat(render/blend class), u8 owner(slot|0xFF), u8 layer, u32 gfx1(H+0x1A0 Dat_GFX1 handle), u32 gfx2(H+0x1A4 Dat_GFX2 handle)}]",
+        // ⭐ TAPE v3: the engine's own draw list, fighters and pool objects interleaved, IN ORDER.
+        // The consumer paints by index -- no sort key to apply, no layer direction to choose, no
+        // registration model to reproduce. `pals` is the palette table `pal` indexes into.
+        "nodes": nodes_b64, "nodes_frames": gs.objs.len(), "pals": pals_b64, "pals_n": pal_tab.len(),
+        "nodes_enc": "TAPE v3 -- gzip+base64 of per-frame [u32 frame, u16 count, count x 44B {u8 kind(0=fighter,1=pool), u8 slot(0..5 or 0xFF), u8 cat(H+0x03), i8 sort(H+0x4D SIGNED -- the engine's intra-layer key), u8 layer(H+0x38), u8 face(H+0x154), u8 owner(slot|0xFF), u8 drawn(H+0x170), u16 sid(H+0x188 RAW, bit15=xform), u16 pal(index into `pals`; 0xFFFF=none), u16 flash(H+0x172), u8 glow(H+0x5C), u8 is_effect, u8 blend(0x11 add/0x45 alpha/0x00 opaque), u8 atimer(H+0x186), u16 zx(scaleX x4096, H+0x130), u16 zy(scaleY x4096, H+0x134), u16 effect_key, f32 fsx(H+0x124), f32 fsy(H+0x128), f32 depth(H+0x12C), u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4)}]. ORDER IS THE PAYLOAD: index = paint order, back to front, exactly as FUN_140620F10 walks it (layer 0..15 ascending, then array index 0..count-1).",
+        "pals_enc": "gzip+base64 of pals_n x 32 B ARGB4444 (16 colours), first-seen order. Read from the node's live palette pointer at H+0x1B8 -- NOT reconstructed from costume, because the sub-row within a costume's 8-row block is still an open gap (node+0x12d/+0x12e).",
+        "objs_enc": "gzip+base64 of per-frame [u32 frame, u16 count, count x 32B {u16 sid, i16 sx, i16 sy, u16 zx(scaleX x4096; /4096), u8 face, u8 cat(render/blend class), u8 owner(slot|0xFF), u8 layer, u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4), u8 is_effect(blk+0x6CE8 value-test; 3D-class), u8 blend(sprite-gpu nibble 0x11 add/0x45 alpha/0x00 opaque, computeObjectBlend), u8 drawn(H+0x170!=0), u8 atimer(H+0x186), u16 zy(scaleY x4096, H+0x134), u16 effect_key(in-bank gfx low16 else gfx1&0xffff), f32 depth(H+0x12C=DC node+0xE8)}]",
         // 0.3.29 self-describing calibration blob (raw effect-node prefixes) + offline owner ground-truth + the
         // GGPO<->sim clock tie-point. See docs/OWNED-RENDER-BUILD-SPEC.md "0.3.29 CAPTURE DELTA".
         "calib": calib_b64, "calib_frames": gs.calib.len(),
