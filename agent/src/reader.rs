@@ -2466,7 +2466,11 @@ fn drain_gs_cache() {
         // ⭐ RR_KEEP_TAPES=1: never delete the local spool after upload. For testing a tape format
         // change you need the file on THIS machine, and the normal path deletes it the moment the
         // server has it -- which for a v3 test means the one artefact you wanted is gone.
-        let keep = std::env::var("RR_KEEP_TAPES").map(|v| v == "1").unwrap_or(false);
+        // Env var OR a marker file next to the spool: the env var only reaches the process when it
+        // is set in the SAME shell that launches the exe, and the first v3 test lost its tape to
+        // exactly that (double-click launch, var set elsewhere). A file works however it starts.
+        let keep = std::env::var("RR_KEEP_TAPES").map(|v| v == "1").unwrap_or(false)
+                || rr_state_dir().join("KEEP_TAPES").exists();
         let cleanup = || { if !keep { let _ = std::fs::remove_file(&meta_path); let _ = std::fs::remove_file(&gz_path); } };
         let meta: serde_json::Value = match std::fs::read_to_string(&meta_path).ok()
             .and_then(|t| serde_json::from_str(&t).ok()) { Some(v) => v, None => { cleanup(); continue; } };
