@@ -1347,6 +1347,73 @@ struct ObjNode { sid: u16, sx: i16, sy: i16, zx: u16, face: u8, cat: u8, owner: 
                  // ── TAPE v4 (append-only; the 44 B v3 layout is the prefix of the 50 B v4 record) ──
                  angle: u16,      // H+0x148 rotation angle, 0x10000 = 360 deg (0 = axis-aligned)
                  hotx: i16, hoty: i16 } // H+0x178/+0x17A rotation pivot (hotspot), s16 each
+// ── TAPE v5: the SYSTEM-A (world-space) class ────────────────────────────────────────────────
+// Everything the bodies needed is in `nodes` (System B, 100% against Steam). Shadows, 1P/2P
+// markers, super glows, hail chunks, the HUD and the stage props are drawn by the game's OTHER
+// render system: singly-linked lists at blk+0x2EDE8 + L*8 (next = node+0x10), walked by Steam's
+// FUN_140620740 (models) / FUN_140620cd0 (textured quads), gate node+0x170.
+//   node+0xA8 = a column-major 4x4; its row-major 3x4 transpose IS the CBWorld Steam binds for the
+//               node's draws (254/307 world-space draws byte-exact on a Hail Storm capture).
+//   node+0xA0 = a DC Tile-Accelerator polygon-list object (kept by the recompile) that lives OUTSIDE
+//               the state block: header 0x18, then records of a 0x50 header (PCW, ISP, TSP, TCW --
+//               the TCW is the texture's DC VRAM address = its stable identity) with the payload
+//               size at +0x4C, and 32-byte vertices (x y z nx ny nz u v). Those vertices equal the
+//               vertices in Steam's vertex buffer for the draw, checked live.
+//   node+0x94.. = colour (3 f32), node+0xF0 = flags (blend/billboard), node+0xE8 = 3D model ptr.
+// Per frame we ship every drawn node's matrix/colour/flags/list (96 B) and INTERN the object bytes
+// by content hash (a hail chunk's quad is the same 200 B every frame) -- see anodes_enc/aobjs_enc.
+#[derive(Clone)]
+struct ANode { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: u16 }
+const ANODES_STRIDE: usize = 96;
+const ALIST_HEADS: usize = 0x2EDE8;
+const A_NEXT: usize = 0x10; const A_COLOUR: usize = 0x94; const A_OBJ: usize = 0xA0;
+const A_MATRIX: usize = 0xA8; const A_MODEL: usize = 0xE8; const A_FLAGS: usize = 0xF0; const A_DRAWN: usize = 0x170;
+const AOBJ_MAX_BYTES: usize = 4096;      // header + records we keep per object (a quad is ~0x148)
+const AOBJ_MAX_RECS: usize = 8;
+const ANODES_CAP_PER_FRAME: usize = 96;
+
+struct ANodeRaw { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: Vec<u8> }
+
+/// Walk lists 5..=13 and collect every drawn node with a polygon-list object (or a model).
+unsafe fn harvest_anodes(h: &mem::Proc, blk: usize, out: &mut Vec<ANodeRaw>) {
+    let heads = match read_at(h, blk + ALIST_HEADS, 16 * 8) { Some(b) if b.len() >= 128 => b, _ => return };
+    for l in 5usize..=13 {
+        let mut p = u64::from_le_bytes(heads[l * 8..l * 8 + 8].try_into().unwrap()) as usize;
+        let mut n = 0;
+        while p != 0 && n < 200 {
+            let nd = match read_at(h, p, 0x180) { Some(b) if b.len() >= 0x180 => b, _ => break };
+            let obj = le64(&nd, A_OBJ) as usize;
+            let model = le64(&nd, A_MODEL);
+            if nd[A_DRAWN] != 0 && (obj != 0 || model != 0) && out.len() < ANODES_CAP_PER_FRAME {
+                let mut matrix = [0u8; 64]; matrix.copy_from_slice(&nd[A_MATRIX..A_MATRIX + 64]);
+                let colour = [lef32(&nd, A_COLOUR), lef32(&nd, A_COLOUR + 4), lef32(&nd, A_COLOUR + 8)];
+                // the object's records: 0x18 header, then (0x50 header + payload) while the PCW is negative
+                let mut ob: Vec<u8> = Vec::new();
+                if obj != 0 {
+                    if let Some(hd) = read_at(h, obj, 0x18) { ob.extend_from_slice(&hd); }
+                    let mut q = obj + 0x18;
+                    let mut k = 0;
+                    while k < AOBJ_MAX_RECS && ob.len() < AOBJ_MAX_BYTES {
+                        let rh = match read_at(h, q, 0x50) { Some(b) if b.len() >= 0x50 => b, _ => break };
+                        let pcw = le32(&rh, 0) as i32;
+                        if pcw >= 0 { break; }
+                        let size = le32(&rh, 0x4C) as usize;
+                        if size > AOBJ_MAX_BYTES { break; }
+                        ob.extend_from_slice(&rh);
+                        if size > 0 { if let Some(pl) = read_at(h, q + 0x50, size) { ob.extend_from_slice(&pl); } else { break; } }
+                        q += 0x50 + size;
+                        k += 1;
+                    }
+                }
+                out.push(ANodeRaw { list: l as u8, flags: le32(&nd, A_FLAGS), matrix, colour, model, obj: ob });
+            }
+            n += 1;
+            p = le64(&nd, A_NEXT) as usize;
+        }
+    }
+}
+fn le64(b: &[u8], o: usize) -> u64 { u64::from_le_bytes(b[o..o + 8].try_into().unwrap()) }
+
 struct GsCapture {
     frames: std::collections::BTreeMap<u32, GsRow>, // frame_counter -> row (last-write-wins, sorted)
     frame_addr: usize,                              // located guest frame counter (0 = synthetic index)
@@ -1386,12 +1453,17 @@ struct GsCapture {
     calib: Vec<(u32, Vec<Vec<u8>>)>,
     battle_blk: u64,        // 0.3.29: blk at battle start → fighter_bases = blk+0x3DB8+i*0x738 (offline owner ground-truth)
     tie_ggpo_frame: i32,    // 0.3.29: GGPO Sync::_last_confirmed_frame read at battle start (pairs with start_sim_frame)
+    // ── TAPE v5: System-A world-space nodes per frame + the interned polygon-list objects ──
+    anodes: std::collections::BTreeMap<u32, Vec<ANode>>,
+    aobjs: Vec<Vec<u8>>,
+    aobj_idx: HashMap<u64, u16>,
 }
 impl Default for GsCapture {
     fn default() -> Self { GsCapture { frames: std::collections::BTreeMap::new(), frame_addr: 0, synthetic: false, assist: [0; 6], costume: [0; 6], local_pn: 255, set_start: None, last_update: None,
                                        seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), stage_id: 0, anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, anchor_hash: 0,
                                        select_in: Vec::new(), start_sim_frame: 0, confirmed_in: std::collections::BTreeMap::new(), objs: std::collections::BTreeMap::new(),
-                                       calib: Vec::new(), battle_blk: 0, tie_ggpo_frame: -1 } }
+                                       calib: Vec::new(), battle_blk: 0, tie_ggpo_frame: -1,
+                                       anodes: std::collections::BTreeMap::new(), aobjs: Vec::new(), aobj_idx: HashMap::new() } }
 }
 fn gs_capture() -> &'static Mutex<GsCapture> {
     static S: OnceLock<Mutex<GsCapture>> = OnceLock::new();
@@ -1406,7 +1478,8 @@ struct GsSnapshot { frames: Vec<GsRow>, frame_addr: usize, synthetic: bool, assi
                     anchor_hash: u64, select_in: Vec<(u32, u32, u32)>, start_sim_frame: u32,
                     confirmed_in: std::collections::BTreeMap<u32, [u32; 2]>,
                     objs: std::collections::BTreeMap<u32, Vec<ObjNode>>,
-                    calib: Vec<(u32, Vec<Vec<u8>>)>, battle_blk: u64, tie_ggpo_frame: i32 }
+                    calib: Vec<(u32, Vec<Vec<u8>>)>, battle_blk: u64, tie_ggpo_frame: i32,
+                    anodes: std::collections::BTreeMap<u32, Vec<ANode>>, aobjs: Vec<Vec<u8>> }
 // Return the buffered game IFF it was actively updating within the last few seconds (i.e. it IS the game
 // that just ended). This guards against attaching a stale/other game's buffer to a late (pending-flush) win.
 fn gamestate_snapshot() -> Option<GsSnapshot> {
@@ -1418,7 +1491,8 @@ fn gamestate_snapshot() -> Option<GsSnapshot> {
                       anchor: c.anchor.clone(), anchor_blk: c.anchor_blk, anchor_arena: c.anchor_arena, anchor_frame: c.anchor_frame,
                       anchor_hash: c.anchor_hash, select_in: c.select_in.clone(),
                       start_sim_frame: c.start_sim_frame, confirmed_in: c.confirmed_in.clone(), objs: c.objs.clone(),
-                      calib: c.calib.clone(), battle_blk: c.battle_blk, tie_ggpo_frame: c.tie_ggpo_frame })
+                      calib: c.calib.clone(), battle_blk: c.battle_blk, tie_ggpo_frame: c.tie_ggpo_frame,
+                      anodes: c.anodes.clone(), aobjs: c.aobjs.clone() })
 }
 
 fn le32(b: &[u8], o: usize) -> u32 { u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) }
@@ -1778,6 +1852,11 @@ unsafe fn read_pal(h: &mem::Proc, ptr: u32) -> [u8; 32] {
     pal
 }
 
+#[cfg(windows)]
+struct TimerPeriodGuard;
+#[cfg(windows)]
+impl Drop for TimerPeriodGuard { fn drop(&mut self) { unsafe { windows::Win32::Media::timeEndPeriod(1); } } }
+
 const NODES_STRIDE: usize = 50;   // v4 node record: 44 B v3 prefix + 6 B tail (angle, hotx, hoty)
 
 unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flayers: &mut [u8; 6],
@@ -2027,6 +2106,14 @@ fn start_gamestate_capture() {
                 fc.map(|a| format!("0x{a:x}")).unwrap_or_else(|| "SYNTHETIC".into()), SHARE_GAMEPLAY.load(SeqCst)));
 
             // ── fast per-frame loop until the game ends ──
+            // ⚠ WINDOWS TIMER RESOLUTION. std::thread::sleep(500us) rounds up to the system timer
+            // period, which defaults to 15.6 ms unless a process asks for 1 ms -- so the "0.5 ms"
+            // edge poll of 0.3.34 was not one: the first v4 tape still showed 3.9% of moving-fighter
+            // rows carrying the PREVIOUS frame's placement (phase_check.py). Request 1 ms for the
+            // duration of the match only (it is a system-wide setting with a power cost) and give it
+            // back at the end. Linux/Proton: the request is a no-op there and nanosleep is fine.
+            #[cfg(windows)]
+            let _timer_period = { unsafe { windows::Win32::Media::timeBeginPeriod(1) }; TimerPeriodGuard };
             let mut last = u32::MAX;
             let mut synth = 0u32;
             let mut wipe_since: Option<std::time::Instant> = None;
@@ -2081,6 +2168,9 @@ fn start_gamestate_capture() {
                             let want_calib = { gs_capture().lock().unwrap().calib.len() < CALIB_MAX_FRAMES };
                             let mut calib_nodes: Vec<Vec<u8>> = Vec::new();
                             unsafe { harvest_objs(h, base, &mut objs, &mut flayers, if want_calib { Some(&mut calib_nodes) } else { None }); }
+                            // TAPE v5: the world-space class, same moment, same block
+                            let mut araw: Vec<ANodeRaw> = Vec::new();
+                            if let Some(blk) = base.checked_sub(BLK_BACK) { unsafe { harvest_anodes(h, blk, &mut araw); } }
                             row.layer = flayers;
                             {
                                 let mut c = gs_capture().lock().unwrap();
@@ -2090,6 +2180,22 @@ fn start_gamestate_capture() {
                                     c.frames.insert(frame, row.clone());
                                     if !objs.is_empty() && (c.objs.len() < GS_CAP || c.objs.contains_key(&frame)) {
                                         c.objs.insert(frame, objs);   // 0.3.27: per-frame effects, keyed like frames
+                                    }
+                                    if !araw.is_empty() && (c.anodes.len() < GS_CAP || c.anodes.contains_key(&frame)) {
+                                        // intern each object's bytes by content hash; the node keeps the index
+                                        let mut list: Vec<ANode> = Vec::with_capacity(araw.len());
+                                        for r in araw.drain(..) {
+                                            let oi = if r.obj.is_empty() { 0xFFFF } else {
+                                                let hsh = fnv1a64(&r.obj);
+                                                match c.aobj_idx.get(&hsh) {
+                                                    Some(&i) => i,
+                                                    None if c.aobjs.len() < 0xFFFE => { c.aobjs.push(r.obj); let i = (c.aobjs.len() - 1) as u16; c.aobj_idx.insert(hsh, i); i }
+                                                    None => 0xFFFF,
+                                                }
+                                            };
+                                            list.push(ANode { list: r.list, flags: r.flags, matrix: r.matrix, colour: r.colour, model: r.model, obj: oi });
+                                        }
+                                        c.anodes.insert(frame, list);
                                     }
                                     if !calib_nodes.is_empty() && c.calib.len() < CALIB_MAX_FRAMES {
                                         c.calib.push((frame, calib_nodes));   // 0.3.29: first N effect-frames, raw prefixes
@@ -2316,6 +2422,33 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         b
     };
     let nodes_b64 = b64_encode(&gzip_bytes(&nodes_raw));
+    // TAPE v5: per-frame System-A nodes (96 B each) + the interned polygon-list objects they index.
+    let anodes_raw: Vec<u8> = {
+        let mut b = Vec::new();
+        for (f, list) in &gs.anodes {
+            let n = list.len().min(0xffff);
+            b.extend_from_slice(&f.to_le_bytes());
+            b.extend_from_slice(&(n as u16).to_le_bytes());
+            for a in list.iter().take(n) {
+                b.push(a.list); b.push(0); b.push(0); b.push(0);
+                b.extend_from_slice(&a.flags.to_le_bytes());
+                b.extend_from_slice(&a.matrix);
+                for c in &a.colour { b.extend_from_slice(&c.to_le_bytes()); }
+                b.extend_from_slice(&a.obj.to_le_bytes());
+                b.extend_from_slice(&0u16.to_le_bytes());
+                b.extend_from_slice(&a.model.to_le_bytes());
+            }
+        }
+        b
+    };
+    let anodes_b64 = b64_encode(&gzip_bytes(&anodes_raw));
+    let aobjs_raw: Vec<u8> = {
+        let mut b = Vec::new();
+        b.extend_from_slice(&(gs.aobjs.len().min(0xffff) as u16).to_le_bytes());
+        for o in gs.aobjs.iter().take(0xffff) { b.extend_from_slice(&(o.len() as u32).to_le_bytes()); b.extend_from_slice(o); }
+        b
+    };
+    let aobjs_b64 = b64_encode(&gzip_bytes(&aobjs_raw));
     // the palette table the nodes' `pal` indexes into: 32 B of ARGB4444 each, in first-seen order.
     let pals_raw: Vec<u8> = pal_tab.iter().flat_map(|p| p.iter().copied()).collect();
     let pals_b64 = b64_encode(&gzip_bytes(&pals_raw));
@@ -2381,6 +2514,12 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         "nodes": nodes_b64, "nodes_frames": gs.objs.len(), "pals": pals_b64, "pals_n": pal_tab.len(),
         "nodes_stride": NODES_STRIDE,
         "nodes_ver": 4,
+        // ⭐ TAPE v5: the world-space class (shadows, markers, glows, hail, HUD, stage props).
+        "tape_ver": 5,
+        "anodes": anodes_b64, "anodes_frames": gs.anodes.len(), "anodes_stride": ANODES_STRIDE,
+        "aobjs": aobjs_b64, "aobjs_n": gs.aobjs.len(),
+        "anodes_enc": "TAPE v5 -- gzip+base64 of per-frame [u32 frame, u16 count, count x 96 B {u8 list(5..13), u8 pad[3], u32 flags(node+0xF0), f32[16] matrix(node+0xA8, column-major 4x4; row-major 3x4 transpose == Steam CBWorld), f32[3] colour(node+0x94), u16 obj(index into aobjs; 0xFFFF = none), u16 pad, u64 model(node+0xE8 pointer, 0 = quad)}]. List order = the engine's; lists are drawn after the sprite walk.",
+        "aobjs_enc": "gzip+base64 of [u16 count, count x (u32 len, bytes)] -- each object = the node's DC TA polygon list read at node+0xA0: 0x18 header, then records {0x50 header: u32 PCW, ISP, TSP, TCW(texture VRAM address = stable texture id), ..., i32 payload_size @+0x4C; payload: 2 lead dwords then 32-B vertices f32 x y z nx ny nz u v}. Interned by content hash across the tape.",
         "nodes_enc": "TAPE v4 -- gzip+base64 of per-frame [u32 frame, u16 count, count x `nodes_stride` B (44 = v3 prefix, +6 B v4 tail: u16 angle(H+0x148, 0x10000=360deg), i16 hotx(H+0x178), i16 hoty(H+0x17A)) {u8 kind(0=fighter,1=pool), u8 slot(0..5 or 0xFF), u8 cat(H+0x03), i8 sort(H+0x4D SIGNED -- the engine's intra-layer key), u8 layer(H+0x38), u8 face(H+0x154), u8 owner(slot|0xFF), u8 drawn(H+0x170), u16 sid(H+0x188 RAW, bit15=xform), u16 pal(index into `pals`; 0xFFFF=none), u16 flash(H+0x172), u8 glow(H+0x5C), u8 is_effect, u8 blend(0x11 add/0x45 alpha/0x00 opaque), u8 atimer(H+0x186), u16 zx(scaleX x4096, H+0x130), u16 zy(scaleY x4096, H+0x134), u16 effect_key, f32 fsx(H+0x124), f32 fsy(H+0x128), f32 depth(H+0x12C), u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4)}]. ORDER IS THE PAYLOAD: index = paint order, back to front, exactly as FUN_140620F10 walks it (layer 0..15 ascending, then array index 0..count-1).",
         "pals_enc": "gzip+base64 of pals_n x 32 B ARGB4444 (16 colours), first-seen order. Read from the node's live palette pointer at H+0x1B8 -- NOT reconstructed from costume, because the sub-row within a costume's 8-row block is still an open gap (node+0x12d/+0x12e).",
         "objs_enc": "gzip+base64 of per-frame [u32 frame, u16 count, count x 32B {u16 sid, i16 sx, i16 sy, u16 zx(scaleX x4096; /4096), u8 face, u8 cat(render/blend class), u8 owner(slot|0xFF), u8 layer, u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4), u8 is_effect(blk+0x6CE8 value-test; 3D-class), u8 blend(sprite-gpu nibble 0x11 add/0x45 alpha/0x00 opaque, computeObjectBlend), u8 drawn(H+0x170!=0), u8 atimer(H+0x186), u16 zy(scaleY x4096, H+0x134), u16 effect_key(in-bank gfx low16 else gfx1&0xffff), f32 depth(H+0x12C=DC node+0xE8)}]",
