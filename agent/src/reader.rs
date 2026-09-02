@@ -2463,8 +2463,11 @@ fn drain_gs_cache() {
         let base = &fname[..fname.len() - 5];
         let meta_path = dir.join(&fname);
         let gz_path = dir.join(format!("{base}.json.gz"));
-        let cleanup = || { let _ = std::fs::remove_file(&meta_path); let _ = std::fs::remove_file(&gz_path); };
-
+        // ⭐ RR_KEEP_TAPES=1: never delete the local spool after upload. For testing a tape format
+        // change you need the file on THIS machine, and the normal path deletes it the moment the
+        // server has it -- which for a v3 test means the one artefact you wanted is gone.
+        let keep = std::env::var("RR_KEEP_TAPES").map(|v| v == "1").unwrap_or(false);
+        let cleanup = || { if !keep { let _ = std::fs::remove_file(&meta_path); let _ = std::fs::remove_file(&gz_path); } };
         let meta: serde_json::Value = match std::fs::read_to_string(&meta_path).ok()
             .and_then(|t| serde_json::from_str(&t).ok()) { Some(v) => v, None => { cleanup(); continue; } };
         let key = meta.get("match_key").and_then(|v| v.as_str()).unwrap_or("");
