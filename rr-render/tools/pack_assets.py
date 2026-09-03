@@ -73,6 +73,17 @@ def main():
             for tx in json.load(open(sj)).get('textures', []):
                 put('stage/' + tx['file'], os.path.join(a.stages, tx['file']))
         sdir = os.path.join(a.tcw, 'stage_%02X' % int(sid))
+        if not os.path.exists(os.path.join(sdir, 'index.json')):
+            # first tape on this stage: rip + gate its texture pages from the arc (host decode) into the library
+            rip = os.path.join(os.path.dirname(os.path.abspath(a.tcw)), 'rip_texbank.py')
+            if os.path.exists(rip):
+                import subprocess
+                print('stage %02X: no host-decoded pages yet -> rip_texbank --bank stage --stage %02X' % (int(sid), int(sid)))
+                r = subprocess.run([sys.executable, rip, '--bank', 'stage', '--stage', '%02X' % int(sid), '--out', sdir, '--gate', '--add'],
+                                   cwd=os.path.dirname(rip), env={**os.environ, 'PYTHONIOENCODING': 'utf-8'}, capture_output=True, text=True)
+                print((r.stdout or r.stderr).strip().splitlines()[-1] if (r.stdout or r.stderr).strip() else 'rip: no output')
+            else:
+                missing.append(('tcw/stage_%02X' % int(sid), rip))
         if os.path.exists(os.path.join(sdir, 'index.json')):
             put('tcw/stage_%02X/index.json' % int(sid), os.path.join(sdir, 'index.json'))
             for f in sorted(os.listdir(sdir)):
