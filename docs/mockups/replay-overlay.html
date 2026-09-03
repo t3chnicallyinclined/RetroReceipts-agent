@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Replay overlay — mockup · Retro Receipts</title>
+<title>Replay overlay (on-picture) — mockup · Retro Receipts</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Barlow+Condensed:ital,wght@1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -13,6 +13,7 @@
   --bg:#0a0c12;--panel:#12151f;--panel-2:#191d2b;--card:#161a28;--line:#272d3e;--line-soft:#1d2231;
   --ink:#eef1f8;--dim:#8a91a8;--faint:#5a6178;--gold:#ffb020;--gold-ink:#241700;--gold-soft:rgba(255,176,32,.13);
   --p1:#ff6a3d;--p2:#3fb1ff;--good:#35d07f;--live:#ff3d68;--molten:#ff5c2c;--stream:#8b6dff;--board:#0d1017;
+  --ovl-dim:#c9cedd; /* the stamp/rating ink ON the picture (4.5:1 over .65 black on white, spec §6) */
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -22,7 +23,6 @@ body{background:radial-gradient(120% 90% at 50% -10%,color-mix(in srgb,var(--gol
 h1,h2,h3,p{margin:0}
 a{color:inherit;text-decoration:none}
 .mono{font-family:'JetBrains Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
-.mark{font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900}
 .rail{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
 
 /* mockup scaffolding */
@@ -30,54 +30,65 @@ a{color:inherit;text-decoration:none}
 .note b{color:#ffb020}
 .ph{background:repeating-linear-gradient(135deg,var(--panel-2) 0 6px,#1e2333 6px 12px);border:1px dashed color-mix(in srgb,var(--faint) 55%,transparent);border-radius:6px;color:var(--faint);font:9px/1.25 'JetBrains Mono',monospace;display:grid;place-items:center;text-align:center;padding:2px;overflow:hidden}
 .ph.av{border-radius:50%;padding:0}
-.ph.pic{background:repeating-linear-gradient(135deg,#0b0d14 0 8px,#121622 8px 16px);border:1px dashed color-mix(in srgb,var(--stream) 45%,transparent);border-radius:0;font-size:11px;color:var(--dim);letter-spacing:.06em}
 .annot{color:#ffd77a;font:11px/1.35 'JetBrains Mono',monospace;background:#1b1500;border:1px dashed #6a5200;border-radius:6px;padding:4px 8px;display:inline-block;margin:6px 0}
 .wrap{max-width:1180px;margin:0 auto;padding:8px 18px 80px}
 .sec{margin-top:34px}
 .sechd{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
 .sechd h2{font-size:15px;font-weight:800}
 .sechd .mono{font-size:10.5px;color:var(--dim)}
-.frame{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000;position:relative}
-.cap{font:10.5px/1.4 'JetBrains Mono',monospace;color:var(--dim);margin-top:8px;max-width:90ch}
+.cap{font:10.5px/1.4 'JetBrains Mono',monospace;color:var(--dim);margin-top:8px;max-width:96ch}
 .cap b{color:var(--ink);font-weight:600}
+table.pt{border-collapse:collapse;font:10.5px/1.4 'JetBrains Mono',monospace;color:var(--dim);margin-top:10px}
+table.pt th,table.pt td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
+table.pt th{color:var(--faint);font-weight:600;letter-spacing:.08em;font-size:9.5px}
+table.pt td b{color:var(--ink);font-weight:600}
+.toggle{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel);margin-bottom:8px}
+.toggle button{font:inherit;font-size:11px;font-weight:700;color:var(--dim);background:transparent;border:0;border-radius:999px;padding:4px 12px;cursor:pointer}
+.toggle button.on{color:var(--ink);background:var(--panel-2)}
 
-/* ── shared overlay atoms ── */
-.plate{display:flex;align-items:center;gap:8px;min-width:0}
-.plate.r{flex-direction:row-reverse;text-align:right}
-.plate .col{display:flex;flex-direction:column;min-width:0}
-.plate.r .col{align-items:flex-end}
-.nm{font-weight:700;font-size:14px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.nm.won{color:var(--gold)}
-.sub{display:inline-flex;align-items:center;gap:6px;margin-top:1px}
-.flag{width:12px;height:9px;border-radius:2px;background:linear-gradient(180deg,#b22 0 33%,#fff 33% 66%,#22b 66%);display:inline-block}
-.tier{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;color:var(--dim)}
-.rt{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim)}
-.rk{width:14px;height:14px;display:inline-grid;place-items:center;border-radius:3px;background:linear-gradient(135deg,#9cf,#357);font-size:8px;font-weight:900;color:#08131f;text-decoration:none}
-.rk.vib{background:linear-gradient(135deg,#c9b5ff,#5b3fbf)}
-.team{display:flex;gap:3px;margin-top:5px}
-.plate.r .team,.team.r{flex-direction:row-reverse}
-.spr{width:48px;height:48px}
-.spr.s32{width:32px;height:32px}
-.spr.s16{width:16px;height:16px;border-radius:3px}
-.spr.s68{width:68px;height:68px}
-/* the credit line (SkinCredit) */
-.credits{display:flex;flex-direction:column;gap:2px;margin-top:5px;font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.04em;line-height:1.35;color:var(--dim);white-space:nowrap}
-.credits.r{align-items:flex-end;text-align:right}
-.credits .sn{color:var(--ink);font-weight:700}
-.credits .by{color:var(--stream)}
-.credits a.by{text-decoration:underline dotted;text-underline-offset:2px}
-.credits.inl{font-size:9px}
-.credits.ph8{font-size:8.5px;gap:3px}
-.credits .two{display:flex;gap:5px;align-items:flex-start}
-.credits .two .l2{display:flex;flex-direction:column;line-height:1.2}
-/* top band / meta */
-.gs{font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900;font-size:26px;line-height:1;letter-spacing:.02em}
-.gs .w{color:var(--gold)}.gs .d{opacity:.45;margin:0 4px}
-.mrail{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);margin-top:3px}
-.mode{font-size:8.5px;letter-spacing:.12em;padding:1px 6px;border-radius:5px;border:1px solid var(--line);color:var(--dim)}
-.stock{color:var(--faint);border:1px dashed var(--line);padding:0 5px;border-radius:4px;cursor:help}
-/* transport */
-.tr{display:flex;align-items:center;gap:10px;padding:0 12px;min-height:44px;background:var(--panel);border-top:1px solid var(--line-soft)}
+/* ══ THE PICTURE STAMP: 640×480, the game's own pixels (placeholder) + the HUD zones measured on frame_60 ══ */
+.stage{position:relative;width:640px;height:480px;background:repeating-linear-gradient(135deg,#0b0d14 0 8px,#121622 8px 16px);overflow:hidden;font-family:'JetBrains Mono',monospace}
+.stage .lbl{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:var(--dim);font-size:12px;letter-spacing:.08em;text-align:center;line-height:1.4}
+.hud{position:absolute;border:1px dashed rgba(255,176,32,.55);background:rgba(255,176,32,.07);color:#c9a04a;font-size:8px;letter-spacing:.06em;display:grid;place-items:center;text-align:center;line-height:1.2;padding:1px}
+.hud.nogo{border-color:rgba(255,61,104,.55);background:rgba(255,61,104,.06);color:#e07a92}
+.hud.gap{border-style:dotted;border-color:rgba(53,208,127,.5);background:rgba(53,208,127,.05);color:#5fbf8a}
+/* ── THE OVERLAY LAYER — 640×480 units, scaled with the picture (spec §2.2/§2.3) ── */
+.ovl{position:absolute;left:0;top:0;width:640px;height:480px;pointer-events:none;color:var(--ink)}
+.ovl a{pointer-events:auto}
+.plate{position:absolute;bottom:50px;display:flex;flex-direction:column;background:rgba(0,0,0,.65);border-radius:3px;padding:3px;max-width:220px}
+.plate.p1{left:8px;border-left:2px solid var(--p1)}
+.plate.p2{right:8px;border-right:2px solid var(--p2);align-items:flex-end}
+.plate.noseat{border-left:0;border-right:0}
+.plate .id{display:flex;align-items:center;gap:4px;height:20px;white-space:nowrap}
+.plate.p2 .id{flex-direction:row-reverse}
+.plate .id .nm{font:700 13px/1 Inter,sans-serif;color:var(--ink)}
+.plate .id .nm.won{color:var(--gold)}
+.plate .id .flag{width:11px;height:8px;border-radius:1px;background:linear-gradient(180deg,#b22 0 33%,#fff 33% 66%,#22b 66%);display:inline-block}
+.plate .id .rk{width:12px;height:12px;display:inline-grid;place-items:center;border-radius:2px;background:linear-gradient(135deg,#9cf,#357);font-size:7px;font-weight:900;color:#08131f}
+.plate .id .rk.vib{background:linear-gradient(135deg,#c9b5ff,#5b3fbf)}
+.plate .id .rt{font:12px/1 'JetBrains Mono',monospace;color:var(--ovl-dim)}
+.plate .id .sc{font:italic 900 18px/1 'Barlow Condensed',sans-serif;color:var(--ink);margin:0 2px 0 4px}
+.plate.p2 .id .sc{margin:0 4px 0 2px}
+.plate .id .sc.w{color:var(--gold)}
+.plate .cr{display:flex;flex-direction:column;order:-1;margin-bottom:1px}
+.plate.p2 .cr{align-items:flex-end}
+.plate .cr span{display:flex;align-items:center;gap:4px;height:17px;font:12px/1 'JetBrains Mono',monospace;color:var(--ink);white-space:nowrap}
+.plate.p2 .cr span{flex-direction:row-reverse}
+.plate .cr .spr{width:16px;height:16px;border-radius:2px;font-size:6px}
+.plate .cr b{font-weight:700}
+.plate .cr .by{color:var(--stream)}
+.plate .cr a.by{text-decoration:underline dotted;text-underline-offset:2px}
+.stamp{position:absolute;left:50%;top:56px;transform:translateX(-50%);background:rgba(0,0,0,.65);border-radius:3px;padding:2px 4px;display:flex;flex-direction:column;align-items:center;max-width:104px}
+.stamp span{font:12px/14px 'JetBrains Mono',monospace;color:var(--ovl-dim);white-space:nowrap;letter-spacing:0}
+.stamp span.money{color:var(--gold)}
+.stamp span.stock{color:var(--faint);border-top:1px dotted var(--faint)}
+.saved{position:absolute;left:378px;top:58px;height:12px;padding:0 5px;border-radius:3px;background:var(--gold);color:var(--gold-ink);font:700 9px/12px 'JetBrains Mono',monospace;letter-spacing:.1em}
+.wm{position:absolute;left:50%;top:437px;transform:translateX(-50%);height:12px;padding:0 6px;border-radius:2px;background:rgba(0,0,0,.5);color:rgba(255,255,255,.7);font:11px/12px 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.wm .sep{opacity:.5;margin:0 3px}
+/* minimal state: no credits, no stamp */
+.stage.min .plate .cr,.stage.min .stamp,.stage.min .saved{display:none}
+/* transport HUD (fullscreen only) */
+.thud{position:absolute;left:0;right:0;bottom:0;height:56px;background:rgba(0,0,0,.6);display:flex;align-items:center;gap:10px;padding:0 12px;color:#fff;font-family:Inter,sans-serif}
 .btn{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);font-size:12px;color:var(--ink);flex:none}
 .btn.play{background:linear-gradient(180deg,#ffe084,#c98f0e);color:var(--gold-ink);border-color:transparent;font-weight:900}
 .scrub{flex:1;height:6px;border-radius:99px;background:linear-gradient(90deg,var(--stream) 36%,var(--panel-2) 36%);position:relative;min-width:60px}
@@ -86,74 +97,35 @@ a{color:inherit;text-decoration:none}
 .scrub.seek::after{left:62%}
 .ro{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);white-space:nowrap}
 .ro b{color:var(--ink);font-weight:600}
+.thud .ro,.thud .ro b{color:#fff}
 .spd{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--panel-2)}
-.wm{display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 12px 6px;background:var(--panel);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
-.wm .sep{opacity:.5}
-.wm.bare{background:transparent;color:color-mix(in srgb,#fff 45%,transparent)}
-.pillnote{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;color:#fff;background:rgba(0,0,0,.6);border-radius:6px;padding:3px 8px}
 
-/* ── 1. inline card ── */
+/* frames */
+.frame{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000;position:relative}
+.scaled{transform-origin:0 0}
+/* 1. inline card */
 .emb{width:680px;max-width:100%;border:1px solid color-mix(in srgb,var(--stream) 30%,var(--line));border-radius:12px;overflow:hidden;background:var(--board)}
-.ctop{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:start;gap:12px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line-soft);min-height:56px}
-.ctop .side{display:flex;flex-direction:column;min-width:0}
-.ctop .side.r{align-items:flex-end}
-.ctop .mid{text-align:center;padding-top:4px}
-.emb .picbox{width:640px;max-width:100%;margin:0 auto;aspect-ratio:4/3;background:#000;display:grid}
-
-/* ── 2. fullscreen 16:9 (1920×1080 at 0.5) ── */
-.fs{width:960px;height:540px;background:#000;display:grid;grid-template-columns:160px 640px 160px;grid-template-rows:30px 480px 30px;grid-template-areas:'tl top tr' 'a pic b' 'bl bot br';position:relative}
-.fs .top{grid-area:top;display:flex;align-items:center;justify-content:center;gap:14px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:color-mix(in srgb,#fff 55%,transparent)}
-.fs .top .gs{font-size:20px;color:#fff}
-.fs .bot{grid-area:bot;display:flex;align-items:center;justify-content:center}
-.fs .pil{padding:12px 10px;display:flex;flex-direction:column;min-width:0}
-.fs .pil.a{grid-area:a}.fs .pil.b{grid-area:b;align-items:flex-end}
-.fs .picwrap{grid-area:pic;position:relative}
-.fs .hud{position:absolute;left:0;right:0;bottom:0;height:56px;background:rgba(0,0,0,.6);display:flex;align-items:center;gap:10px;padding:0 12px;color:#fff;border:0}
-.fs .hud .ro,.fs .hud .ro b{color:#fff}
-.fs .badge{position:absolute;top:8px;left:50%;transform:translateX(-50%)}
-
-/* ── 3. phone landscape 844×390 (1:1) ── */
-.phl{width:844px;height:390px;background:#000;display:grid;grid-template-columns:162px 520px 162px;grid-template-areas:'a pic b';position:relative}
-.phl .pil{padding:10px 8px;display:flex;flex-direction:column;min-width:0}
-.phl .pil.a{grid-area:a}.phl .pil.b{grid-area:b;align-items:flex-end}
-.phl .picwrap{grid-area:pic;position:relative}
-.phl .tag{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;min-width:0}
-.phl .tag .nm{font-size:13px}
-.phl .pil.b .tag{flex-direction:row-reverse}
-.phl .gsm{font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900;font-size:18px;color:#fff;line-height:1;margin-bottom:6px}
-.phl .hud{position:absolute;left:0;right:0;bottom:0;height:48px;background:rgba(0,0,0,.6);display:flex;align-items:center;gap:8px;padding:0 8px;color:#fff}
-.phl .hud .btn{width:36px;height:36px}
-.phl .wmv{margin-top:auto;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:color-mix(in srgb,#fff 45%,transparent);text-align:right;white-space:nowrap}
-
-/* ── 4. phone portrait 390×844 (at 0.8) ── */
-.php{width:390px;height:844px;background:#000;display:grid;grid-template-rows:1fr auto 1fr;grid-template-areas:'a' 'pic' 'b';transform:scale(.8);transform-origin:top left;margin-bottom:-169px}
-.php .band{padding:12px;display:flex;flex-direction:column;gap:8px;justify-content:flex-end}
-.php .band.b{justify-content:flex-start;grid-area:b}
-.php .band.a{grid-area:a}
-.php .plates{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
-.php .plates .gs{font-size:22px;color:#fff}
-.php .crow{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.04em;color:var(--dim);line-height:1.35}
-.php .crow .r{text-align:right}
-.php .crow .sn{color:var(--ink);font-weight:700}.php .crow .by{color:var(--stream)}
-.php .picwrap{grid-area:pic;width:390px;height:292px}
+.metarow{display:flex;align-items:center;justify-content:center;gap:10px;height:28px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line-soft);font:9px/1 'JetBrains Mono',monospace;letter-spacing:.1em;color:var(--faint)}
+.metarow .mode{font-size:8.5px;padding:1px 6px;border-radius:5px;border:1px solid var(--line);color:var(--dim)}
+.metarow .acts{margin-left:auto;display:flex;gap:10px;color:var(--dim)}
+.tr{display:flex;align-items:center;gap:10px;padding:0 12px;min-height:44px;background:var(--panel);border-top:1px solid var(--line-soft)}
+.picbox{width:640px;max-width:100%;margin:0 auto;background:#000}
+/* 2. fullscreen 1920×1080 at ½ → 960×540; picture 2× = 1280×960 → 640×480 shown; k shown = 1 */
+.fs{width:960px;height:540px;background:#000;position:relative}
+.fs .stage{position:absolute;left:160px;top:30px}
+/* 3. phone landscape 844×390 (1:1): picture 520×390 → k .8125 */
+.phl{width:844px;height:390px;background:#000;position:relative}
+.phl .stage{position:absolute;left:162px;top:0;transform:scale(.8125)}
+/* 4. phone portrait 390×844 shown at .8: picture 390×292.5 → k .609 */
+.php{width:390px;height:844px;background:#000;position:relative;transform:scale(.8);transform-origin:0 0;margin-bottom:-169px}
+.php .stage{position:absolute;left:0;top:276px;transform:scale(.609)}
+.php .band{position:absolute;left:0;right:0;padding:12px;display:flex;flex-direction:column;gap:8px}
+.php .band.b{top:570px}
 .php .tr{background:transparent;border:0;padding:0}
-.php .tr .scrub{height:6px}
-
-/* ── 5. poster 1200×630 (at 0.6) ── */
-.poster{width:1200px;height:630px;background:#000;display:grid;grid-template-columns:280px 640px 280px;grid-template-rows:75px 480px 75px;grid-template-areas:'tl top tr' 'a pic b' 'bl bot br';transform:scale(.6);transform-origin:top left;margin-bottom:-252px}
-.poster .top{grid-area:top;display:flex;align-items:center;justify-content:center;gap:22px;font-family:'JetBrains Mono',monospace;font-size:18px;letter-spacing:.1em;color:color-mix(in srgb,#fff 60%,transparent)}
-.poster .top .gs{font-size:44px;color:#fff}
-.poster .bot{grid-area:bot;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px;letter-spacing:.16em;text-transform:uppercase;color:color-mix(in srgb,#fff 50%,transparent);gap:12px}
-.poster .pil{padding:28px 22px;display:flex;flex-direction:column;min-width:0}
-.poster .pil.a{grid-area:a}.poster .pil.b{grid-area:b;align-items:flex-end}
-.poster .pil .nm{font-size:26px}
-.poster .pil .rt,.poster .pil .tier{font-size:16px}
-.poster .pil .rk{width:24px;height:24px;font-size:13px}
-.poster .pil .spr{width:80px;height:80px}
-.poster .pil .credits{font-size:18px;gap:4px;margin-top:10px}
-.poster .picwrap{grid-area:pic}
-
-/* ── 6. state panels ── */
+/* 5. poster 1200×630 shown at .5: composite 1280×960 letterboxed → picture 840×630 (k 1.3125); shown at 420×315 → stage scale .656 */
+.poster{width:600px;height:315px;background:#000;position:relative}
+.poster .stage{position:absolute;left:90px;top:0;transform:scale(.65625)}
+/* state panels */
 .states{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
 .st{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--board)}
 .st .pic{aspect-ratio:4/3;position:relative;display:grid;place-items:center;background:var(--board)}
@@ -163,11 +135,10 @@ a{color:inherit;text-decoration:none}
 .st .big{font-size:26px;line-height:1}
 .st .gbtn{font-weight:800;font-size:12px;color:var(--gold-ink);background:linear-gradient(180deg,#ffe084,#c98f0e);border:0;border-radius:999px;padding:8px 14px;margin-top:6px}
 .st .ghost{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--stream);border:1px solid color-mix(in srgb,var(--stream) 45%,var(--line));border-radius:7px;padding:5px 10px;background:transparent}
-.st .lbl{padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--faint);border-top:1px solid var(--line-soft);background:var(--panel)}
+.st .l{padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;color:var(--faint);border-top:1px solid var(--line-soft);background:var(--panel)}
 .chip{display:inline-flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.12em;padding:2px 7px;border-radius:6px;border:1px solid var(--line);color:var(--faint);white-space:nowrap}
 .chip.ready{color:#fff;background:color-mix(in srgb,var(--stream) 78%,#000);border-color:var(--stream)}
 .chip.signin{color:var(--dim);border-style:dashed}
-.chip.pending{color:var(--dim);border-color:color-mix(in srgb,var(--stream) 30%,var(--line))}
 .chip.arch{color:var(--stream);border-color:color-mix(in srgb,var(--stream) 55%,var(--line));background:color-mix(in srgb,var(--stream) 10%,transparent)}
 .row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:8px;font-size:12px}
 .row .meta{margin-left:auto;display:flex;gap:8px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--faint)}
@@ -176,191 +147,136 @@ a{color:inherit;text-decoration:none}
 .mc .seat{display:flex;justify-content:space-between;font-size:12px;padding:3px 0}
 .mc .seat.w{color:var(--gold);font-weight:700}
 .prof{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px;display:flex;gap:16px;align-items:flex-start;max-width:560px}
+.pplate{display:flex;align-items:center;gap:10px}
+.pplate .col{display:flex;flex-direction:column}
+.pplate .nm{font-weight:800;font-size:18px}
+.pplate .sub{display:inline-flex;gap:6px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)}
+.pplate .team{display:flex;gap:3px;margin-top:6px}
+.pplate .team .ph{width:68px;height:68px}
+.credits{display:flex;flex-direction:column;gap:2px;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)}
+.credits .sn{color:var(--ink);font-weight:700}.credits .by{color:var(--stream)}
 .tiles{display:flex;gap:8px;margin-top:8px}
 .tile{border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel-2);min-width:90px}
-.tile b{display:block;font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900;font-size:20px;line-height:1}
+.tile b{display:block;font:italic 900 20px/1 'Barlow Condensed',sans-serif}
 .tile span{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--faint)}
 </style>
 </head>
 <body>
-<div class="note"><b>MOCKUP · REPLAY-OVERLAY-SPEC.md</b> <span>game art = labelled placeholder boxes (the real thing draws only the game's own pixels)</span> <span>P1 LEFT · P2 RIGHT = the game's HUD sides</span> <span>nothing over the picture while playing except the transport HUD, which fades in 2.5 s</span></div>
+<div class="note"><b>MOCKUP · REPLAY-OVERLAY-SPEC.md rev 2 (ON-PICTURE)</b> <span>the overlay is a 640×480 layer drawn ON the picture, scaled with it — identical in every frame</span> <span>dashed boxes = the game's OWN HUD measured on frame_60_res4_box.png (red = no-go, green = dead gap)</span> <span>the game's pixels underneath stay exact; gates read the scene target</span></div>
 <div class="wrap">
-<h1 style="font-size:22px;font-weight:900;margin-top:18px">Replay overlay · creator credit</h1>
-<p style="color:var(--dim);font-size:13px;max-width:80ch;margin-top:4px">Five frames, one overlay. Sample data: <b>Tris</b> (P1, won, wearing three custom skins — two by Ruby, one his own) vs <b>LurKMan</b> (P2, wearing one skin by Ruby). Ranked · FT3 · game 3 · Clock Tower · 1:58.</p>
+<h1 style="font-size:22px;font-weight:900;margin-top:18px">Replay overlay · on the picture · creator credit</h1>
+<p style="color:var(--dim);font-size:13px;max-width:86ch;margin-top:4px">Sample data: <b>Tris</b> (P1, won 2–1, wearing three custom skins — two by Ruby, one his own) vs <b>LurKMan</b> (P2, one skin by Ruby). Ranked · FT3 · game 3 · Clock Tower. Toggle FULL / MINIMAL to see the two states (spec §2.5).</p>
+<div class="toggle" id="tg"><button class="on" data-m="full">FULL (first 3 s · pause · hover · last 3 s)</button><button data-m="min">MINIMAL (while playing)</button></div>
+
+<!-- the stamp template: picture + HUD zones + overlay layer -->
+<template id="stampT">
+<div class="stage">
+  <div class="lbl">640 × 480 — THE GAME'S OWN PIXELS<br><span style="font-size:9px;color:var(--faint)">(WebGPU canvas, untouched by the layer)</span></div>
+  <!-- HUD zones, 640×480 units, measured (spec §2.1) -->
+  <div class="hud nogo" style="left:0;top:25px;width:42px;height:76px">P1<br>portraits</div>
+  <div class="hud nogo" style="left:46px;top:25px;width:223px;height:76px">P1 health · names · assist bars<br>x 46–269 · y 25–101</div>
+  <div class="hud nogo" style="left:304px;top:25px;width:33px;height:27px">TIMER</div>
+  <div class="hud gap" style="left:269px;top:55px;width:105px;height:46px"></div>
+  <div class="hud nogo" style="left:374px;top:25px;width:221px;height:76px">P2 health · names · assist bars<br>x 374–595 · y 25–101</div>
+  <div class="hud nogo" style="left:598px;top:25px;width:42px;height:76px">P2<br>portraits</div>
+  <div class="hud nogo" style="left:0;top:434px;width:66px;height:42px">LEVEL<br>pod</div>
+  <div class="hud nogo" style="left:57px;top:453px;width:239px;height:20px">P1 hyper bar · y 453–473</div>
+  <div class="hud gap" style="left:296px;top:453px;width:41px;height:20px">41</div>
+  <div class="hud nogo" style="left:337px;top:453px;width:259px;height:20px">P2 hyper bar</div>
+  <div class="hud nogo" style="left:574px;top:434px;width:66px;height:42px">LEVEL<br>pod</div>
+  <!-- ── THE OVERLAY LAYER ── -->
+  <div class="ovl">
+    <div class="plate p1" role="group" aria-label="Player 1: Tris">
+      <div class="cr">
+        <span><span class="ph spr">St</span><b>"NIGHTFALL"</b> by <a class="by" href="#">Ruby</a></span>
+        <span><span class="ph spr">Se</span><b>"GOLDEN AGE"</b> by <a class="by" href="#">Ruby</a></span>
+        <span><span class="ph spr">Mg</span><b>"BLACKOUT"</b></span>
+      </div>
+      <div class="id"><span class="ph av" style="width:20px;height:20px">av</span><i class="flag"></i><span class="nm won">Tris</span><a class="rk vib" href="#" title="Marvel ladder">◆</a><span class="rt">1147</span><span class="sc w">2</span></div>
+    </div>
+    <div class="plate p2" role="group" aria-label="Player 2: LurKMan">
+      <div class="cr"><span><span class="ph spr">Cb</span><b>"DUSK"</b> by <a class="by" href="#">Ruby</a></span></div>
+      <div class="id"><span class="ph av" style="width:20px;height:20px">av</span><i class="flag"></i><span class="nm">LurKMan</span><a class="rk" href="#" title="Marvel ladder">◆</a><span class="rt">1180</span><span class="sc">1</span></div>
+    </div>
+    <div class="stamp"><span>RANKED · FT3 · G3</span><span>2026-09-02 21:14</span><span>CLOCK TOWER</span></div>
+    <div class="wm"><span>RETRO RECEIPTS</span><span class="sep">·</span><a href="#">nobd.net/app/ranks</a></div>
+  </div>
+</div>
+</template>
 
 <!-- ═══════════════ 1. INLINE CARD ═══════════════ -->
 <section class="sec">
-  <div class="sechd"><h2>1 · Inline card (desktop, expanded LIVE row)</h2><span class="mono">ReplayEmbed inline — picture capped at 1× · pillars fold INTO chrome-top · credits under each plate</span></div>
+  <div class="sechd"><h2>1 · Inline card (desktop, expanded LIVE row) — 1×</h2><span class="mono">the plates moved onto the picture → chrome-top shrinks to one 28 px meta/actions row · transport unchanged</span></div>
   <div class="emb">
-    <div class="ctop">
-      <div class="side">
-        <div class="plate">
-          <span class="ph av" style="width:28px;height:28px">av</span>
-          <span class="col">
-            <span class="nm won">Tris</span>
-            <span class="sub"><i class="flag"></i><span class="tier">VIBRANIUM</span><span class="rt">1147</span><a class="rk vib" href="#" title="Marvel ladder">◆</a></span>
-          </span>
-        </div>
-        <div class="team"><span class="ph spr">Storm<br>skin</span><span class="ph spr">Sent<br>skin</span><span class="ph spr">Mag<br>stock</span></div>
-        <div class="credits inl">
-          <span>STORM · <span class="sn">"NIGHTFALL"</span> by <a class="by" href="#">Ruby</a></span>
-          <span>SENTINEL · <span class="sn">"GOLDEN AGE"</span> by <a class="by" href="#">Ruby</a></span>
-          <span>MAGNETO · <span class="sn">"BLACKOUT"</span></span>
-        </div>
-      </div>
-      <div class="mid">
-        <div class="gs"><span class="w">2</span><span class="d">–</span><span>1</span></div>
-        <div class="mrail"><span class="mode">RANKED</span><span>FT3 · GAME 3</span><span>2026-09-02 21:14</span><span>CLOCK TOWER</span><span>1:58</span></div>
-      </div>
-      <div class="side r">
-        <div class="plate r">
-          <span class="ph av" style="width:28px;height:28px">av</span>
-          <span class="col">
-            <span class="nm">LurKMan</span>
-            <span class="sub"><i class="flag"></i><span class="tier">ADAMANTIUM</span><span class="rt">1180</span><a class="rk" href="#" title="Marvel ladder">◆</a></span>
-          </span>
-        </div>
-        <div class="team r"><span class="ph spr">Cable<br>skin</span><span class="ph spr">Cyc<br>stock</span><span class="ph spr">Doom<br>stock</span></div>
-        <div class="credits inl r"><span>CABLE · <span class="sn">"DUSK"</span> by <a class="by" href="#">Ruby</a></span></div>
-      </div>
-    </div>
-    <div class="picbox"><div class="ph pic" style="height:100%">640 × 480 — THE GAME'S OWN PIXELS<br>(nothing overlays this while playing)</div></div>
+    <div class="metarow"><span class="mode">RANKED</span><span>FT3 · GAME 3</span><span>2026-09-02 21:14</span><span>CLOCK TOWER</span><span>1:58</span><span class="acts"><span>🧾 THE TAPE ›</span><span>⧉ Copy link</span><span style="color:var(--gold)">💾 Save this tape</span></span></div>
+    <div class="picbox" data-stamp></div>
     <div class="tr"><span class="btn play">⏸</span><span class="btn">«5</span><div class="scrub"></div><span class="btn">5»</span><span class="ro"><b>0:42</b> / 1:58</span><span class="spd">1×</span><span class="btn">⛶</span></div>
-    <div class="wm"><span>RETRO RECEIPTS</span><span class="sep">·</span><a href="#">nobd.net/app/ranks</a></div>
   </div>
-  <p class="cap"><b>Why:</b> the inline picture is capped at 640 px (ReplayEmbed.svelte:934-935) so there is no side room; the pillar stacks (plate → sprites → credits) sit in chrome-top's outer columns, in the same order they take in fullscreen. Magneto's "BLACKOUT" is Tris's own design → name only, no by-line (§3.2). Doom/Cyclops are stock → nothing. The winner's name is gold; the loser's is not red (charter).</p>
-  <div class="annot">variant · seats unknown (§5a): both credit stacks empty, the picture plays stock, and the meta rail gains <span class="stock" title="Seats unknown for this tape — colors are the game's own">stock colors</span> — the plates keep their 48 px skinned sprites</div>
+  <table class="pt">
+    <tr><th>#</th><th>element</th><th>anchor</th><th>x</th><th>y</th><th>w</th><th>h</th><th>fill / opacity</th><th>full</th><th>min</th></tr>
+    <tr><td>1</td><td><b>P1 plate</b> · 2 px --p1 bar · av 20 · flag · name 13 (gold = winner) · rank badge 12 → /ranks · rating 12 mono · set score 18 cond.</td><td>bottom-left, bottom y 430</td><td>8</td><td>404–430</td><td>auto ≤ 220</td><td>26</td><td>rgba(0,0,0,.65)</td><td>●</td><td>●</td></tr>
+    <tr><td>2</td><td><b>P1 credits</b> · ≤ 3 × [spr 16] "NAME" by Author · stacked above the plate, slot order top→bottom</td><td>bottom-left, grows up from y 404</td><td>8</td><td>353–404 (3) / 370 (2) / 387 (1)</td><td>= plate</td><td>17 / line</td><td>same box as the plate</td><td>●</td><td>—</td></tr>
+    <tr><td>3</td><td><b>P2 plate</b> · mirror, right-aligned, --p2 bar on the right</td><td>bottom-right, right edge x 632</td><td>632 − w</td><td>404–430</td><td>auto ≤ 220</td><td>26</td><td>rgba(0,0,0,.65)</td><td>●</td><td>●</td></tr>
+    <tr><td>4</td><td><b>P2 credits</b> · mirror</td><td>bottom-right, grows up</td><td>632 − w</td><td>as #2</td><td>= plate</td><td>17 / line</td><td>as #2</td><td>●</td><td>—</td></tr>
+    <tr><td>5</td><td><b>Record stamp</b> · RANKED · FT3 · G3 / date time / stage (+ "stock colors" when seats unknown)</td><td>top-centre under TIME, in the 105 × 46 dead gap</td><td>269–374 (centred x 320)</td><td>56–98</td><td>≤ 104</td><td>42</td><td>rgba(0,0,0,.65) · text #c9cedd</td><td>●</td><td>—</td></tr>
+    <tr><td>6</td><td><b>Watermark</b> · RETRO RECEIPTS · nobd.net/app/ranks</td><td>bottom-centre, 4 px above the hyper bars, between the pods</td><td>204–436 (centred)</td><td>437–449</td><td>≈ 232</td><td>12</td><td>rgba(0,0,0,.5) · text 70 % white</td><td>●</td><td>●</td></tr>
+    <tr><td>7</td><td><b>SAVED</b> pill (paid save)</td><td>right of the stamp</td><td>378–420</td><td>58–70</td><td>≈ 42</td><td>12</td><td>--gold / --gold-ink</td><td>●</td><td>—</td></tr>
+    <tr><td>8</td><td><b>Transport HUD</b> (fullscreen only, unchanged)</td><td>bottom edge of the picture</td><td>0</td><td>424–480</td><td>640</td><td>56</td><td>rgba(0,0,0,.6) · fades 2.5 s</td><td>poke</td><td>poke</td></tr>
+  </table>
+  <p class="cap"><b>Why these spots:</b> the plates sit in the lower thirds, ending at y 430 — 4 px above the LEVEL pods (y 434) and clear of the hyper bars (y 453). The record stamp fills the one dead gap the game's HUD leaves under the timer (x 269–374, y 55–101, between the two assist stacks). The watermark is bottom-centre <i>above</i> the bars because the gap between them is only 41 px and the shortest honest watermark at 11 px is ≈ 232 px. The score digit rides in each plate (a scorebug puts it next to the name; "2 – 1 · RANKED · FT3 · G3" would not fit the 105 px gap). Magneto's "BLACKOUT" is Tris's own design → name only, no by-line. Doom/Cyclops are stock → nothing.</p>
+  <div class="annot">seats unknown (§5a): no --p1/--p2 side bars, credits empty, the stamp gains a 4th line <span style="color:var(--faint)">stock colors</span>; the picture plays stock</div>
 </section>
 
 <!-- ═══════════════ 2. FULLSCREEN 16:9 ═══════════════ -->
 <section class="sec">
-  <div class="sechd"><h2>2 · Fullscreen 16:9 (1920×1080, shown at ½)</h2><span class="mono">picture 2× = 1280×960 → pillars 320 · letterbox bands 60 · transport = fading HUD</span></div>
+  <div class="sechd"><h2>2 · Fullscreen 16:9 (1920×1080, shown at ½)</h2><span class="mono">picture 2× → the layer scales 2× with it · pillars and bands are plain black · transport = fading HUD</span></div>
   <div class="frame" style="width:960px;max-width:100%;overflow:auto">
   <div class="fs">
-    <div class="top"><span class="mode" style="color:#bbb;border-color:#333">RANKED</span><span>FT3 · GAME 3</span><span class="gs"><span class="w">2</span><span class="d">–</span><span>1</span></span><span>2026-09-02 21:14</span><span>CLOCK TOWER</span><span>1:58</span></div>
-    <div class="pil a">
-      <div class="plate">
-        <span class="ph av" style="width:28px;height:28px">av</span>
-        <span class="col"><span class="nm won">Tris</span><span class="sub"><i class="flag"></i><span class="tier">VIBRANIUM</span><span class="rt">1147</span><a class="rk vib" href="#">◆</a></span></span>
-      </div>
-      <div class="team"><span class="ph spr">Storm<br>skin</span><span class="ph spr">Sent<br>skin</span><span class="ph spr">Mag<br>stock</span></div>
-      <div class="credits">
-        <span>STORM · <span class="sn">"NIGHTFALL"</span></span><span style="padding-left:12px">by <a class="by" href="#">Ruby</a></span>
-        <span>SENTINEL · <span class="sn">"GOLDEN AGE"</span></span><span style="padding-left:12px">by <a class="by" href="#">Ruby</a></span>
-        <span>MAGNETO · <span class="sn">"BLACKOUT"</span></span>
-      </div>
-    </div>
-    <div class="picwrap">
-      <div class="ph pic" style="height:100%">1280 × 960 (2×) — THE GAME'S OWN PIXELS</div>
-      <span class="badge pillnote" style="background:#1b1500;color:#ffd77a;border:1px dashed #6a5200">HUD below fades 2.5 s after the last tap / mouse move (§2.2)</span>
-      <div class="hud"><span class="btn play">⏸</span><span class="btn">«5</span><div class="scrub"></div><span class="btn">5»</span><span class="ro"><b>0:42</b> / 1:58</span><span class="spd">1×</span><span class="btn">✕</span></div>
-    </div>
-    <div class="pil b">
-      <div class="plate r">
-        <span class="ph av" style="width:28px;height:28px">av</span>
-        <span class="col"><span class="nm">LurKMan</span><span class="sub"><i class="flag"></i><span class="tier">ADAMANTIUM</span><span class="rt">1180</span><a class="rk" href="#">◆</a></span></span>
-      </div>
-      <div class="team r"><span class="ph spr">Cable<br>skin</span><span class="ph spr">Cyc<br>stock</span><span class="ph spr">Doom<br>stock</span></div>
-      <div class="credits r"><span>CABLE · <span class="sn">"DUSK"</span></span><span style="padding-right:12px">by <a class="by" href="#">Ruby</a></span></div>
-    </div>
-    <div class="bot"><div class="wm bare"><span>RETRO RECEIPTS</span><span class="sep">·</span><a href="#">nobd.net/app/ranks</a></div></div>
+    <div data-stamp data-hud></div>
+    <div class="annot" style="position:absolute;left:8px;top:8px">pillars 320 px + bands 60 px: plain #000 (rev 2) — nothing lives here</div>
   </div>
   </div>
-  <p class="cap"><b>Why pillars:</b> a 4:3 picture on a 16:9 screen leaves 320 px each side at integer 2× — a broadcast puts the name plates exactly there, next to the health bar of the same side. The 60 px letterbox bands take the record (top) and the watermark (bottom), centered. When the screen leaves no vertical band (1280×960, or a non-integer fit) the top band's items fold into the tops of the pillars and the watermark drops to the bottom of the right pillar, as today (ReplayEmbed.svelte:1320-1327).</p>
+  <p class="cap"><b>Why:</b> the overlay travels with the picture, so a 16:9 screen just shows more black. At 1080p every overlay pixel is 2 device pixels (names 26 px, credits 24 px); at 4K, 4. The transport HUD (bottom 56 picture px) is the only thing that still fades — it covers the plates and watermark for 2.5 s after a poke, which is also when the viewer is looking at the controls, not the names.</p>
 </section>
 
 <!-- ═══════════════ 3. PHONE LANDSCAPE ═══════════════ -->
 <section class="sec">
-  <div class="sechd"><h2>3 · Phone landscape (844×390, 1:1)</h2><span class="mono">picture fit to height 520×390 → pillars 162 · plates at tag density · credits as icon + 2 lines</span></div>
+  <div class="sechd"><h2>3 · Phone landscape (844×390, 1:1)</h2><span class="mono">picture fit to height 520×390 → k 0.81 · names 10.5 px physical · pillars 162 px plain black</span></div>
   <div class="frame" style="width:844px;max-width:100%;overflow:auto">
-  <div class="phl">
-    <div class="pil a">
-      <div class="gsm"><span style="color:var(--gold)">2</span><span style="opacity:.45;margin:0 3px">–</span>1</div>
-      <div class="tag"><span class="ph av" style="width:20px;height:20px">av</span><i class="flag"></i><span class="nm won">Tris</span></div>
-      <div class="sub" style="margin-top:2px"><span class="rt">1147</span><a class="rk vib" href="#">◆</a></div>
-      <div class="team" style="margin-top:6px"><span class="ph spr s32">St</span><span class="ph spr s32">Se</span><span class="ph spr s32">Mg</span></div>
-      <div class="credits ph8">
-        <span class="two"><span class="ph spr s16"></span><span class="l2"><span class="sn">"NIGHTFALL"</span><span>by <a class="by" href="#">Ruby</a></span></span></span>
-        <span class="two"><span class="ph spr s16"></span><span class="l2"><span class="sn">"GOLDEN AGE"</span><span>by <a class="by" href="#">Ruby</a></span></span></span>
-        <span class="two"><span class="ph spr s16"></span><span class="l2"><span class="sn">"BLACKOUT"</span></span></span>
-      </div>
-    </div>
-    <div class="picwrap">
-      <div class="ph pic" style="height:100%">520 × 390 (fit) — THE GAME'S OWN PIXELS</div>
-      <div class="hud"><span class="btn play">⏸</span><div class="scrub"></div><span class="ro"><b>0:42</b> / 1:58</span><span class="btn">✕</span></div>
-    </div>
-    <div class="pil b">
-      <div class="tag"><span class="ph av" style="width:20px;height:20px">av</span><i class="flag"></i><span class="nm">LurKMan</span></div>
-      <div class="sub" style="margin-top:2px"><a class="rk" href="#">◆</a><span class="rt">1180</span></div>
-      <div class="team r" style="margin-top:6px"><span class="ph spr s32">Cb</span><span class="ph spr s32">Cy</span><span class="ph spr s32">Dm</span></div>
-      <div class="credits ph8 r">
-        <span class="two" style="flex-direction:row-reverse"><span class="ph spr s16"></span><span class="l2" style="align-items:flex-end"><span class="sn">"DUSK"</span><span>by <a class="by" href="#">Ruby</a></span></span></span>
-      </div>
-      <div class="wmv">RETRO RECEIPTS<br>nobd.net/app/ranks</div>
-    </div>
+  <div class="phl"><div data-stamp data-hud="phone"></div></div>
   </div>
-  </div>
-  <p class="cap"><b>Why it fits:</b> 162 px pillars can't hold "STORM · "NIGHTFALL" by Ruby" on one line at a readable size, so the character is replaced by its 16 px sprite icon (§3.1 truncation order: the author is never dropped). Three credited skins = six lines ≈ 70 px + plate + sprites ≈ 130 px of 390. The score sits at the top of the LEFT pillar; date/stage move to the pillar's <code>title</code>. Transport = 48 px targets, «5/5» hidden (ReplayEmbed.svelte:1392-1395).</p>
+  <p class="cap"><b>Why it holds:</b> same geometry, 0.81×. The 13 px name becomes 10.5 px physical, the 12 px credit 9.7 px — at the floor but on it; three credited skins stack to 62 px physical in the corner. «5/5» stay hidden on phones; the HUD keeps 48 px targets (ReplayEmbed.svelte:1383-1403).</p>
 </section>
 
 <!-- ═══════════════ 4. PHONE PORTRAIT ═══════════════ -->
 <section class="sec">
-  <div class="sechd"><h2>4 · Phone portrait (390×844, shown at 0.8)</h2><span class="mono">letterbox bands · plates side by side over the picture · credits + transport + watermark under it · transport never fades here</span></div>
+  <div class="sechd"><h2>4 · Phone portrait (390×844, shown at 0.8)</h2><span class="mono">picture 390×292 → k 0.61 · below the 0.75 threshold: MINIMAL while playing, full on pause (§2.3) · transport in the bottom band never fades</span></div>
   <div style="width:312px;height:675px;overflow:hidden;border:1px solid var(--line);border-radius:12px">
   <div class="php">
-    <div class="band a">
-      <div class="plates">
-        <div class="plate"><span class="ph av" style="width:28px;height:28px">av</span><span class="col"><span class="nm won">Tris</span><span class="sub"><i class="flag"></i><span class="rt">1147</span><a class="rk vib" href="#">◆</a></span></span></div>
-        <div class="gs"><span class="w">2</span><span class="d">–</span><span>1</span></div>
-        <div class="plate r"><span class="ph av" style="width:28px;height:28px">av</span><span class="col"><span class="nm">LurKMan</span><span class="sub"><i class="flag"></i><span class="rt">1180</span><a class="rk" href="#">◆</a></span></span></div>
-      </div>
-      <div style="display:flex;justify-content:space-between"><div class="team" style="margin:0"><span class="ph spr s32">St</span><span class="ph spr s32">Se</span><span class="ph spr s32">Mg</span></div><div class="team r" style="margin:0"><span class="ph spr s32">Cb</span><span class="ph spr s32">Cy</span><span class="ph spr s32">Dm</span></div></div>
-      <div class="mrail" style="justify-content:center"><span class="mode">RANKED</span><span>FT3 · G3</span><span>21:14</span><span>CLOCK TOWER</span></div>
-    </div>
-    <div class="picwrap"><div class="ph pic" style="height:100%">390 × 292 — THE GAME'S OWN PIXELS</div></div>
+    <div data-stamp data-min></div>
     <div class="band b">
-      <div class="crow">
-        <div><span class="sn">NIGHTFALL</span> by <span class="by">Ruby</span> · <span class="sn">GOLDEN AGE</span> by <span class="by">Ruby</span> · <span class="sn">BLACKOUT</span></div>
-        <div class="r"><span class="sn">DUSK</span> by <span class="by">Ruby</span></div>
-      </div>
       <div class="tr"><span class="btn play" style="width:36px;height:36px">⏸</span><div class="scrub"></div><span class="ro"><b>0:42</b> / 1:58</span><span class="btn" style="width:36px;height:36px">✕</span></div>
-      <div class="wm bare" style="justify-content:center"><span>RETRO RECEIPTS</span><span class="sep">·</span><a href="#">nobd.net/app/ranks</a></div>
+      <div class="annot" style="margin-top:4px">📱↻ Turn your phone — the layer reads at 0.81× in landscape</div>
     </div>
   </div>
   </div>
-  <p class="cap"><b>Why one credits row per side:</b> portrait has one band for both players (§3.3 collision case) — the character is dropped (the sprites are right above), names are comma-joined, the author stays. The transport is static in the bottom band because there is no picture under it (ReplayEmbed.svelte:1357-1367). The orientation-lock path (Chrome Android) turns this into frame 3; iPhone gets the pseudo-fullscreen with a 2 s "Turn your phone" hint.</p>
+  <p class="cap"><b>Why minimal-only here:</b> at 0.61× the names are 8 px physical — below the floor. The geometry stays identical (Tris's rule) and only the timing tightens: names + watermark while playing, the full form on pause. The orientation lock (Chrome Android) and the iPhone hint move the viewer to frame 3.</p>
 </section>
 
 <!-- ═══════════════ 5. POSTER ═══════════════ -->
 <section class="sec">
-  <div class="sechd"><h2>5 · Poster still for share links (1200×630, shown at 0.6)</h2><span class="mono">same overlay baked around the KO frame · server-side later (C7, UNKNOWN owner) · interim = the OG fight card</span></div>
-  <div style="width:720px;max-width:100%;height:378px;overflow:hidden;border:1px solid var(--line);border-radius:12px">
-  <div class="poster">
-    <div class="top"><span>RANKED · FT3 · GAME 3</span><span class="gs"><span class="w">2</span><span class="d">–</span><span>1</span></span><span>2026-09-02 · CLOCK TOWER · 1:58</span></div>
-    <div class="pil a">
-      <div class="plate"><span class="ph av" style="width:48px;height:48px">av</span><span class="col"><span class="nm won">Tris</span><span class="sub"><i class="flag"></i><span class="tier">VIBRANIUM</span><span class="rt">1147</span><a class="rk vib" href="#">◆</a></span></span></div>
-      <div class="team"><span class="ph spr">Storm</span><span class="ph spr">Sent</span><span class="ph spr">Mag</span></div>
-      <div class="credits"><span>STORM · <span class="sn">"NIGHTFALL"</span> by <span class="by">Ruby</span></span><span>SENTINEL · <span class="sn">"GOLDEN AGE"</span> by <span class="by">Ruby</span></span><span>MAGNETO · <span class="sn">"BLACKOUT"</span></span></div>
-    </div>
-    <div class="picwrap"><div class="ph pic" style="height:100%;font-size:18px">640 × 480 — THE KO FRAME<br>(the game's own pixels, rendered server-side)</div></div>
-    <div class="pil b">
-      <div class="plate r"><span class="ph av" style="width:48px;height:48px">av</span><span class="col"><span class="nm">LurKMan</span><span class="sub"><i class="flag"></i><span class="tier">ADAMANTIUM</span><span class="rt">1180</span><a class="rk" href="#">◆</a></span></span></div>
-      <div class="team r"><span class="ph spr">Cable</span><span class="ph spr">Cyc</span><span class="ph spr">Doom</span></div>
-      <div class="credits r"><span>CABLE · <span class="sn">"DUSK"</span> by <span class="by">Ruby</span></span></div>
-    </div>
-    <div class="bot"><span>RETRO RECEIPTS</span><span style="opacity:.5">·</span><span>nobd.net/app/ranks</span></div>
-  </div>
-  </div>
-  <p class="cap"><b>Why 18 px floor:</b> Discord/Twitter downscale the card to ~500 px wide; the credit is the one line that must survive — it is the only place a creator's name reaches a chat embed. Frame choice: the last KO (session stats <code>deaths</code>), else N−60; never frame 0.</p>
+  <div class="sechd"><h2>5 · Poster still for share links (1200×630, shown at ½)</h2><span class="mono">the composite (scene + layer) at 2×, letterboxed: picture 840×630 · plain black sides · full state · KO frame · server-side later (C7)</span></div>
+  <div class="frame" style="width:600px;max-width:100%"><div class="poster"><div data-stamp></div></div></div>
+  <p class="cap"><b>Why 2× inside the card:</b> a 1× layer on a 1200-wide card is 12 px credit text that a chat embed downscales to ~5 px. Rendering the composite at 1280×960 and fitting it to 630 tall gives 840×630 (k 1.31): credits ≈ 16 px on the card, ≈ 7 px in a 500-wide embed — the survivable minimum. Frame = the last KO, else N−60, never frame 0. The picture region before the layer is byte-equal to the embed's readback of that frame (Phase D gate).</p>
 </section>
 
 <!-- ═══════════════ 6. STATES ═══════════════ -->
 <section class="sec">
-  <div class="sechd"><h2>6 · The unknowns from today's build (§5) — what the viewer sees</h2></div>
+  <div class="sechd"><h2>6 · The unknowns from today's build (§5) — what the viewer sees (no layer in these states)</h2></div>
   <div class="states">
-    <div class="st"><div class="pic"><div class="ov"><span class="big">📦</span><span class="h">Tape's in. Art isn't.</span><span class="s">Replays draw with the game's own art, packed from a copy of MvC2. This browser has no pack for Clock Tower · these teams.</span><button class="ghost">Pack it with Retro Receipts ›</button><span class="s" style="font-size:10px">no agent: <i>Watch on a PC with MvC2 and Retro Receipts</i></span></div></div><div class="lbl">5c · NOPACK — row keeps ▶ REPLAY; the honest state lives in the panel</div></div>
-    <div class="st"><div class="pic"><div class="ov"><span class="big">⏳</span><span class="h">Tape incoming.</span><span class="s">Pulled from the archives — usually under a minute.</span><span class="s" style="font-size:10px;margin-top:10px">after 3 min: <i>Still pulling — the archive is slow tonight.</i> + <span class="ghost" style="padding:2px 8px">Try again</span></span></div></div><div class="lbl">5d · REQUESTED — panel listens to the bus {type:'tape'} and flips itself; no queue number, no notification</div></div>
-    <div class="st"><div class="pic"><div class="ov"><span class="h">Sign in to watch the tape.</span><span class="s">Replays are for players with an account.</span><button class="gbtn">Sign in through Steam</button></div></div><div class="lbl">5e · SIGNED OUT (panel state: deep links + share pages) — on a list row the door is the chip below</div></div>
+    <div class="st"><div class="pic"><div class="ov"><span class="big">📦</span><span class="h">Tape's in. Art isn't.</span><span class="s">Replays draw with the game's own art, packed from a copy of MvC2. This browser has no pack for Clock Tower · these teams.</span><button class="ghost">Pack it with Retro Receipts ›</button><span class="s" style="font-size:10px">no agent: <i>Watch on a PC with MvC2 and Retro Receipts</i></span></div></div><div class="l">5c · NOPACK — row keeps ▶ REPLAY; the honest state lives in the panel</div></div>
+    <div class="st"><div class="pic"><div class="ov"><span class="big">⏳</span><span class="h">Tape incoming.</span><span class="s">Pulled from the archives — usually under a minute.</span><span class="s" style="font-size:10px;margin-top:10px">after 3 min: <i>Still pulling — the archive is slow tonight.</i> + <span class="ghost" style="padding:2px 8px">Try again</span></span></div></div><div class="l">5d · REQUESTED — panel listens to the bus {type:'tape'} and flips itself; no queue number, no notification</div></div>
+    <div class="st"><div class="pic"><div class="ov"><span class="h">Sign in to watch the tape.</span><span class="s">Replays are for players with an account.</span><button class="gbtn">Sign in through Steam</button></div></div><div class="l">5e · SIGNED OUT (panel state: deep links + share pages) — on a list row the door is the chip below</div></div>
   </div>
   <div style="margin-top:14px;max-width:680px">
     <div class="row"><span class="chip" style="color:var(--good);border-color:var(--good)">W</span><span>Tris</span><span class="mono" style="color:var(--gold);font-size:11px">VS</span><span>LurKMan</span><span class="chip">L</span><span class="meta"><span>RANKED</span><span>+12</span><span>21:14</span><span class="chip ready">▶ REPLAY</span></span></div>
@@ -369,12 +285,11 @@ a{color:inherit;text-decoration:none}
     <div class="row"><span class="chip" style="color:var(--good);border-color:var(--good)">W</span><span>Tris</span><span class="mono" style="color:var(--gold);font-size:11px">VS</span><span>LurKMan</span><span class="chip">L</span><span class="meta"><span>RANKED</span><span>20:31</span><span class="chip arch">📼 REQUEST REPLAY</span></span></div>
     <p class="cap">5e · the chip is the login door on rows (ReplayAffordance.svelte:194, 210); it stops propagation so it never also expands the row. On the 76 px phone meta column it reads <b>🔒 SIGN IN</b> with the full copy on <code>title</code>.</p>
   </div>
-
   <div style="margin-top:18px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
     <div style="width:680px;max-width:100%">
       <div class="tr" style="border:1px solid var(--line);border-radius:10px"><span class="btn play">▶</span><span class="btn">«5</span><div class="scrub seek"></div><span class="btn">5»</span><span class="ro"><b>0:42</b> → 1:12</span><span class="spd">1×</span><span class="btn">⛶</span></div>
       <div class="mono" style="font-size:10px;letter-spacing:.08em;color:var(--dim);padding:6px 12px">skipping ahead…</div>
-      <p class="cap">5f · SEEKING — two-tone fill: solid = served, tinted = the gap being decoded, thumb = target. Readout becomes <b>served → target</b>; no seconds estimate. In fullscreen the "skipping ahead…" pill must NOT fade with the HUD while seeking.</p>
+      <p class="cap">5f · SEEKING — two-tone fill: solid = served, tinted = the gap being decoded, thumb = target. Readout becomes <b>served → target</b>; no seconds estimate. In fullscreen the "skipping ahead…" pill must NOT fade with the HUD while seeking; the layer is in its FULL state during a seek.</p>
     </div>
     <div>
       <div class="mc"><div class="hd"><span>#12</span><span class="chip" style="color:var(--dim)">DONE 3–1</span><span class="chip ready" style="margin-left:auto">▶ REPLAY</span></div><div class="seat w"><span>Tris</span><span>3</span></div><div class="seat"><span>LurKMan</span><span>1</span></div></div>
@@ -388,12 +303,12 @@ a{color:inherit;text-decoration:none}
   <div class="sechd"><h2>7 · Credit beyond the replay (§3.5)</h2></div>
   <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
     <div class="prof">
-      <div class="plate"><span class="ph av" style="width:56px;height:56px">av</span><span class="col"><span class="nm" style="font-size:18px">Tris</span><span class="sub"><i class="flag"></i><span class="tier">VIBRANIUM</span><span class="rt">1147</span><a class="rk vib" href="#">◆</a></span><span class="team"><span class="ph spr s68">Storm</span><span class="ph spr s68">Sent</span><span class="ph spr s68">Mag</span></span>
-        <span class="credits" style="margin-top:8px"><span class="rail" style="letter-spacing:.16em">WEARING</span><span>STORM · <span class="sn">"NIGHTFALL"</span> by <a class="by" href="#">Ruby</a></span><span>SENTINEL · <span class="sn">"GOLDEN AGE"</span> by <a class="by" href="#">Ruby</a></span><span>MAGNETO · <span class="sn">"BLACKOUT"</span> · own design</span></span>
+      <div class="pplate"><span class="ph av" style="width:56px;height:56px">av</span><span class="col"><span class="nm">Tris</span><span class="sub"><i class="flag" style="width:12px;height:9px;background:linear-gradient(180deg,#b22 0 33%,#fff 33% 66%,#22b 66%);display:inline-block"></i>VIBRANIUM · 1147 ◆</span><span class="team"><span class="ph">Storm</span><span class="ph">Sent</span><span class="ph">Mag</span></span>
+        <span class="credits"><span class="rail">WEARING</span><span>STORM · <span class="sn">"NIGHTFALL"</span> by <a class="by" href="#">Ruby</a></span><span>SENTINEL · <span class="sn">"GOLDEN AGE"</span> by <a class="by" href="#">Ruby</a></span><span>MAGNETO · <span class="sn">"BLACKOUT"</span> · own design</span></span>
       </span></div>
     </div>
     <div class="prof" style="flex-direction:column">
-      <div class="plate"><span class="ph av" style="width:56px;height:56px">av</span><span class="col"><span class="nm" style="font-size:18px">Ruby</span><span class="sub"><i class="flag"></i><span class="tier">ADAMANTIUM</span><span class="rt">1201</span><a class="rk" href="#">◆</a></span></span></div>
+      <div class="pplate"><span class="ph av" style="width:56px;height:56px">av</span><span class="col"><span class="nm">Ruby</span><span class="sub">ADAMANTIUM · 1201 ◆</span></span></div>
       <div><span class="rail">SKINS</span>
         <div class="tiles"><div class="tile"><b>14</b><span>DESIGNS</span></div><div class="tile"><b>37</b><span>WORN BY</span></div><div class="tile"><b>212</b><span>IN REPLAYS</span></div></div>
         <p class="cap" style="margin-top:6px">creator's profile · counts from loadouts.json (C15); "in replays" waits for the archive's per-player index (Phase D)</p>
@@ -404,5 +319,33 @@ a{color:inherit;text-decoration:none}
 </section>
 
 </div>
+<script>
+// stamp the 640×480 picture + layer into every frame (same DOM, different scale — the point of rev 2)
+(function(){
+  const t=document.getElementById('stampT');
+  document.querySelectorAll('[data-stamp]').forEach(host=>{
+    const n=t.content.firstElementChild.cloneNode(true);
+    if(host.hasAttribute('data-min')) n.classList.add('min');
+    if(host.hasAttribute('data-hud')){
+      const h=document.createElement('div'); h.className='thud';
+      h.innerHTML = host.getAttribute('data-hud')==='phone'
+        ? '<span class="btn play" style="width:36px;height:36px">⏸</span><div class="scrub"></div><span class="ro"><b>0:42</b> / 1:58</span><span class="btn" style="width:36px;height:36px">✕</span>'
+        : '<span class="btn play">⏸</span><span class="btn">«5</span><div class="scrub"></div><span class="btn">5»</span><span class="ro"><b>0:42</b> / 1:58</span><span class="spd">1×</span><span class="btn">✕</span>';
+      n.appendChild(h);
+      const a=document.createElement('div'); a.className='annot'; a.style.cssText='position:absolute;right:8px;top:8px;margin:0';
+      a.textContent='transport HUD fades 2.5 s after the last poke (the only fading element)'; n.appendChild(a);
+    }
+    // the parent frames position/scale .stage themselves; the inline box just holds it
+    if(host.parentElement.classList.contains('fs')||host.parentElement.classList.contains('phl')||host.parentElement.classList.contains('php')||host.parentElement.classList.contains('poster')){
+      host.replaceWith(n);
+    } else host.appendChild(n);
+  });
+  document.getElementById('tg').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.querySelectorAll('#tg button').forEach(x=>x.classList.toggle('on',x===b));
+    document.querySelectorAll('.stage').forEach(s=>{ if(s.closest('.php')) return; s.classList.toggle('min',b.dataset.m==='min'); });
+  });
+})();
+</script>
 </body>
 </html>
