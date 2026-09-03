@@ -16,7 +16,7 @@ Layout (rr_render::pack::AssetPack):
     frozen/template_2574.json frozen/world_4445.json   (informational copy; the crate embeds them)
     tape.json.gz                        (--tape-copy: the tape itself, so the page can fetch it from the pack)
 """
-import argparse, glob, gzip, hashlib, json, os, shutil
+import argparse, glob, gzip, hashlib, json, os, shutil, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ATLAS = r'C:\Users\trist\projects\maplecast-flycast\web\test-atlas\chars'
