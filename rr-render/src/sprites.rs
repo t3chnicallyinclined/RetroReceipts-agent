@@ -76,16 +76,17 @@ pub struct FrameCtx {
 
 /// A queued sprite (the Python `items` tuple + its `extra` dict).
 struct Item<'a> {
-    layer: i64, at: Option<&'a Atlas>, sid: u16, tsx: f64, tsy: f64, mir: bool, kind: &'static str, cos: i64,
+    #[allow(dead_code)] layer: i64, at: Option<&'a Atlas>, sid: u16, tsx: f64, tsy: f64, mir: bool, kind: &'static str, cos: i64,
     bit15: bool, angle: u16, hot: (i16, i16), walk: i64, depth: Option<f32>, pslot: i64, pframe: u32,
 }
 
-pub struct Emitter<'a> {
-    tape: &'a Tape,
-    atlases: &'a HashMap<u8, Atlas>,
-    camera: Option<&'a CameraModel>,
-    /// the world template + assets (Python `wt`); None = no world pass (no anodes / --no-world / no camera)
-    world: Option<(&'a WorldTemplate, &'a WorldAssets)>,
+pub struct Emitter {
+    pub tape: Tape,
+    pub atlases: HashMap<u8, Atlas>,
+    pub camera: Option<CameraModel>,
+    /// the world template + assets (Python `wt`); assets None = no world pass (no anodes / --no-world / no camera)
+    pub wt: WorldTemplate,
+    world_assets: Option<WorldAssets>,
     world_state: Option<WorldState>,
     sprite_state: Map<String, Value>,
     pub opts: EmitOpts,
@@ -101,11 +102,15 @@ pub struct Emitter<'a> {
 
 fn floor_mul(v: f64, k: f64) -> f64 { v.floor() * k }
 
-impl<'a> Emitter<'a> {
-    /// `sprite_state` = the template draw dict (`tape_to_seq.template()`); `world` = (WorldTemplate, assets) when
-    /// the tape carries anodes, a camera model exists and --no-world is off (the Python `wt` condition).
-    pub fn new(tape: &'a Tape, atlases: &'a HashMap<u8, Atlas>, camera: Option<&'a CameraModel>, sprite_state: Map<String, Value>,
-               world: Option<(&'a WorldTemplate, &'a WorldAssets)>, opts: EmitOpts) -> Emitter<'a> {
+/// The Python `items` tuple before the atlas lookup (cid, sid, tsx, tsy, mir, kind, cos, bit15, angle, hot, walk, depth, pslot, layer).
+type PreItem = (u8, u16, f64, f64, bool, &'static str, i64, bool, u16, (i16, i16), i64, Option<f32>, i64, i64);
+
+impl Emitter {
+    /// `sprite_state` = the template draw dict (`tape_to_seq.template()`); `world_assets` = Some when the tape
+    /// carries anodes, a camera model exists and --no-world is off (the Python `wt` condition). The emitter OWNS
+    /// its inputs so it can live inside a wasm module (no lifetimes across the JS boundary).
+    pub fn new(tape: Tape, atlases: HashMap<u8, Atlas>, camera: Option<CameraModel>, sprite_state: Map<String, Value>,
+               wt: WorldTemplate, world_assets: Option<WorldAssets>, opts: EmitOpts) -> Emitter {
         let (mut p1, mut p2) = (tape.p1_team.clone(), tape.p2_team.clone());
         if opts.swap_teams { std::mem::swap(&mut p1, &mut p2); }
         let mut bank_slot = HashMap::new();
@@ -114,13 +119,14 @@ impl<'a> Emitter<'a> {
         }
         let known: std::collections::HashSet<u8> = bank_slot.values().copied().collect();
         let unknown_slots: Vec<u8> = (0u8..6).filter(|s| !known.contains(s)).collect();
-        let world = if !tape.anodes.is_empty() && !opts.no_world && camera.is_some() { world } else { None };
-        let world_state = world.map(|(_, a)| WorldState::new(a, tape));
-        Emitter { tape, atlases, camera, world, world_state, sprite_state, opts, p1, p2, nodes: tape.nodes.clone(), last_nodes: None,
+        let world_assets = if !tape.anodes.is_empty() && !opts.no_world && camera.is_some() { world_assets } else { None };
+        let world_state = world_assets.as_ref().map(|a| WorldState::new(a, &tape));
+        let nodes = tape.nodes.clone();
+        Emitter { tape, atlases, camera, wt, world_assets, world_state, sprite_state, opts, p1, p2, nodes, last_nodes: None,
                   bank_slot, unknown_slots, textures: OrderedMap::new(), cb_recs: OrderedMap::new(), stats: Stats::default() }
     }
 
-    pub fn world_enabled(&self) -> bool { self.world.is_some() }
+    pub fn world_enabled(&self) -> bool { self.world_assets.is_some() }
     pub fn prop_stats(&self) -> BTreeMap<i64, (usize, usize)> { self.world_state.as_ref().map(|w| w.prop_stats.clone()).unwrap_or_default() }
 
     fn team_cid(&self, slot: u8) -> Option<u8> {
@@ -131,21 +137,18 @@ impl<'a> Emitter<'a> {
     /// One tape row -> one frame. Mirrors the body of `for r in rows:` in main().
     pub fn emit_row(&mut self, row: usize) -> Option<Frame> {
         let r = self.tape.frames.get(row)?.clone();
-        let tape = self.tape;
-        let fr_clock = tape.num(&r, "frame").unwrap_or(0.0) as i64;
+        let fr_clock = self.tape.num(&r, "frame").unwrap_or(0.0) as i64;
         let frc = fr_clock as u32;
         let mut ctx = FrameCtx { verts: Vec::new(), idxs: Vec::new(), draws: Vec::new(),
                                  textures: std::mem::take(&mut self.textures), cb_recs: std::mem::take(&mut self.cb_recs),
                                  stats: std::mem::take(&mut self.stats), sub_seq: 0, last_cull: None };
 
         // ── FRAME PREAMBLE (three clear quads)
-        if let Some((wt, _)) = self.world {
-            if !self.opts.no_preamble { world::emit_preamble(&mut ctx, wt, tape, &r); }
-        }
+        if self.world_assets.is_some() && !self.opts.no_preamble { world::emit_preamble(&mut ctx, &self.wt, &self.tape, &r); }
 
         // ── the ordered items (bodies AND objects)
-        let mut items: Vec<Item<'a>> = Vec::new();
         let have_nodes = !self.nodes.is_empty();
+        let mut pre: Vec<PreItem> = Vec::new();
         if have_nodes {
             let cur_len = self.nodes.get(&frc).map(|c| c.len());
             let torn = match (cur_len, &self.last_nodes) { (Some(n), Some(l)) => n < 2 && l.len() >= 3, _ => false };
@@ -181,15 +184,13 @@ impl<'a> Emitter<'a> {
                 };
                 let cid = match cid { Some(c) => c, None => { *ctx.stats.missing.entry("no atlas".into()).or_insert(0) += 1; continue; } };
                 let mir = nd.face != 0;   // mirror = the node's facing ONLY; sid bit 15 = record FORMAT
-                items.push(Item {
-                    layer: 0, at: self.atlases.get(&cid), sid: nd.sid & 0x7FFF, tsx: nd.fsx as f64, tsy: nd.fsy as f64, mir,
-                    kind: if nd.kind == 0 { "body" } else { "obj" }, cos: nd.pal as i64,
-                    bit15: nd.sid & 0x8000 != 0, angle: nd.angle, hot: (nd.hotx, nd.hoty), walk: si as i64,
-                    depth: Some(nd.depth), pslot: if nd.kind == 0 { nd.slot as i64 } else { owner as i64 }, pframe: frc,
-                });
+                pre.push((cid, nd.sid & 0x7FFF, nd.fsx as f64, nd.fsy as f64, mir, if nd.kind == 0 { "body" } else { "obj" }, nd.pal as i64,
+                          nd.sid & 0x8000 != 0, nd.angle, (nd.hotx, nd.hoty), si as i64, Some(nd.depth),
+                          if nd.kind == 0 { nd.slot as i64 } else { owner as i64 }, 0));
             }
         } else {
             // v2 tapes: the six fighter columns; the pre-decoded local `objs` list form is not ported
+            let tape = &self.tape;
             let drawn = tape.arr(&r, "drawn[6]").unwrap_or_default();
             let sid = tape.arr(&r, "sid[6]").unwrap_or_default();
             let sx = tape.arr(&r, "sx[6]").unwrap_or_default();
@@ -201,35 +202,32 @@ impl<'a> Emitter<'a> {
                 let lay = layer.as_ref().and_then(|l| l.get(slot).copied()).unwrap_or(8.0) as i64;
                 let sid_raw = sid.get(slot).copied().unwrap_or(0.0) as i64;
                 let cid = match self.team_cid(slot as u8) { Some(c) => c, None => continue };
-                items.push(Item {
-                    layer: lay, at: self.atlases.get(&cid), sid: (sid_raw & 0x7FFF) as u16,
-                    tsx: sx.get(slot).copied().unwrap_or(0.0), tsy: sy.get(slot).copied().unwrap_or(0.0),
-                    mir: facing.get(slot).copied().unwrap_or(0.0) != 0.0, kind: "body",
-                    cos: tape.costume.get(slot).copied().unwrap_or(0), bit15: sid_raw & 0x8000 != 0, angle: 0, hot: (0, 0),
-                    walk: 0, depth: None, pslot: -1, pframe: frc,
-                });
+                pre.push((cid, (sid_raw & 0x7FFF) as u16, sx.get(slot).copied().unwrap_or(0.0), sy.get(slot).copied().unwrap_or(0.0),
+                          facing.get(slot).copied().unwrap_or(0.0) != 0.0, "body", tape.costume.get(slot).copied().unwrap_or(0),
+                          sid_raw & 0x8000 != 0, 0, (0, 0), 0, None, -1, lay));
             }
-            items.sort_by_key(|it| (it.layer, if it.kind == "body" { 0 } else { 1 }));
+            pre.sort_by_key(|it| (it.13, if it.5 == "body" { 0 } else { 1 }));
         }
+        let items: Vec<Item> = pre.into_iter().map(|(cid, sid, tsx, tsy, mir, kind, cos, bit15, angle, hot, walk, depth, pslot, layer)| Item {
+            layer, at: self.atlases.get(&cid), sid, tsx, tsy, mir, kind, cos, bit15, angle, hot, walk, depth, pslot, pframe: frc,
+        }).collect();
 
         // slot 3 during the sprite walk = the world camera P
-        let ps: Option<[[f32; 4]; 4]> = self.camera.and_then(|cm| {
-            let (ex, ey) = (tape.num(&r, "eyeX").unwrap_or(0.0), tape.num(&r, "eyeY").unwrap_or(0.0));
+        let ps: Option<[[f32; 4]; 4]> = self.camera.as_ref().and_then(|cm| {
+            let (ex, ey) = (self.tape.num(&r, "eyeX").unwrap_or(0.0), self.tape.num(&r, "eyeY").unwrap_or(0.0));
             cm.scene_block((ex, ey), "list6").map(|b| scene_p(&b))
         });
 
         // ── stage + world lists 5/6/12/13: behind the sprites
-        if let (Some((wt, assets)), Some(cm)) = (self.world, self.camera) {
-            let ws = self.world_state.as_mut().unwrap();
-            world::emit_world(&mut ctx, wt, cm, assets, ws, tape, &r, frc, &[5, 6, 12, 13]);
+        if let (Some(assets), Some(cm), Some(ws)) = (&self.world_assets, &self.camera, self.world_state.as_mut()) {
+            world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[5, 6, 12, 13]);
         }
         // ── the sprites
-        self.emit_sprites(&mut ctx, items, ps);
+        emit_sprites(&self.tape, &self.opts, &self.sprite_state, have_nodes, &mut ctx, items, ps);
         // ── effects/shadows/markers after the sprites, the HUD last
-        if let (Some((wt, assets)), Some(cm)) = (self.world, self.camera) {
-            let ws = self.world_state.as_mut().unwrap();
-            world::emit_world(&mut ctx, wt, cm, assets, ws, tape, &r, frc, &[7, 8, 9]);
-            world::emit_world(&mut ctx, wt, cm, assets, ws, tape, &r, frc, &[11]);
+        if let (Some(assets), Some(cm), Some(ws)) = (&self.world_assets, &self.camera, self.world_state.as_mut()) {
+            world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[7, 8, 9]);
+            world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[11]);
         }
         order_draws(&mut ctx.draws, self.opts.legacy_order, &mut ctx.stats.order);
         world::fold_world_stats(&mut ctx);
@@ -238,24 +236,24 @@ impl<'a> Emitter<'a> {
         self.textures = ctx.textures; self.cb_recs = ctx.cb_recs; self.stats = ctx.stats;
         Some(fr)
     }
+}
 
-    /// The sprite quad loop of main() (`for lay, at, sid, tsx, tsy, mir, kind, cos, extra in items:`).
-    fn emit_sprites(&self, ctx: &mut FrameCtx, items: Vec<Item<'a>>, ps: Option<[[f32; 4]; 4]>) {
-        let tape = self.tape;
+/// The sprite quad loop of main() (`for lay, at, sid, tsx, tsy, mir, kind, cos, extra in items:`).
+fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &Map<String, Value>, have_nodes: bool, ctx: &mut FrameCtx, items: Vec<Item>, ps: Option<[[f32; 4]; 4]>) {
+    {
         let v3pals = &tape.pals;
-        let have_nodes = !self.nodes.is_empty();
         for it in items {
             let at = match it.at { Some(a) => a, None => { *ctx.stats.missing.entry("no atlas".into()).or_insert(0) += 1; continue; } };
             let recs = match at.asm.get(&(it.sid as u32)) { Some(r) if !r.is_empty() => r, _ => {
                 *ctx.stats.missing.entry(format!("{} {} sel {}", at.name, it.kind, it.sid)).or_insert(0) += 1; continue; } };
             let ox = floor_mul(it.tsx, TAPE_X);
             let oy = floor_mul(it.tsy, TAPE_Y);
-            let mir = if self.opts.flip_facing { !it.mir } else { it.mir };
+            let mir = if opts.flip_facing { !it.mir } else { it.mir };
 
             let mut prow = None;
-            if !tape.palrows.is_empty() && self.opts.bank.is_none() && (0..6).contains(&it.pslot) {
+            if !tape.palrows.is_empty() && opts.bank.is_none() && (0..6).contains(&it.pslot) {
                 let pf = it.pframe as i64;
-                let mut lag = self.opts.pal_lag as i64;
+                let mut lag = opts.pal_lag as i64;
                 while lag >= 0 {
                     if let Some(p) = tape.palrows.get(&((pf - lag) as u32)) { prow = Some(p); break; }
                     lag -= 1;
@@ -268,7 +266,7 @@ impl<'a> Emitter<'a> {
                 let bp = if pi < v3pals.len() { v3pals[pi] } else {
                     match v3pals.get(it.cos as usize) { Some(x) => *x, None => { *ctx.stats.missing.entry("pal index out of range".into()).or_insert(0) += 1; zero } } };
                 (bp, None)
-            } else if have_nodes && self.opts.bank.is_none() && it.cos >= 0 && (it.cos as usize) < v3pals.len() {
+            } else if have_nodes && opts.bank.is_none() && it.cos >= 0 && (it.cos as usize) < v3pals.len() {
                 let bp = v3pals[it.cos as usize];
                 let mut blk = None;
                 for (bi, bk) in at.banks.iter().enumerate() {
@@ -277,7 +275,7 @@ impl<'a> Emitter<'a> {
                 }
                 (bp, blk)
             } else {
-                (at.palette(self.opts.bank, it.cos), None)
+                (at.palette(opts.bank, it.cos), None)
             };
             let mut pal_cache: HashMap<u8, Pal256> = HashMap::new();
             let pal_for_row = |row: u8, pal_cache: &mut HashMap<u8, Pal256>| -> Pal256 {
@@ -294,7 +292,7 @@ impl<'a> Emitter<'a> {
                 }
             };
 
-            let order: Vec<usize> = if self.opts.forward_records { (0..recs.len()).collect() } else { (0..recs.len()).rev().collect() };
+            let order: Vec<usize> = if opts.forward_records { (0..recs.len()).collect() } else { (0..recs.len()).rev().collect() };
             for ri in order {
                 let rec = recs[ri];
                 let pid = rec.part;
@@ -305,7 +303,7 @@ impl<'a> Emitter<'a> {
                 if !ctx.textures.contains(&palkey) { ctx.textures.insert_new(&palkey, Texture { w: 256, h: 1, fmt: 28, data: palbytes }); }
                 let fl = at.flag_of(it.sid as u32, ri);
                 let (hf, vf) = (fl & 0x8000 != 0, fl & 0x4000 != 0);
-                let (mut bmp, pw, ph) = match at.part_bitmap(pid, !self.opts.no_vflip, it.bit15) { Some(x) => x, None => continue };
+                let (mut bmp, pw, ph) = match at.part_bitmap(pid, !opts.no_vflip, it.bit15) { Some(x) => x, None => continue };
                 let (pw, ph) = (pw as i64, ph as i64);
                 let (sw, sh, lw, lh) = at.dims.get(&pid).copied().unwrap_or((0, 0, 0, 0));
                 let lw_px = if 0 < lw && lw <= sw { lw as i64 * 8 } else { pw };
@@ -347,7 +345,7 @@ impl<'a> Emitter<'a> {
                     *ctx.stats.rotated_general.entry(it.angle).or_insert(0) += 1;
                 }
                 let mut dkey: Option<f64> = None;
-                let z: f32 = match (it.depth, ps, self.opts.legacy_order) {
+                let z: f32 = match (it.depth, ps, opts.legacy_order) {
                     (Some(depth), Some(p), false) => {
                         let d = depth + 0.001f32 * (ri as f32);
                         dkey = Some(d as f64);
@@ -373,7 +371,7 @@ impl<'a> Emitter<'a> {
                 let fi = ctx.idxs.len() as u32;
                 ctx.idxs.extend_from_slice(&[first, first + 1, first + 2, first + 2, first + 1, first + 3]);
                 ctx.draws.push(Draw { first_index: fi, index_count: 6, stride: STRIDE as u32, voff: 0, tex: [Some(key), Some(palkey)],
-                                      state: self.sprite_state.clone(), vscb: None, pscb: None,
+                                      state: sprite_state.clone(), vscb: None, pscb: None,
                                       cat: 3, key: dkey, sub: (0, it.walk, ri as i64), inherit_cull: false });
             }
         }

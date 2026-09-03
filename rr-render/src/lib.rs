@@ -11,6 +11,9 @@
 //!   world   -- emit_stage / emit_world / complete_prop / preamble / sort_key_record (System A)
 //!   sprites -- the frame emitter + the sprite pass of `tape_to_seq.main` (LAYERZ order, owner resolve, placement law, flips,
 //!              rotation, palette row per record, per-record depth, order_draws)
+//!   pack    -- the in-memory asset pack (relative path -> bytes) and its loaders (atlases, stage, pages, camera)
+//!   feed    -- FrameFeed: open(tape, pack) -> frame(i) -> binary FrameRecord (the browser feed)
+//!   web     -- wasm-bindgen exports of the feed (feature `web`)
 //!   seq     -- the RRSQ writer (same container tape_to_seq.py / pack_sequence.py write)
 //!
 //! The core has no std::fs and no threads: callers hand it bytes. `src/bin/emit_seq.rs` is the native driver.
@@ -23,3 +26,7 @@ pub mod bg;
 pub mod world;
 pub mod sprites;
 pub mod seq;
+pub mod pack;
+pub mod feed;
+#[cfg(feature = "web")]
+pub mod web;

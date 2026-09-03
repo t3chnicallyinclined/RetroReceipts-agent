@@ -3,15 +3,21 @@ name = "rr-render"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.77"
-description = "Retro Receipts tape decoder + sprite assembly emitter (port of d3dcap/replay/tape_to_seq.py). Core is std::fs-free and thread-free so it builds for wasm32; the emit_seq bin is the native gate driver."
+description = "Retro Receipts tape decoder + frame emitter (port of d3dcap/replay/tape_to_seq.py). Core is std::fs-free and thread-free so it builds for wasm32; the emit_seq bin is the native gate driver; the `web` feature exports a wasm-bindgen FrameFeed."
 
 [lib]
 name = "rr_render"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
 
 [[bin]]
 name = "emit_seq"
 path = "src/bin/emit_seq.rs"
+
+[features]
+default = []
+# wasm-bindgen exports (src/web.rs): build with --lib --target wasm32-unknown-unknown --features web
+web = ["dep:wasm-bindgen", "dep:console_error_panic_hook"]
 
 [dependencies]
 # JSON envelope of the tape + the RRSQ/RRPK manifests. preserve_order keeps the template draw's key order
@@ -23,8 +29,10 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 base64 = "0.22"
 # sha256 -> sha8 texture keys + pool dedupe, exactly as tape_to_seq.sha8 / intern().
 sha2 = "0.10"
-# PLxx_idx.png (R channel = palette index), pure Rust decoder.
+# PLxx_idx.png (R channel = palette index) + the RGBA pages, pure Rust decoder.
 png = "0.17"
+wasm-bindgen = { version = "0.2.126", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
 
 [profile.release]
 opt-level = 2

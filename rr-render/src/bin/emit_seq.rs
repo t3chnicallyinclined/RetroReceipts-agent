@@ -2,19 +2,20 @@
 //! tape_to_seq.py writes, so `tools/seq_diff.py` can gate Rust against the Python oracle draw by draw.
 //!
 //!   emit_seq <tape.json.gz> [--start N] [--count N] [-o out.seq]
-//!            [--atlas DIR] [--dasm DIR] [--stage-dir DIR] [--tcw-pages DIR] [--template PACK] [--camera JSON]
-//!            [--no-world] [--no-preamble] [--no-camera] [--camera-gate]
+//!            [--pack DIR | --atlas DIR --dasm DIR --stage-dir DIR --tcw-pages DIR --camera JSON]
+//!            [--template PACK] [--no-world] [--no-preamble] [--no-camera] [--camera-gate] [--feed-bench]
 //!            [--bank N] [--pal-lag N] [--flip-facing] [--swap-teams] [--forward-records] [--no-vflip] [--legacy-order]
 //!
 //! Mirrors `python tape_to_seq.py <tape> --start N --count N [--no-world] [--no-preamble] -o out.seq`.
-use rr_render::assets::{Atlas, AtlasFiles};
-use rr_render::camera::{closed_form_gate, CameraModel};
+//! The assets are read into an in-memory `AssetPack` (the same map the browser hands the wasm module) either from
+//! a `tools/pack_assets.py` output directory (`--pack`) or straight from the source rips (defaults).
+use rr_render::camera::closed_form_gate;
+use rr_render::feed::FrameFeed;
+use rr_render::pack::AssetPack;
 use rr_render::seq::{load_template, SeqWriter, Template};
 use rr_render::sprites::{EmitOpts, Emitter};
 use rr_render::state::WorldTemplate;
-use rr_render::tape::{Page, Tape};
-use rr_render::world::{StageRip, WorldAssets};
-use std::collections::HashMap;
+use rr_render::tape::Tape;
 use std::path::{Path, PathBuf};
 
 const DEF_ATLAS: &str = r"C:\Users\trist\projects\maplecast-flycast\web\test-atlas\chars";
@@ -31,106 +32,80 @@ fn find_glob(dir: &Path, suffix: &str) -> Option<PathBuf> {
     hits.into_iter().next()
 }
 
-fn load_atlas(atlas_dir: &Path, dasm_dir: &Path, cid: u8) -> Option<Atlas> {
-    let name = format!("PL{:02X}", cid);
-    let idx_png = std::fs::read(atlas_dir.join(format!("{name}_idx.png"))).ok()?;
-    let asm_json = std::fs::read(atlas_dir.join(format!("{name}_asm.json"))).ok()?;
-    let lut_json = std::fs::read(atlas_dir.join(format!("{name}_lut.json"))).ok()?;
-    let ddir = dasm_dir.join(format!("{name}_DAT"));
-    let gfx2 = find_glob(&ddir, "GFX_DATA_01.BIN").and_then(|p| std::fs::read(p).ok());
-    let gfx1 = find_glob(&ddir, "GFX_DATA_00.BIN").and_then(|p| std::fs::read(p).ok());
-    match Atlas::from_files(cid, &AtlasFiles { idx_png, asm_json, lut_json, gfx1, gfx2 }) {
-        Ok(a) => Some(a),
-        Err(e) => { eprintln!("  {name}: {e}"); None }
-    }
+fn add_file(pack: &mut AssetPack, name: &str, path: &Path) -> bool {
+    match std::fs::read(path) { Ok(b) => { pack.insert(name, b); true } Err(_) => false }
 }
 
-/// `np.array(Image.open(fn).convert('RGBA')).tobytes()` (fmt 28) or `np.array(im)[:, :, 0]` (fmt 61).
-fn load_png_page(path: &Path, fmt: u32) -> Option<Page> {
-    let bytes = std::fs::read(path).ok()?;
-    let mut dec = png::Decoder::new(&bytes[..]);
-    dec.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut reader = dec.read_info().ok()?;
-    let mut buf = vec![0u8; reader.output_buffer_size()];
-    let info = reader.next_frame(&mut buf).ok()?;
-    let ch = info.color_type.samples();
-    let (w, h, line) = (info.width as usize, info.height as usize, info.line_size);
-    let mut data = Vec::with_capacity(w * h * if fmt == 61 { 1 } else { 4 });
-    for y in 0..h {
-        let row = &buf[y * line..y * line + w * ch];
-        for x in 0..w {
-            let px = &row[x * ch..x * ch + ch];
-            if fmt == 61 { data.push(px[0]); continue; }
-            let rgba = match ch { 1 => [px[0], px[0], px[0], 255], 2 => [px[0], px[0], px[0], px[1]], 3 => [px[0], px[1], px[2], 255], _ => [px[0], px[1], px[2], px[3]] };
-            data.extend_from_slice(&rgba);
+/// A pack directory written by tools/pack_assets.py: every file under it, keyed by its relative path.
+fn pack_from_dir(dir: &Path) -> AssetPack {
+    let mut pack = AssetPack::new();
+    fn walk(pack: &mut AssetPack, root: &Path, dir: &Path) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() { walk(pack, root, &p); }
+            else if let Ok(rel) = p.strip_prefix(root) { add_file(pack, &rel.to_string_lossy(), &p); }
         }
     }
-    Some(Page { w: w as u32, h: h as u32, fmt, data })
+    walk(&mut pack, dir, dir);
+    pack
 }
 
-/// The world assets tape_to_seq.main() opens when `wt` exists: STGxx.json (+ STGxx_tNN.png), tcw_pages/stage_XX,
-/// tcw_pages/index.json (+ PNGs).
-fn load_world_assets(stage_dir: &Path, tcw_dir: &Path, stage_id: Option<i64>) -> WorldAssets {
-    let mut stage_rip = None;
-    let mut stage_preload = Vec::new();
-    if let Some(sid) = stage_id {
+/// The same pack assembled from the source rips (what tools/pack_assets.py copies).
+fn pack_from_sources(tape: &Tape, atlas_dir: &Path, dasm_dir: &Path, stage_dir: &Path, tcw_dir: &Path, camera: Option<&Path>) -> AssetPack {
+    let mut pack = AssetPack::new();
+    for &cid in tape.p1_team.iter().chain(tape.p2_team.iter()) {
+        let name = format!("PL{:02X}", cid);
+        for suf in ["_idx.png", "_asm.json", "_lut.json"] { add_file(&mut pack, &format!("chars/{name}{suf}"), &atlas_dir.join(format!("{name}{suf}"))); }
+        let ddir = dasm_dir.join(format!("{name}_DAT"));
+        for suf in ["GFX_DATA_00.BIN", "GFX_DATA_01.BIN"] {
+            if let Some(p) = find_glob(&ddir, suf) { add_file(&mut pack, &format!("chars/{name}_{suf}"), &p); }
+        }
+    }
+    if let Some(sid) = tape.stage_id {
         let sj = stage_dir.join(format!("STG{:02X}.json", sid));
-        if let Ok(b) = std::fs::read(&sj) {
-            match StageRip::from_json(&b) {
-                Ok(mut rip) => {
-                    println!("  stage {:02X}: {} arc textures available (TCW 0xC10 + index)", sid, rip.texture_files.len());
-                    for (i, f) in rip.texture_files.clone().iter().enumerate() {
-                        let p = stage_dir.join(f);
-                        if p.exists() { rip.tex_pages[i] = load_png_page(&p, 28); }
-                    }
-                    stage_rip = Some(rip);
-                }
-                Err(e) => eprintln!("  {}: {e}", sj.display()),
-            }
-            let sdir = tcw_dir.join(format!("stage_{:02X}", sid));
-            if let Ok(b) = std::fs::read(sdir.join("index.json")) {
-                if let Ok(sj) = serde_json::from_slice::<serde_json::Value>(&b) {
-                    let pages = sj.get("pages").and_then(|p| p.as_object()).cloned()
-                        .unwrap_or_else(|| sj.as_object().map(|o| o.iter().filter(|(k, _)| k.as_str() != "meta").map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default());
-                    let mut npre = 0;
-                    for (k, v) in pages {
-                        let Some(file) = v.get("file").and_then(|f| f.as_str()) else { continue };
-                        if let Some(p) = load_png_page(&sdir.join(file), 28) { stage_preload.push((k, p)); npre += 1; }
-                    }
-                    println!("  stage {:02X}: {} host-decoded pages from {}", sid, npre, sdir.display());
+        if add_file(&mut pack, &format!("stage/STG{:02X}.json", sid), &sj) {
+            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(pack.get(&format!("stage/STG{:02X}.json", sid)).unwrap()) {
+                for t in v.get("textures").and_then(|x| x.as_array()).cloned().unwrap_or_default() {
+                    if let Some(f) = t.get("file").and_then(|x| x.as_str()) { add_file(&mut pack, &format!("stage/{f}"), &stage_dir.join(f)); }
                 }
             }
-        } else {
-            println!("  stage {}: no arc rip found in {}", sid, stage_dir.display());
+        }
+        let sdir = tcw_dir.join(format!("stage_{:02X}", sid));
+        if add_file(&mut pack, &format!("tcw/stage_{:02X}/index.json", sid), &sdir.join("index.json")) {
+            for e in std::fs::read_dir(&sdir).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.extension().map(|x| x == "png").unwrap_or(false) { add_file(&mut pack, &format!("tcw/stage_{:02X}/{}", sid, p.file_name().unwrap().to_string_lossy()), &p); }
+            }
         }
     }
-    let mut lib_pages = HashMap::new();
-    if let Ok(b) = std::fs::read(tcw_dir.join("index.json")) {
-        if let Ok(idx) = serde_json::from_slice::<serde_json::Value>(&b) {
+    if add_file(&mut pack, "tcw/index.json", &tcw_dir.join("index.json")) {
+        if let Ok(idx) = serde_json::from_slice::<serde_json::Value>(pack.get("tcw/index.json").unwrap()) {
             for (k, v) in idx.as_object().cloned().unwrap_or_default() {
-                let (w, h, fmt) = (v.get("w").and_then(|x| x.as_u64()).unwrap_or(0), v.get("h").and_then(|x| x.as_u64()).unwrap_or(0), v.get("fmt").and_then(|x| x.as_u64()).unwrap_or(28) as u32);
+                let (w, h, fmt) = (v.get("w").and_then(|x| x.as_u64()).unwrap_or(0), v.get("h").and_then(|x| x.as_u64()).unwrap_or(0), v.get("fmt").and_then(|x| x.as_u64()).unwrap_or(28));
                 let file = v.get("file").and_then(|f| f.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("tcw_{}_{}x{}_f{}.png", k, w, h, fmt));
-                let p = tcw_dir.join(&file);
-                if p.exists() { if let Some(pg) = load_png_page(&p, fmt) { lib_pages.insert(k, pg); } }
+                add_file(&mut pack, &format!("tcw/{file}"), &tcw_dir.join(&file));
             }
         }
     }
-    WorldAssets { stage_rip, stage_preload, lib_pages }
+    if let Some(c) = camera { add_file(&mut pack, "camera_block.json", c); }
+    pack
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.is_empty() { eprintln!("usage: emit_seq <tape.json.gz> [--start N] [--count N] [-o out.seq] [--atlas DIR] [--dasm DIR] [--stage-dir DIR] [--tcw-pages DIR] [--template PACK] [--camera JSON] [--no-camera] [--no-world] [--no-preamble] [--camera-gate] [--bank N] [--pal-lag N] [--flip-facing] [--swap-teams] [--forward-records] [--no-vflip] [--legacy-order]"); std::process::exit(2); }
+    if args.is_empty() { eprintln!("usage: emit_seq <tape.json.gz> [--start N] [--count N] [-o out.seq] [--pack DIR] [--atlas DIR] [--dasm DIR] [--stage-dir DIR] [--tcw-pages DIR] [--template PACK] [--camera JSON] [--no-camera] [--no-world] [--no-preamble] [--camera-gate] [--feed-bench] [--bank N] [--pal-lag N] [--flip-facing] [--swap-teams] [--forward-records] [--no-vflip] [--legacy-order]"); std::process::exit(2); }
     let mut tape_path = String::new();
     let (mut start, mut count) = (0usize, 300usize);
     let mut out: Option<String> = None;
+    let mut pack_dir: Option<PathBuf> = None;
     let mut atlas_dir = PathBuf::from(DEF_ATLAS);
     let mut dasm_dir = PathBuf::from(DEF_DASM);
     let mut stage_dir = PathBuf::from(DEF_STAGES);
     let mut tcw_dir = PathBuf::from(DEF_REPLAY).join("tcw_pages");
     let mut template: Option<PathBuf> = None;
     let mut camera: Option<PathBuf> = Some(PathBuf::from(DEF_REPLAY).join("camera_block.json"));
-    let mut camera_gate = false;
+    let (mut camera_gate, mut feed_bench) = (false, false);
     let mut opts = EmitOpts::default();
     let mut i = 0;
     while i < args.len() {
@@ -140,6 +115,7 @@ fn main() {
             "--start" => start = next(&mut i).parse().unwrap_or(0),
             "--count" => count = next(&mut i).parse().unwrap_or(300),
             "-o" | "--out" => out = Some(next(&mut i)),
+            "--pack" => pack_dir = Some(PathBuf::from(next(&mut i))),
             "--atlas" => atlas_dir = PathBuf::from(next(&mut i)),
             "--dasm" => dasm_dir = PathBuf::from(next(&mut i)),
             "--stage-dir" => stage_dir = PathBuf::from(next(&mut i)),
@@ -148,6 +124,7 @@ fn main() {
             "--camera" => camera = Some(PathBuf::from(next(&mut i))),
             "--no-camera" => camera = None,
             "--camera-gate" => camera_gate = true,
+            "--feed-bench" => feed_bench = true,
             "--no-world" => opts.no_world = true,
             "--no-preamble" => opts.no_preamble = true,
             "--bank" => opts.bank = next(&mut i).parse().ok(),
@@ -178,10 +155,14 @@ fn main() {
     let (p1, p2) = if opts.swap_teams { (&tape.p2_team, &tape.p1_team) } else { (&tape.p1_team, &tape.p2_team) };
     println!("  P1 {:?}   P2 {:?}", p1.iter().map(|c| format!("PL{:02X}", c)).collect::<Vec<_>>(), p2.iter().map(|c| format!("PL{:02X}", c)).collect::<Vec<_>>());
 
-    let cam = camera.and_then(|p| std::fs::read(&p).ok()).and_then(|b| CameraModel::from_json(&b).map_err(|e| eprintln!("  {e}")).ok());
+    let pack = match &pack_dir {
+        Some(d) => pack_from_dir(d),
+        None => pack_from_sources(&tape, &atlas_dir, &dasm_dir, &stage_dir, &tcw_dir, camera.as_deref()),
+    };
+    println!("  asset pack: {} files{}", pack.len(), pack_dir.as_ref().map(|d| format!(" from {}", d.display())).unwrap_or_default());
+    let cam = pack.camera();
 
     if camera_gate {
-        // closed form vs the fitted block for every row's camera; rows 7..10 (V) and 15..18 (P)
         let Some(cm) = cam.as_ref() else { eprintln!("no camera model"); std::process::exit(1); };
         for variant in ["list6", "list7", "hud"] {
             let (mut maxv, mut maxp, mut exv, mut exp, mut zv, mut zp, mut n) = (0f32, 0f32, 0usize, 0usize, 0usize, 0usize, 0usize);
@@ -204,19 +185,32 @@ fn main() {
         return;
     }
 
+    if feed_bench {
+        // the browser path, natively: FrameRecords per row, ms/frame + bytes/frame
+        let t0 = std::time::Instant::now();
+        let mut feed = match FrameFeed::open(&raw, &pack, opts.clone()) { Ok(f) => f, Err(e) => { eprintln!("{e}"); std::process::exit(1); } };
+        let open_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        for l in &feed.log { println!("  {l}"); }
+        let (mut bytes, mut n) = (0usize, 0usize);
+        let t1 = std::time::Instant::now();
+        for row in start..end { if let Some(b) = feed.frame(row) { bytes += b.len(); n += 1; } }
+        let ms = t1.elapsed().as_secs_f64() * 1000.0;
+        println!("  feed: open {:.0} ms; {} FrameRecords, {:.2} ms/frame, {:.0} KB/frame avg (first-use textures/CBs included), {} draws",
+                 open_ms, n, ms / n.max(1) as f64, bytes as f64 / n.max(1) as f64 / 1024.0, feed.stats().drawn_total);
+        return;
+    }
+
     let tpl: Template = match &template {
         Some(p) => match std::fs::read(p).map_err(|e| e.to_string()).and_then(|b| load_template(&b)) { Ok(t) => t, Err(e) => { eprintln!("{e}"); std::process::exit(1); } },
         None => Template::frozen(),
     };
     println!("  state copied from {} draw {} ({}/{})", tpl.source, tpl.draw_i, tpl.vs_variant, tpl.ps_variant);
-    let mut atlases: HashMap<u8, Atlas> = HashMap::new();
-    for &cid in tape.p1_team.iter().chain(tape.p2_team.iter()) {
-        if atlases.contains_key(&cid) { continue; }
-        if let Some(a) = load_atlas(&atlas_dir, &dasm_dir, cid) { atlases.insert(cid, a); }
-    }
+    let atlases = pack.atlases(&tape.p1_team, &tape.p2_team);
     let world_on = !tape.anodes.is_empty() && !opts.no_world && cam.is_some();
     let wt = WorldTemplate::frozen();
-    let assets = if world_on { Some(load_world_assets(&stage_dir, &tcw_dir, tape.stage_id)) } else { None };
+    let mut log = Vec::new();
+    let assets = if world_on { Some(pack.world_assets(tape.stage_id, &mut log)) } else { None };
+    for l in &log { println!("  {l}"); }
     if world_on {
         println!("  TAPE v5: {} frames of world-space nodes, {} objects, {} pages in tape, {} in library",
                  tape.anodes.len(), tape.aobjs.len(), assets.as_ref().map(|a| a.stage_preload.len() + tape.pages.len()).unwrap_or(0), assets.as_ref().map(|a| a.lib_pages.len()).unwrap_or(0));
@@ -224,9 +218,9 @@ fn main() {
     } else if !tape.anodes.is_empty() && !opts.no_world {
         println!("  ⚠ world-space stream present but no camera_block.json -- skipping it");
     }
-    let world = assets.as_ref().map(|a| (&wt, a));
-    let mut em = Emitter::new(&tape, &atlases, cam.as_ref(), tpl.draw.clone(), world, opts);
-    let mut w = SeqWriter::new(&tpl, if em.world_enabled() { Some(&wt.input_layouts) } else { None }, &base);
+    let world_layouts = if world_on { Some(wt.input_layouts.clone()) } else { None };
+    let mut em = Emitter::new(tape, atlases, cam, tpl.draw.clone(), wt, assets, opts);
+    let mut w = SeqWriter::new(&tpl, world_layouts.as_ref(), &base);
     for row in start..end {
         if let Some(fr) = em.emit_row(row) { w.push_frame(&tpl, &em.textures, &em.cb_recs, &fr); }
     }
