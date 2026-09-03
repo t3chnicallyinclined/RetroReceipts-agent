@@ -198,7 +198,19 @@ mod platform {
 
     /// Toolhelp process walk — the game exe basename starts with "MarvelVsCapcom" (unchanged from the old
     /// `find_game_pid`).
+    // 0.3.44: the toolhelp snapshot is expensive (~1-2 ms + a section map/unmap) and every reader/capture loop
+    // iteration called it; a 2 s cache removes it from both hot threads. A stale pid for <= 2 s after a game
+    // relaunch is harmless: every caller already treats an unopenable/unreadable pid as "no game".
     pub fn find_game_pid() -> Option<u32> {
+        static CACHE: std::sync::Mutex<Option<(Option<u32>, std::time::Instant)>> = std::sync::Mutex::new(None);
+        if let Ok(g) = CACHE.lock() {
+            if let Some((pid, at)) = *g { if at.elapsed().as_millis() < 2000 { return pid; } }
+        }
+        let pid = find_game_pid_uncached();
+        if let Ok(mut g) = CACHE.lock() { *g = Some((pid, std::time::Instant::now())); }
+        pid
+    }
+    fn find_game_pid_uncached() -> Option<u32> {
         unsafe {
             let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
             let mut pe = PROCESSENTRY32W {

@@ -788,12 +788,18 @@ fn find_opponent_netplay(pid: u32, my_id: u64, cache: &mut Option<(usize, u8, St
             }
             *cache = None;   // pairing gone / opponent CHANGED → fall through to WARM / COLD (re-resolves id + name)
         }
-        // 2. WARM PATH — remembered region only.
+        // 2. WARM PATH — remembered region only. 0.3.44: at most once per second while nothing is locked
+        // (thread samples: scan_region_sids was 13% of the reader with no opponent in sight).
+        thread_local! { static WARM_AT: std::cell::Cell<Option<std::time::Instant>> = std::cell::Cell::new(None); }
+        let warm_due = WARM_AT.with(|c| c.get().map_or(true, |t| t.elapsed().as_millis() >= 1000));
         if let Some((rb, rs)) = *region {
-            let mut my_addrs: Vec<usize> = Vec::new();
-            let mut cand: HashMap<u64, Vec<usize>> = HashMap::new();
-            scan_region_sids(h, rb, rs, my_id, &mut my_addrs, &mut cand);
-            if let Some(r) = finish_opp(h, &my_addrs, &cand, region, cache) { return Some(r); }
+            if warm_due {
+                WARM_AT.with(|c| c.set(Some(std::time::Instant::now())));
+                let mut my_addrs: Vec<usize> = Vec::new();
+                let mut cand: HashMap<u64, Vec<usize>> = HashMap::new();
+                scan_region_sids(h, rb, rs, my_id, &mut my_addrs, &mut cand);
+                if let Some(r) = finish_opp(h, &my_addrs, &cand, region, cache) { return Some(r); }
+            } else { return None; }
             // stale region (new session elsewhere) → fall through to the full sweep, which refreshes it
         }
         // 3. COLD PATH — full committed-memory sweep (readable regions, exactly as the old VirtualQueryEx walk).
@@ -1283,7 +1289,7 @@ fn drain_result_outbox() {
 // Background drainer: retries undelivered results every ~15s, REGARDLESS of in-match state (a result is tiny
 // JSON — no CPU/bandwidth concern) so a match is re-delivered the moment the server is reachable again.
 fn start_result_uploader() {
-    std::thread::spawn(|| {
+    let _ = std::thread::Builder::new().name("result-uploader".into()).spawn(|| {
         std::thread::sleep(std::time::Duration::from_secs(8));
         loop {
             let guard = std::panic::catch_unwind(std::panic::AssertUnwindSafe(drain_result_outbox));
@@ -1416,6 +1422,11 @@ const ANODES_CAP_PER_FRAME: usize = 96;
 struct ANodeRaw { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: Vec<u8>, alpha: f32 }
 
 /// Walk lists 5..=13 and collect every drawn node with a polygon-list object (or a model).
+// 0.3.44: per-thread object cache keyed by pointer. An object's first 0x68 bytes (0x18 header + the first
+// record header) identify it; when they match the cached copy the cached bytes are reused, so a frame costs
+// ONE read per world node instead of 1 + 2 x records (stage props: 9..18 records each). Interned bytes are
+// unchanged; only the number of syscalls drops (measured: the gamestate thread at ~32% of a core).
+thread_local! { static AOBJ_CACHE: std::cell::RefCell<HashMap<usize, (Vec<u8>, Vec<u8>)>> = std::cell::RefCell::new(HashMap::new()); }
 unsafe fn harvest_anodes(h: &mem::Proc, blk: usize, out: &mut Vec<ANodeRaw>) {
     let heads = match read_at(h, blk + ALIST_HEADS, 16 * 8) { Some(b) if b.len() >= 128 => b, _ => return };
     for l in 5usize..=13 {
@@ -1431,8 +1442,14 @@ unsafe fn harvest_anodes(h: &mem::Proc, blk: usize, out: &mut Vec<ANodeRaw>) {
                 let alpha = lef32(&nd, A_ALPHA);   // 0.3.39
                 // the object's records: 0x18 header, then (0x50 header + payload) while the PCW is negative
                 let mut ob: Vec<u8> = Vec::new();
+                let mut cached = false;
                 if obj != 0 {
-                    if let Some(hd) = read_at(h, obj, 0x18) { ob.extend_from_slice(&hd); }
+                    if let Some(sig) = read_at(h, obj, 0x68).filter(|b| b.len() >= 0x68) {
+                        AOBJ_CACHE.with(|c| { if let Some((k, bytes)) = c.borrow().get(&obj) { if *k == sig { ob = bytes.clone(); cached = true; } } });
+                        if !cached { ob.extend_from_slice(&sig[..0x18]); }
+                    } else { if let Some(hd) = read_at(h, obj, 0x18) { ob.extend_from_slice(&hd); } }
+                }
+                if obj != 0 && !cached {
                     let mut q = obj + 0x18;
                     let mut k = 0;
                     while k < AOBJ_MAX_RECS && ob.len() < AOBJ_MAX_BYTES {
@@ -1446,6 +1463,10 @@ unsafe fn harvest_anodes(h: &mem::Proc, blk: usize, out: &mut Vec<ANodeRaw>) {
                         q += 0x50 + size;
                         k += 1;
                     }
+                }
+                if obj != 0 && !cached && ob.len() >= 0x68 {
+                    let sig = ob[..0x68].to_vec();
+                    AOBJ_CACHE.with(|c| { let mut m = c.borrow_mut(); if m.len() > 4096 { m.clear(); } m.insert(obj, (sig, ob.clone())); });
                 }
                 out.push(ANodeRaw { list: l as u8, flags: le32(&nd, A_FLAGS), matrix, colour, model, obj: ob, alpha });
             }
@@ -2028,7 +2049,7 @@ unsafe fn game_build_id(h: &mem::Proc, exe_base: usize) -> String {
 // until a team is wiped (or the frame counter freezes / the array dies). The buffer is KEPT after a game
 // ends so the reader's on_game_win can snapshot it; it's reset at the NEXT fresh game start.
 fn start_gamestate_capture() {
-    std::thread::spawn(|| {
+    let _ = std::thread::Builder::new().name("gamestate".into()).spawn(|| {
         use std::sync::atomic::Ordering::SeqCst;
         let mut full_since: Option<std::time::Instant> = None; // how long all real chars have been full (match-load fallback timer)
         let mut anchor_armed = true;                           // 0.3.24: one anchor per character-select VISIT
@@ -2200,7 +2221,11 @@ fn start_gamestate_capture() {
                 if fc.is_some() && last != u32::MAX && frame == last {
                     if last_new.elapsed().as_millis() > 2500 { why = "counter-stalled"; break; }
                     if wipe_since.map_or(false, |t| t.elapsed().as_millis() > 600) { why = "team-wiped"; break; }
-                    std::thread::sleep(std::time::Duration::from_micros(500));
+                    // 0.3.44: a frame is 16.7 ms and GGPO catch-up frames are >= ~8 ms apart, so the first 8 ms
+                    // after a tick cannot hold the next edge: one longer sleep, then the 0.5 ms poll (edge still
+                    // caught within 0.5 ms). 33 polls/frame -> ~17.
+                    let since = last_new.elapsed();
+                    std::thread::sleep(if since.as_millis() < 8 { std::time::Duration::from_millis(8) - since } else { std::time::Duration::from_micros(500) });
                     continue;
                 }
                 // 0.3.26: pull GGPO's CONFIRMED inputs up to the watermark (the pure-forward replay stream).
@@ -2817,7 +2842,7 @@ fn drain_gs_cache() {
 // Background uploader: drains the spool at startup and every ~20s, but only between matches. Own thread so
 // the reader/UI never block on the network.
 fn start_gamestate_uploader() {
-    std::thread::spawn(|| {
+    let _ = std::thread::Builder::new().name("gs-uploader".into()).spawn(|| {
         use std::sync::atomic::Ordering::SeqCst;
         std::thread::sleep(std::time::Duration::from_secs(6)); // let the app settle before the first drain
         loop {
@@ -3918,7 +3943,7 @@ pub fn start_reader() {
     load_auth();                     // restore the registration token (attached to every write request)
     // silent auto-registration: the moment the local SteamID is readable (Steam registry, no game needed),
     // register + cache the token so writes are authed from the first launch — zero user interaction.
-    std::thread::spawn(|| {
+    let _ = std::thread::Builder::new().name("auto-register".into()).spawn(|| {
         for _ in 0..40 {
             let (id, _) = self_ident();
             if id != 0 { let _ = ensure_registered(id.to_string()); if auth_token().is_some() { break; } }
@@ -4031,6 +4056,8 @@ fn reader_loop() {
         //       result is reused in between); (2) a cold opponent sweep that finds nothing backs off
         //       1.5 s -> 3 -> 6 -> ... -> 30 s (reset the moment one resolves or the game pid changes).
         let mut last_work_scan: Option<std::time::Instant> = None;
+        let mut roster_changed_at = std::time::Instant::now();
+        let mut roster_prev_ids: Vec<u32> = Vec::new();
         let mut last_team: Vec<Found> = Vec::new();
         let mut opp_cold_backoff_ms: u128 = 1500;
         let mut opp_cold_fail_at: Option<std::time::Instant> = None;
@@ -4119,7 +4146,8 @@ fn reader_loop() {
             // BOUNDS it to the located array's region (~MBs — the same bounded scan that already ran every cycle
             // at char-select, so its cost is proven). anchor_roster survives only as a last-resort so the
             // opponent still surfaces in the brief window before the region is bounded (may carry a phantom Ryu).
-            let work_due = last_work_scan.map_or(true, |t| t.elapsed().as_millis() >= 600);   // `picking` is decided later in the cycle; 600 ms = a pick shows within ~4 picking cycles
+            let work_every = if roster_changed_at.elapsed().as_secs() < 5 { 600 } else { 2000 };   // 0.3.44: relax once the roster is stable
+            let work_due = last_work_scan.map_or(true, |t| t.elapsed().as_millis() >= work_every);
             let mut team = if let Some((lo, hi)) = work {
                 if work_due || last_team.is_empty() {
                     let _t = std::time::Instant::now();
@@ -4128,6 +4156,7 @@ fn reader_loop() {
                     last_work_scan = Some(std::time::Instant::now()); last_team = r.clone(); r
                 } else { last_team.clone() }
             } else { last_team.clear(); Vec::new() };
+            { let ids = roster_ids(&team); if ids != roster_prev_ids { roster_prev_ids = ids; roster_changed_at = std::time::Instant::now(); } }
             if !team.is_empty() {
                 empty_streak = 0;
                 if let (Some(f), Some(l)) = (team.first(), team.last()) {
