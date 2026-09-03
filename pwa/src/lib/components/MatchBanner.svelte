@@ -4,6 +4,8 @@
 	import { charTag } from '$lib/chars';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import { timeAgo } from '$lib/format';
+	import ReplayAffordance from './ReplayAffordance.svelte';
+	import type { ReplayAvail, RowLike } from '$lib/replay/source';
 
 	// ⬛ MATCHBANNER — the Arena Card System's atom: a finished match, ANYWHERE results are listed.
 	// Zone map (frozen): [chip A][team A][plate A] — [VS axis] — [plate B][team B][chip B] — [meta rail].
@@ -35,6 +37,7 @@
 		gameNo = null,
 		onOpen = null,
 		replay = null,
+		replayRow = null,
 		expanded = false,
 		controls = null
 	}: {
@@ -58,7 +61,9 @@
 		onOpen?: (() => void) | null;
 		/** replay availability (LIVE-TAB-SPEC §6.1): ready/saved → ▶ TAPE (--stream), pending → ⏳, none/expired → —;
 		 *  null = not a replay surface → the plain › chevron */
-		replay?: 'ready' | 'pending' | 'none' | 'expired' | 'saved' | null;
+		replay?: ReplayAvail | null;
+		/** the row for a self-resolving affordance (match_key / session_id / ts) — used when `replay` is not given */
+		replayRow?: RowLike | null;
 		/** the row is expanded in place into its ReplayEmbed (stream-colored edge, aria-expanded) */
 		expanded?: boolean;
 		/** id of the expanded panel (aria-controls) — only when the row can expand */
@@ -124,9 +129,7 @@
 		<span class="r2">
 			{#if delta != null && delta !== 0}<span class="delta" class:neg={delta < 0}>{delta > 0 ? '+' : ''}{delta}</span>{/if}
 			{#if dur}<span>{Math.floor(dur / 60)}:{String(dur % 60).padStart(2, '0')}</span>{/if}{#if gameNo != null}<span>G{gameNo}</span>{:else if ts}<span>{when(ts)}</span>{/if}
-			{#if replay === 'ready' || replay === 'saved'}<span class="tapechip" title="Watch the tape">▶ TAPE</span>
-			{:else if replay === 'pending'}<span class="tapechip pend" title="Tape not in yet">⏳</span>
-			{:else if replay}<span class="none" aria-hidden="true">—</span>
+			{#if replay || replayRow}<ReplayAffordance state={replay} row={replayRow} as="span" />
 			{:else}<span class="chev">›</span>{/if}
 		</span>
 	</span>
@@ -268,24 +271,7 @@
 	.chev {
 		color: var(--faint);
 	}
-	/* replay affordance — --stream marks replay availability (charter amendment, LIVE-TAB-SPEC §13.3) */
-	.tapechip {
-		font-size: 8.5px;
-		letter-spacing: 0.12em;
-		padding: 1px 6px;
-		border-radius: 5px;
-		border: 1px solid color-mix(in srgb, var(--stream) 45%, var(--line));
-		color: var(--stream);
-		font-weight: 600;
-		white-space: nowrap;
-	}
-	.tapechip.pend {
-		color: var(--faint);
-		border-color: var(--line);
-	}
-	.none {
-		color: var(--faint);
-	}
+	/* replay affordance = ReplayAffordance (--stream marks replay availability, LIVE-TAB-SPEC §13.3) */
 	/* the expanded row: stream-colored edge + wash; it fuses with the panel below it */
 	.mb.open {
 		border-left-color: var(--stream);

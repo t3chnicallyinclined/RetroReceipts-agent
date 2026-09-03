@@ -4,6 +4,8 @@
 	import PlayerPlate from './PlayerPlate.svelte';
 	import type { ReplaySource } from '$lib/replay/source';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { page as appPage } from '$app/state';
+	import { requestReplay } from '$lib/replay/source';
 	import {
 		loadEngine,
 		gpuDevice,
@@ -48,9 +50,12 @@
 		sessionId?: string;
 		/** the server's tape handle (app.rs:970) */
 		key: string;
+		/** the SteamID in each PHYSICAL seat, when known (skins: P1's own loadout paints slots 0/2/4, P2's 1/3/5) */
+		p1?: string;
+		p2?: string;
 	}
 	export type Progress = { phase: 'pack' | 'tape' | 'open' | 'prime' | 'stream'; got: number; total: number };
-	type State = 'checking' | 'unsupported' | 'unavailable' | 'loading' | 'error' | 'ready' | 'playing' | 'paused' | 'seeking' | 'ended';
+	type State = 'checking' | 'unsupported' | 'unavailable' | 'nopack' | 'loading' | 'error' | 'ready' | 'playing' | 'paused' | 'seeking' | 'ended';
 
 	let {
 		source,
@@ -70,8 +75,8 @@
 		poster?: string;
 		/** server-resolved identity — NEVER read from the tape (REPLAY-META-SKINS-SPEC §1-2) */
 		meta: ReplayMeta;
-		/** raw-int loadouts per steamid for the feed (§7.10); null = read loadouts.peek() ourselves */
-		skins?: Record<string, { cid: number; colors: number[] }[]> | null;
+		/** raw-int loadouts PER SEAT for the emitter ({p1:[{cid,colors}], p2:[…]}); null = build from loadouts + meta.p1/p2 */
+		skins?: { p1?: { cid: number; colors: number[] }[]; p2?: { cid: number; colors: number[] }[] } | null;
 		/** 'auto' = play when ready unless reduced-motion / Save-Data (Tris Q4: on) */
 		autoplay?: 'auto' | 'never';
 		/** high = internal res 4× + box filter into the 640×480 canvas; base = res 2× nearest (low-end / after a GPU error) */
@@ -85,7 +90,9 @@
 
 	// ── state ──
 	let st = $state<State>('checking');
-	let reason = $state<'pending' | 'expired' | 'none' | 'unsupported' | 'signin'>('none');
+	let reason = $state<'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'signin'>('none');
+	let requesting = $state(false);
+	let requestNote = $state('');
 	let err = $state<{ code: string; message: string } | null>(null);
 	let prog = $state<{ pack: [number, number]; tape: [number, number]; phase: Progress['phase']; prime: [number, number] }>({
 		pack: [0, 0],
@@ -145,9 +152,13 @@
 	};
 	const mb = (n: number) => (n / 1048576).toFixed(1);
 	const durText = $derived(meta.durationS ? mmss(meta.durationS * 60) : count ? mmss(count) : '');
-	const dateText = $derived(
-		meta.ts ? new Date(meta.ts).toISOString().slice(0, 16).replace('T', ' ') : ''
-	);
+	// the tape's ts in the VIEWER's local time (record voice: YYYY-MM-DD HH:MM)
+	const pad2 = (n: number) => String(n).padStart(2, '0');
+	const dateText = $derived.by(() => {
+		if (!meta.ts) return '';
+		const d = new Date(meta.ts);
+		return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+	});
 	const ariaPic = $derived(`Match replay, frame ${frame + 1} of ${count}`);
 	const percent = $derived(count > 1 ? (100 * (scrubPreview ?? frame)) / (count - 1) : 0);
 	const seekPct = $derived(seekTarget >= 0 && count > 1 ? (100 * Math.max(seekServed, 0)) / (count - 1) : 0);
@@ -188,14 +199,33 @@
 		return out;
 	}
 
-	/** Skins for the feed: each owner's loadout as raw ints (§7.10). The store keeps hex → convert back. */
-	function feedSkins(): Record<string, { cid: number; colors: number[] }[]> {
+	/**
+	 * Skins for the emitter (rr-render EmitOpts.skins): {p1:[{cid,colors:[16 × 0xRRGGBB]}], p2:[…]} — each seat's
+	 * OWN loadout, applied by the feed only where the character id matches (slots 0/2/4 = P1, 1/3/5 = P2). The
+	 * store keeps hex; the ints round-trip losslessly. Unknown seats (meta.p1/p2 absent) = stock.
+	 * DEV ONLY: `?devskin=<rrggbb>` paints P1's first character with one flat colour — the smoke test's positive
+	 * check (frame sha must DIFFER from stock).
+	 */
+	type SeatSkins = { p1?: { cid: number; colors: number[] }[]; p2?: { cid: number; colors: number[] }[] };
+	function feedSkins(): SeatSkins {
 		if (skins) return skins;
-		const out: Record<string, { cid: number; colors: number[] }[]> = {};
-		for (const side of [meta.a, meta.b]) {
-			const lo = side.steamid ? loadouts.peek(side.steamid) : null;
-			if (!lo) continue;
-			out[side.steamid] = Object.entries(lo).map(([cid, hex]) => ({ cid: Number(cid), colors: hex.map((h) => parseInt(h.slice(1), 16)) }));
+		const forSid = (sid?: string) => {
+			const lo = sid ? loadouts.peek(sid) : null;
+			if (!lo) return undefined;
+			const list = Object.entries(lo).map(([cid, hex]) => ({ cid: Number(cid), colors: hex.map((h) => parseInt(h.slice(1), 16) & 0xffffff) }));
+			return list.length ? list : undefined;
+		};
+		const out: SeatSkins = {};
+		const p1 = forSid(meta.p1);
+		const p2 = forSid(meta.p2);
+		if (p1) out.p1 = p1;
+		if (p2) out.p2 = p2;
+		if (import.meta.env.DEV) {
+			// `?devskin=none` = force stock (the smoke test's deterministic baseline — P1 may have a real cloud loadout)
+			const dev = appPage.url.searchParams.get('devskin');
+			if (dev === 'none') return {};
+			const p1Team = meta.p1 && meta.b.steamid === meta.p1 ? meta.b.team : meta.a.team;
+			if (dev && p1Team?.length) out.p1 = [{ cid: p1Team[0], colors: Array(16).fill(parseInt(dev, 16) & 0xffffff) }];
 		}
 		return out;
 	}
@@ -218,12 +248,22 @@
 			st = 'unavailable';
 			return;
 		}
+		if (!source.packUrl) {
+			// the tape is hosted but this device has no asset pack for it (packs are ROM-derived, agent-side derivation pending)
+			st = 'nopack';
+			return;
+		}
 		st = 'loading';
 		slow = false;
 		const t0 = performance.now();
 		const slowTimer = setTimeout(() => (slow = true), 20_000);
 		try {
-			const [{ TapePlayer }, dev] = await Promise.all([loadEngine(), gpuDevice()]);
+			// both seats' loadouts in ONE batch read (GET /rr/loadout?steamids=a,b) before the feed opens
+			const [{ TapePlayer }, dev] = await Promise.all([
+				loadEngine(),
+				gpuDevice(),
+				loadouts.prime([meta.p1, meta.p2, meta.a.steamid, meta.b.steamid])
+			]);
 			if (disposed) return;
 			device = dev;
 			const onGpuErr = (e: { error: { message: string } }) => fail('gpu', e.error.message);
@@ -286,6 +326,16 @@
 			}
 			fail(code, String((e as Error)?.message ?? e));
 		}
+	}
+
+	async function requestPull() {
+		if (requesting) return;
+		requesting = true;
+		requestNote = '';
+		const r = await requestReplay(meta.key);
+		requesting = false;
+		if (r.ok) reason = 'requested';
+		else requestNote = r.error === 'signin' ? 'sign in first' : 'could not request — try again';
 	}
 
 	function fail(code: 'webgpu' | 'fetch' | 'open' | 'decode' | 'gpu', message: string) {
@@ -734,7 +784,7 @@
 	<!-- the picture: 4:3, the game's own pixels; nothing overlays it while it plays. Tap = play/pause,
 	     double-tap = fullscreen (§6.5); the keyboard equivalents live on the wrapper + the transport buttons. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-	<div class="pic" role="presentation" class:dim={st === 'loading' || st === 'unavailable' || st === 'unsupported' || st === 'error'} onclick={onPicTap}>
+	<div class="pic" role="presentation" class:dim={st === 'loading' || st === 'unavailable' || st === 'nopack' || st === 'unsupported' || st === 'error'} onclick={onPicTap}>
 		{#if poster && posterOk && !isPlayable}
 			<img class="poster" src={poster} alt="" onerror={() => (posterOk = false)} />
 		{:else if !isPlayable}
@@ -759,6 +809,12 @@
 			<div class="ov">
 				{#if reason === 'pending'}
 					<span class="big">⏳</span><span class="h">Tape not in yet.</span><span class="s">The agent uploads it after the set — check back in a minute.</span>
+				{:else if reason === 'archived'}
+					<span class="big">📼</span><span class="h">In the archives.</span><span class="s">This tape is in cold storage — request it and it's pulled back within a minute.</span>
+					<button type="button" class="signin" onclick={requestPull} disabled={requesting}>{requesting ? '…' : '📼 Request replay'}</button>
+					{#if requestNote}<span class="s">{requestNote}</span>{/if}
+				{:else if reason === 'requested'}
+					<span class="big">⏳</span><span class="h">Tape incoming.</span><span class="s">Pulled from the archives — check back in a minute.</span>
 				{:else if reason === 'expired'}
 					<span class="h">Tape gone.</span><span class="s">Only the last 100 live results keep a replay.</span>
 				{:else if reason === 'unsupported'}
@@ -770,6 +826,8 @@
 					<span class="h">No tape for this one.</span><span class="s">Neither player's agent recorded it.</span>
 				{/if}
 			</div>
+		{:else if st === 'nopack'}
+			<div class="ov"><span class="big">📦</span><span class="h">Asset pack not on this device yet.</span><span class="s">The tape is in — the sprites and stage it needs haven't been packed for this browser.</span></div>
 		{:else if st === 'unsupported'}
 			<div class="ov"><span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span></div>
 		{:else if st === 'error'}
@@ -787,6 +845,8 @@
 	{:else if halfAuto && playing}
 		<div class="note">playing at half speed</div>
 	{/if}
+	<!-- watermark: the chrome band under the picture (inline) / the pillar band (fullscreen) — NEVER over the picture -->
+	<div class="wm"><span>RETRO RECEIPTS</span><span class="sep">·</span><a href="{base}/ranks" title="The Marvel ladder">nobd.net/app/ranks</a>{#if dateText}<span class="sep">·</span><span>{dateText}</span>{/if}</div>
 	<span class="sr" aria-live="polite">{liveText}</span>
 </div>
 
@@ -1150,6 +1210,31 @@
 		padding: 0 12px 6px;
 		background: var(--panel);
 	}
+	.wm {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 4px 12px 6px;
+		background: var(--panel);
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--faint);
+		white-space: nowrap;
+	}
+	.wm a {
+		color: var(--faint);
+		text-decoration: none;
+	}
+	.wm a:hover {
+		color: var(--dim);
+		text-decoration: underline dotted;
+	}
+	.wm .sep {
+		opacity: 0.5;
+	}
 	.sr {
 		position: absolute;
 		width: 1px;
@@ -1231,6 +1316,18 @@
 		border-radius: 6px;
 		padding: 3px 8px;
 	}
+	/* fullscreen: the watermark sits at the bottom of the right pillar band, never over the picture */
+	.emb.fs .wm {
+		grid-area: b;
+		align-self: end;
+		justify-self: center;
+		background: transparent;
+		padding-bottom: 12px;
+		color: color-mix(in srgb, #fff 45%, transparent);
+	}
+	.emb.fs .wm a {
+		color: inherit;
+	}
 	.emb.fs.hudoff .tr,
 	.emb.fs.hudoff .note {
 		opacity: 0;
@@ -1267,6 +1364,11 @@
 	.emb.fs.portrait.hudoff .tr {
 		opacity: 1;
 		pointer-events: auto;
+	}
+	.emb.fs.portrait .wm {
+		grid-area: b;
+		align-self: end;
+		padding-top: 44px;
 	}
 
 	@media (max-width: 720px) {

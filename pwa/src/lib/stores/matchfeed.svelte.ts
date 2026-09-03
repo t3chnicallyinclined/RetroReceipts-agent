@@ -42,6 +42,9 @@ export interface MatchResult {
 	/** the server's tape/replay handle (`"key": m.key`, app.rs:970 — "→ GET /rr/replay?key="). Named match_key
 	 *  because `key` above is already the dedupe key. Feeds the replay source resolver (lib/replay/source.ts). */
 	match_key?: string;
+	/** the reporter's physical seat (1 = P1) + who reported — seats for the skins feed; absent today (UNKNOWN server-side) */
+	side?: number;
+	reporter?: string;
 	/** ranked ELO for each player at match time — drives the rank badge (client-derived tier). */
 	winner_rating?: number;
 	loser_rating?: number;
@@ -97,6 +100,8 @@ type MatchFrame = SseFrame & {
 	elo?: unknown;
 	session_id?: unknown;
 	key?: unknown;
+	side?: unknown;
+	reporter?: unknown;
 	winner_rating?: unknown;
 	loser_rating?: unknown;
 	winner_team?: unknown;
@@ -360,6 +365,9 @@ export class MatchFeedStore {
 		const session_id = typeof d.session_id === 'string' && d.session_id ? d.session_id : undefined;
 		// the server's tape handle — was dropped here before the LIVE tab (LIVE-TAB-SPEC §0, §11)
 		const match_key = typeof d.key === 'string' && d.key ? d.key : undefined;
+		const sideN = Number(d.side);
+		const side = sideN === 1 || sideN === 2 ? sideN : undefined;
+		const reporter = typeof d.reporter === 'string' && d.reporter ? d.reporter : undefined;
 		return {
 			key: `${winner}_${loser}_${ts}`,
 			winner,
@@ -373,6 +381,8 @@ export class MatchFeedStore {
 			elo,
 			session_id,
 			match_key,
+			side,
+			reporter,
 			winner_rating: toRating(d.winner_rating),
 			loser_rating: toRating(d.loser_rating),
 			winner_team: toTeam(d.winner_team),

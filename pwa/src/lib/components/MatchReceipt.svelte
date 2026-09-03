@@ -3,6 +3,9 @@
 	import Avatar from './Avatar.svelte';
 	import Flag from './Flag.svelte';
 	import { base } from '$app/paths';
+	import { apiGet } from '$lib/net.svelte';
+	import ReplayAffordance from './ReplayAffordance.svelte';
+	import type { ReplayMeta } from './ReplayEmbed.svelte';
 
 	// 🧾 PER-MATCH RECEIPT — the atomic shareable unit, rendered as an ARENA slip: a stat-card head over a
 	// printed register body. The head is the brag; everything under it is the proof.
@@ -77,6 +80,41 @@
 	const ch = $derived(r.challenger);
 	const ac = $derived(r.acceptor ?? null);
 	const games = $derived(r.games ?? []);
+	// ▶ replays: /rr/session?id= carries each game's match_key (the money receipt's own game list doesn't) — one read
+	let setKeys = $state<Record<number, { match_key?: string; ts?: number; winner?: string; wteam?: number[]; lteam?: number[] }>>({});
+	let setFor = '';
+	$effect(() => {
+		const sid = r.session_id;
+		if (!sid || sid === setFor) return;
+		setFor = sid;
+		void apiGet<{ games?: { match_index?: number; match_key?: string; ts?: number; winner?: string; wteam?: number[]; lteam?: number[] }[] }>(
+			`/rr/session?id=${encodeURIComponent(sid)}`,
+			{ ttl: 60_000 }
+		)
+			.then((j) => {
+				const m: typeof setKeys = {};
+				for (const g of j?.games ?? []) if (g.match_index != null) m[g.match_index] = g;
+				setKeys = m;
+			})
+			.catch(() => (setKeys = {}));
+	});
+	const replayMeta = (n: number): ReplayMeta => {
+		const g = setKeys[n];
+		const ch: Partial<Person> = r.challenger ?? {};
+		const ac: Partial<Person> = r.acceptor ?? {};
+		const chWon = g?.winner ? g.winner === ch.steamid : false;
+		const team = (won: boolean) => (won ? g?.wteam : g?.lteam) ?? [];
+		return {
+			a: { steamid: ch.steamid ?? '', name: ch.name, team: team(chWon) },
+			b: { steamid: ac.steamid ?? '', name: ac.name, team: team(!chWon) },
+			winner: chWon ? 'a' : 'b',
+			gameNo: n + 1,
+			mode: 'money',
+			ts: g?.ts ?? r.settled_ms ?? 0,
+			sessionId: r.session_id,
+			key: g?.match_key ?? `${r.session_id ?? ''}#${n}`
+		};
+	};
 	const ledger = $derived(r.ledger ?? []);
 	const tape = $derived(r.tape ?? null);
 
@@ -188,6 +226,10 @@
 					<span class="fl">
 						{#if g.ocv}OCV{/if}{#if g.perfect}{' '}PERFECT{/if}{#if g.comeback}{' '}COMEBACK{/if}
 					</span>
+					{#if r.session_id}
+						{@const n = (g.n ?? i + 1) - 1}
+						<span class="rep"><ReplayAffordance row={{ match_key: setKeys[n]?.match_key, session_id: r.session_id, ts: setKeys[n]?.ts ?? r.settled_ms ?? 0 }} meta={replayMeta(n)} /></span>
+					{/if}
 				</div>
 			{/each}
 			<div class="rule dash"></div>
@@ -446,6 +488,10 @@
 	}
 
 	/* ── line items ── */
+	.rep {
+		display: inline-flex;
+		margin-left: auto;
+	}
 	.li {
 		display: flex;
 		gap: 8px;

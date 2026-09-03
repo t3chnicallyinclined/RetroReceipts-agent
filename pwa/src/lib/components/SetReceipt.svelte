@@ -6,6 +6,8 @@
 	import { rankOf, RANK_TIERS } from '$lib/ranks';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import { base } from '$app/paths';
+	import ReplayAffordance from './ReplayAffordance.svelte';
+	import type { ReplayMeta } from './ReplayEmbed.svelte';
 
 	// 🧾 THE TAPE — the one way a ranked set displays, everywhere. Renders GET /rr/session?id=<session_id>
 	// as a fight card: tale-of-the-tape head (score, squads, ratings), one line per game (time · result ·
@@ -44,6 +46,8 @@
 	};
 	type Game = {
 		match_index?: number;
+		/** the server's tape handle for THIS game (stats.rs session payload) — drives the per-game replay affordance */
+		match_key?: string;
 		ts?: number;
 		winner?: string;
 		loser?: string;
@@ -313,6 +317,34 @@
 	);
 
 	const is17 = (sid?: string) => !!sid && /^\d{17}$/.test(sid);
+
+	// ▶ per-game replay: the row for the resolver + the chrome for the sheet (server-resolved names/ratings/teams —
+	// never read from the tape). Seats (P1/P2) are UNKNOWN in the session payload → skins stay stock until the
+	// server exposes the reporter's side per game.
+	const replayRow = (g: Game) => ({ match_key: g.match_key, session_id: r.session_id, ts: g.ts ?? 0 });
+	const replayMeta = (g: Game, i: number): ReplayMeta => {
+		const rightWon = g.winner === right?.steamid;
+		const side = (p: Player | undefined, team: number[]) => ({
+			steamid: p?.steamid ?? '',
+			name: p?.name,
+			avatar: p?.avatar,
+			cc: p?.cc,
+			rating: p?.rating ?? null,
+			games: p?.games ?? null,
+			team
+		});
+		return {
+			a: side(left, teamOf(g, left?.steamid ?? '')),
+			b: side(right, teamOf(g, right?.steamid ?? '')),
+			winner: rightWon ? 'b' : 'a',
+			gameNo: (g.match_index ?? i) + 1,
+			mode: '',
+			ts: g.ts ?? 0,
+			durationS: g.duration_s,
+			sessionId: r.session_id,
+			key: g.match_key ?? `${r.session_id ?? ''}#${i}`
+		};
+	};
 </script>
 
 <div class="tape">
@@ -419,6 +451,8 @@
 					{#if gs2?.fb === 'r'}<i class="fb" title="First blood">⚡</i>{/if}
 				</span>
 				<b class="wl" class:w={won}>{won ? 'W' : 'L'}</b>
+				<!-- ▶ the replay for THIS game (opens the app-wide ReplaySheet) -->
+				<span class="rep"><ReplayAffordance row={replayRow(g)} meta={replayMeta(g, i)} /></span>
 				<!-- deck two: the game's TRUE stats (tape-derived, agent 0.3.13+), left–right in row order;
 				     older games keep the legacy neutral combo line. Flair is the winner's, so it reads
 				     directional; the momentum line is re-signed so UP = the viewer's seat ahead. -->
@@ -701,6 +735,11 @@
 		background:
 			linear-gradient(270deg, color-mix(in srgb, var(--good) 11%, transparent), transparent 58%),
 			var(--panel);
+	}
+	.rep {
+		display: inline-flex;
+		align-items: center;
+		margin-left: 6px;
 	}
 	.gi {
 		display: flex;

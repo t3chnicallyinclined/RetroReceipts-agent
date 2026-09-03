@@ -22,8 +22,10 @@
 	import { shortSetLink } from '$lib/share';
 	import {
 		availability,
+		gated,
 		localTapes,
 		resolveSource,
+		seatsOf,
 		sourceOfLocal,
 		type LocalTape,
 		type ReplayAvail,
@@ -246,7 +248,8 @@
 			ts: r.ts,
 			durationS: r.duration_s,
 			sessionId: r.session_id,
-			key: r.match_key ?? r.key
+			key: r.match_key ?? r.key,
+			...(seatsOf(r) ?? {})
 		};
 	}
 
@@ -279,7 +282,9 @@
 			stageId: t.stageId,
 			durationS: t.frames ? Math.round(t.frames / 60) : undefined,
 			sessionId: t.sessionId,
-			key: id
+			key: t.matchKey ?? id,
+			p1: t.p1 || undefined,
+			p2: t.p2 || undefined
 		};
 	}
 </script>
@@ -494,7 +499,7 @@
 						perfect={r.perfect ?? false}
 						comeback={r.comeback ?? false}
 						verified={r.verified}
-						replay={avail[r.key] ?? null}
+						replay={avail[r.key] ? gated(avail[r.key]) : null}
 						expanded={open?.key === r.key}
 						controls="replay-{slug(r.key)}"
 						onOpen={() => toggleRow(r.key, metaOf(r), r.session_id, () => resolveSource(r))}

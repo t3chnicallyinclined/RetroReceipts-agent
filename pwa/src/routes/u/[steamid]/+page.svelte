@@ -477,6 +477,7 @@
 					comeback={m.comeback ?? false}
 					verified={m.verified ?? false}
 					confirmed={m.confirmed ?? false}
+					replayRow={{ match_key: m.match_key, session_id: m.session_id, ts: m.ts ?? 0 }}
 					onOpen={m.session_id ? () => (openSession = m.session_id ?? null) : null}
 				/>
 			{/each}

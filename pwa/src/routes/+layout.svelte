@@ -10,6 +10,7 @@
 	import UpdateAgent from '$lib/components/UpdateAgent.svelte';
 	import AnnounceBanner from '$lib/components/AnnounceBanner.svelte';
 	import RankInfoModal from '$lib/components/RankInfoModal.svelte';
+	import ReplaySheet from '$lib/components/ReplaySheet.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { rankInfo } from '$lib/stores/rankinfo.svelte';
@@ -54,6 +55,9 @@
 {#if rankInfo.slug}
 	<RankInfoModal slug={rankInfo.slug} {mySlug} onClose={() => rankInfo.close()} />
 {/if}
+
+<!-- One replay sheet for the whole app: every ReplayAffordance outside an in-place list opens THIS. -->
+<ReplaySheet />
 
 <style>
 	main {
