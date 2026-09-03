@@ -419,10 +419,21 @@ try {
 		p7.on('request', (r) => {
 			if (/\/replay\/packs\/.*(tape\.json\.gz|manifest\.json|\.png|\.bin)$/i.test(r.url())) heavy.push(r.url());
 		});
-		await p7.goto(URL_, { waitUntil: 'load', timeout: 120000 });
-		await p7.waitForFunction(() => !!window.__rrHero, { timeout: 60000, polling: 250 });
-		await sleep(4000);
-		const stM = await p7.evaluate(() => window.__rrHero.state);
+		// mobile emulation can swap the renderer process mid-settle (puppeteer: "detached Frame") — re-open once if so
+		let stM = '';
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				heavy.length = 0;
+				await p7.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+				await p7.waitForFunction(() => !!window.__rrHero, { timeout: 60000, polling: 250 });
+				await sleep(4000);
+				stM = await p7.evaluate(() => window.__rrHero.state);
+				break;
+			} catch (e) {
+				if (!/detached/i.test(String(e)) || attempt) throw e;
+				log('(phone page frame detached — re-opening once)');
+			}
+		}
 		check(stM === 'closed', `hero on a phone UA stays closed (state ${stM}) — tap to watch`);
 		check(heavy.length === 0, `hero on a phone UA requested no tape/pack bytes (${heavy.length} heavy requests)`);
 		check(await p7.evaluate(() => /Watch the tape/.test(document.querySelector('[data-test="hero"] .emb .ov.closed')?.textContent ?? '')), 'hero on a phone shows the poster + ▶ Watch the tape');
