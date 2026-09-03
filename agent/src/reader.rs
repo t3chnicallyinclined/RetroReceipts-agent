@@ -2480,7 +2480,11 @@ fn start_gamestate_capture() {
                                 (held for upload on win-report)"));
             }
             // 0.3.48: local copy of every finished tape (offline matches have no win-report and were lost before).
-            if let Some(snap) = gamestate_snapshot() {
+            // 0.3.49: only REAL fights get a local copy -- ended by a team wipe, or long enough to be a match (>= 1800
+            // frames). The attract/demo and menu screens produce 'counter-stalled' stubs of 1..250 frames with bogus
+            // rosters, and eight of those evicted a real tape from the newest-8 window on 2026-09-03. Window raised to 40.
+            let real_fight = why == "team-wiped" || gs_capture().lock().unwrap().frames.len() >= 1800;
+            if let Some(snap) = if real_fight { gamestate_snapshot() } else { None } {
                 if snap.frames.len() >= 60 {
                     let (team_ids, stage_id) = { let c = gs_capture().lock().unwrap(); (c.team_ids, c.stage_id) };
                     let p1: Vec<u8> = vec![team_ids[0], team_ids[2], team_ids[4]];
@@ -2495,12 +2499,12 @@ fn start_gamestate_capture() {
                     let _ = std::fs::create_dir_all(&dst_dir);
                     let _ = std::fs::remove_file(src_dir.join(format!("{base}.meta")));          // never uploaded
                     let _ = std::fs::rename(src_dir.join(format!("{base}.json.gz")), dst_dir.join(format!("{base}.json.gz")));
-                    // keep the newest 8 local tapes
+                    // keep the newest 40 local tapes (0.3.49; was 8)
                     if let Ok(rd) = std::fs::read_dir(&dst_dir) {
                         let mut files: Vec<(std::time::SystemTime, std::path::PathBuf)> = rd.flatten()
                             .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (t, e.path()))).collect();
                         files.sort();
-                        while files.len() > 8 { let (_, p) = files.remove(0); let _ = std::fs::remove_file(p); }
+                        while files.len() > 40 { let (_, p) = files.remove(0); let _ = std::fs::remove_file(p); }
                     }
                     trace(&format!("[gamestate] local tape kept: gs-cache-local/{base}.json.gz ({} frames, rollbacks={rb_delta})", snap.frames.len()));
                 }
