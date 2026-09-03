@@ -10,6 +10,18 @@ rust-version = "1.77"
 name = "rr-agent"
 path = "src/main.rs"
 
+# GATE 2 (docs/RECEIPT-RUNNER-GATE2.md): the harvest is a LIBRARY (src/lib.rs: mem + harvest + runner) so the tray agent
+# and the receipt-runner emitter share one implementation of "game memory -> tape bytes". The tray bin re-exports
+# rr_agent::mem / rr_agent::harvest at its crate root, so every existing `crate::mem` / `reader::read_at` path is unchanged.
+[lib]
+name = "rr_agent"
+path = "src/lib.rs"
+
+# rr-tape: emit a v5 tape from rr_runner.exe --harvest-dump output (the runner-side half of runner_tape_gate.py)
+[[bin]]
+name = "rr-tape"
+path = "src/bin/rr-tape.rs"
+
 [dependencies]
 # Tray shell — icon + native menu + event loop. tray-icon 0.24 depends on muda ^0.19.1, so these resolve
 # together; tao provides the winit-style event loop the tray + menu pump their events into.

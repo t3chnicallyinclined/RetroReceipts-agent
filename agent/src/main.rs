@@ -17,7 +17,10 @@
 // find_game_pid is exercised (the reader loop that consumes Proc/exe_base lands in T2) → allow unused so the
 // scaffold builds clean WITHOUT editing mem.rs (this attribute on the mod decl covers the module's contents).
 #[allow(unused)]
-mod mem;
+// GATE 2: mem + harvest live in the library crate (src/lib.rs); re-exported at the bin root so `crate::mem` and
+// `crate::harvest` resolve unchanged everywhere in this binary.
+pub(crate) use rr_agent::mem;
+pub(crate) use rr_agent::harvest;
 
 #[allow(dead_code)] // several constants (SERVER_BASE, …) are consumed in T2.
 mod config;
