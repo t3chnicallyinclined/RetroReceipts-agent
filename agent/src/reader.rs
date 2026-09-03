@@ -127,10 +127,15 @@ const H_CATEGORY:            usize = 0x03;      // node category → render-list
 const H_OBJ_OWNER:           usize = 0x28;      // u64 == owning fighter's H-base (blk+0x3DB8+i*0x738). CONFIRMED
                                                 //   live 48/52 & 40/40 (misses = ownerless super-flash → 0xFF).
                                                 //   Replaces the failing H+0x9c/0xc4 owner scan.
-const H_GFX1:                usize = 0x1a0;     // Dat_GFX1 handle (DC +0x15C, +0x44). CONFIRMED delta + clusters by
-                                                //   effect type live. Small recompile handle, NOT a 0x0CED pointer.
-const H_GFX2:                usize = 0x1a4;     // Dat_GFX2 handle (DC +0x160, +0x44). the (GFX2,sel=sid) bank the
-                                                //   sprite-class part-assembly path keys on; shipped alongside sid.
+// ⚠ 0.3.38 CORRECTION (Ghidra, the Steam sprite submit FUN_1406129f0): the GFX1 part table is
+// dereferenced at node+0x1A8 (`*(node+0x1a8) + sel*4`) and the GFX2 cell table at node+0x1B0
+// (`*(node+0x1b0) + (sid&0x7fff)*4`). The words at +0x1A0/+0x1A4 shipped as gfx1/gfx2 since 0.3.29
+// are NOT bank handles: on the first v5 tape a single fighter shows dozens of distinct "gfx1"
+// values (0x1515, 0x381504, 0x380d0c, ...) across frames -- they are animation-state words. That
+// is why "resolve an ownerless object by its bank" could never work on those tapes.
+const H_GFX1:                usize = 0x1a8;     // Dat_GFX1 table pointer (Steam FUN_1406129f0 reads *(node+0x1a8))
+const H_GFX2:                usize = 0x1b0;     // Dat_GFX2 cell table pointer (Steam FUN_1406129f0 reads *(node+0x1b0))
+const H_OWNER_OFF_NONE: u32 = 0;
 // 0.3.32 FULL EFFECT WIRE — all read from the SAME 0x1C0 harvest_objs buffer (no extra per-node read).
 // ⭐ TAPE v3. Both CONFIRMED in STEAM's own disassembly (senior-re-generalist, Ghidra), then
 // re-checked against a 300-frame state capture.
@@ -1351,7 +1356,10 @@ struct ObjNode { sid: u16, sx: i16, sy: i16, zx: u16, face: u8, cat: u8, owner: 
                  depth: f32,      // H+0x12C (DC node+0xE8) byte-exact z
                  // ── TAPE v4 (append-only; the 44 B v3 layout is the prefix of the 50 B v4 record) ──
                  angle: u16,      // H+0x148 rotation angle, 0x10000 = 360 deg (0 = axis-aligned)
-                 hotx: i16, hoty: i16 } // H+0x178/+0x17A rotation pivot (hotspot), s16 each
+                 hotx: i16, hoty: i16, // H+0x178/+0x17A rotation pivot (hotspot), s16 each
+                 // ── 0.3.38 (append-only): the RAW owner link, so an object spawned by another object can be
+                 // chained to its fighter offline (owner slot|0xFF alone loses 13% of pool objects)
+                 owner_off: u32 } // blk-relative offset of *(H+0x28), or 0
 // ── TAPE v5: the SYSTEM-A (world-space) class ────────────────────────────────────────────────
 // Everything the bodies needed is in `nodes` (System B, 100% against Steam). Shadows, 1P/2P
 // markers, super glows, hail chunks, the HUD and the stage props are drawn by the game's OTHER
@@ -1863,7 +1871,7 @@ struct TimerPeriodGuard;
 #[cfg(windows)]
 impl Drop for TimerPeriodGuard { fn drop(&mut self) { unsafe { windows::Win32::Media::timeEndPeriod(1); } } }
 
-const NODES_STRIDE: usize = 50;   // v4 node record: 44 B v3 prefix + 6 B tail (angle, hotx, hoty)
+const NODES_STRIDE: usize = 54;   // v4 record (50 B) + u32 owner_off (0.3.38); consumers read `nodes_stride`
 
 unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flayers: &mut [u8; 6],
                        mut calib: Option<&mut Vec<Vec<u8>>>) {
@@ -1942,6 +1950,7 @@ unsafe fn harvest_objs(h: &mem::Proc, base: usize, out: &mut Vec<ObjNode>, flaye
                 // ── v4 ──
                 angle: u16le(&buf, H_ANGLE),
                 hotx: u16le(&buf, H_HOTSPOT) as i16, hoty: u16le(&buf, H_HOTSPOT + 2) as i16,
+                owner_off: if ow >= blk && ow < blk + 0x33B18 { (ow - blk) as u32 } else { H_OWNER_OFF_NONE },
             });
             // 0.3.29 calibration: keep this drawn node's raw prefix (cat = prefix[H_CATEGORY]) for offline derivation.
             if let Some(cal) = calib.as_mut() { cal.push(buf[..CALIB_PREFIX_LEN].to_vec()); }
@@ -2440,6 +2449,7 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
                 b.extend_from_slice(&nd.angle.to_le_bytes());
                 b.extend_from_slice(&nd.hotx.to_le_bytes());
                 b.extend_from_slice(&nd.hoty.to_le_bytes());
+                b.extend_from_slice(&nd.owner_off.to_le_bytes());   // 0.3.38 tail (4 B): stride 54
             }
         }
         b
