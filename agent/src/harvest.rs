@@ -492,10 +492,18 @@ pub unsafe fn harvest_anodes(h: &dyn MemSource, blk: usize, out: &mut Vec<ANodeR
                 let mut ob: Vec<u8> = Vec::new();
                 let mut cached = false;
                 if obj != 0 {
-                    if let Some(sig) = read_at(h, obj, 0x68).filter(|b| b.len() >= 0x68) {
-                        AOBJ_CACHE.with(|c| { if let Some((k, bytes)) = c.borrow().get(&obj) { if *k == sig { ob = bytes.clone(); cached = true; } } });
-                        if !cached { ob.extend_from_slice(&sig[..0x18]); }
-                    } else { if let Some(hd) = read_at(h, obj, 0x18) { ob.extend_from_slice(&hd); } }
+                    // 0.3.50: the 0.3.44 cache keyed on the first 0x68 B (header + first record header) and so shipped
+                    // STALE vertices for animated props (their headers never change) -- found by the receipt runner's
+                    // Gate 2 (docs/RECEIPT-RUNNER-GATE2.md, class A). Now the cached object is re-read WHOLE in one call
+                    // and reused only when byte-identical: still one syscall per node, and exact by construction.
+                    let hit = AOBJ_CACHE.with(|c| c.borrow().get(&obj).map(|(_, bytes)| bytes.len()));
+                    if let Some(n) = hit {
+                        if let Some(cur) = read_at(h, obj, n).filter(|b| b.len() == n) {
+                            AOBJ_CACHE.with(|c| { if let Some((_, bytes)) = c.borrow().get(&obj) { if *bytes == cur { cached = true; } } });
+                            if cached { ob = cur; }
+                        }
+                    }
+                    if !cached { if let Some(hd) = read_at(h, obj, 0x18) { ob.extend_from_slice(&hd); } }
                 }
                 if obj != 0 && !cached {
                     let mut q = obj + 0x18;
@@ -513,7 +521,7 @@ pub unsafe fn harvest_anodes(h: &dyn MemSource, blk: usize, out: &mut Vec<ANodeR
                     }
                 }
                 if obj != 0 && !cached && ob.len() >= 0x68 {
-                    let sig = ob[..0x68].to_vec();
+                    let sig = ob[..0x68].to_vec();   // kept for the cache's shape; the reuse test is the whole object (0.3.50)
                     AOBJ_CACHE.with(|c| { let mut m = c.borrow_mut(); if m.len() > 4096 { m.clear(); } m.insert(obj, (sig, ob.clone())); });
                 }
                 out.push(ANodeRaw { list: l as u8, flags: le32(&nd, A_FLAGS), matrix, colour, model, obj: ob, alpha });
