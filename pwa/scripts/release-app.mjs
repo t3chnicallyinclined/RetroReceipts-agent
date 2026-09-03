@@ -7,6 +7,10 @@
 //   node scripts/release-app.mjs staging   # → nobd.net/app-staging   (SHARED SLOT — coordinate first)
 //   node scripts/release-app.mjs prod       # → nobd.net/app           (promote once staging looks right)
 //
+// DEPLOY TARGET (2026-09-03): nobd.net is rise3 (15.204.141.58) since the 2026-09-01 cutover; root@ login is refused there.
+// Set DEPLOY_SSH=rise3 DEPLOY_SUDO=1 (the ubuntu@ alias + passwordless sudo; the webroot dirs are uid 197609 from earlier
+// Windows tar extracts). Defaults keep the historical root@nobd.net form.
+//
 // staging and prod are built from the SAME working tree; they differ only in BASE_PATH (asset-url prefix +
 // service-worker scope) so the two PWAs never cache-collide on one machine. Component code is identical, so
 // what the gate validates on staging is what ships to prod.
@@ -48,6 +52,8 @@ if (!cfg) {
 // exist locally we deploy those; if it fails AND there are none, we abort (a deploy with no character art is
 // not shippable). Sources are env-overridable: MVC_ROM / IDLE_FRAMES / SKIN_STUDIO.
 const ROM = process.env.MVC_ROM || 'C:/Users/trist/projects/NOBD-DC-ONLINE/dc_data/roms/mvc2us/track03.bin';
+const DEPLOY_SSH = process.env.DEPLOY_SSH || 'root@nobd.net';
+const SUDO = process.env.DEPLOY_SUDO ? 'sudo ' : '';
 const haveAssets = existsSync('static/chars') && existsSync('static/chars-anim');
 console.log('\n▶ regenerate ROM-derived assets (portraits + idle animations)');
 const genP = spawnSync('python', ['scripts/render-char-portraits.py'], { stdio: 'inherit', shell: true });
@@ -143,7 +149,7 @@ console.log('\n✅ render-check passed');
 console.log(`▶ deploy → ${envName} (${cfg.dir})`);
 const deploy = spawnSync(
 	'bash',
-	['-lc', `tar czf - -C build . 2>/dev/null | ssh -o StrictHostKeyChecking=no root@nobd.net 'mkdir -p ${cfg.dir} && tar xzf - -C ${cfg.dir}'`],
+	['-lc', `tar czf - -C build . 2>/dev/null | ssh -o StrictHostKeyChecking=no ${DEPLOY_SSH} '${SUDO}mkdir -p ${cfg.dir} && ${SUDO}tar xzf - -C ${cfg.dir}'`],
 	{ stdio: 'inherit' }
 );
 if (deploy.status !== 0) {
