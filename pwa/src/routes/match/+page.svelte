@@ -1,29 +1,41 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { page as appPage } from '$app/state'; // aliased — a local `page` (pagination) already lives below
-	import { matchfeed, type FeedMode } from '$lib/stores/matchfeed.svelte';
+	import { matchfeed, type FeedMode, type MatchResult } from '$lib/stores/matchfeed.svelte';
 	import { wager } from '$lib/stores/wager.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import MatchBanner from '$lib/components/MatchBanner.svelte';
 	import Masthead from '$lib/components/Masthead.svelte';
 	import VersusCard from '$lib/components/VersusCard.svelte';
+	import PlayerPlate from '$lib/components/PlayerPlate.svelte';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import MyMatch from '$lib/components/MyMatch.svelte';
 	import WagerRail from '$lib/components/WagerRail.svelte';
 	import Marquee from '$lib/components/Marquee.svelte';
 	import RailPanel, { type RailMatch } from '$lib/components/RailPanel.svelte';
 	import { apiGet } from '$lib/net.svelte';
+	import { api } from '$lib/config';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
+	import ReplayEmbed, { type ReplayMeta } from '$lib/components/ReplayEmbed.svelte';
+	import { shortSetLink } from '$lib/share';
+	import {
+		availability,
+		localTapes,
+		resolveSource,
+		sourceOfLocal,
+		type LocalTape,
+		type ReplayAvail,
+		type ReplaySource
+	} from '$lib/replay/source';
 
-	// Live match center + 🪙 quarter-match surfaces — all push off the app-wide `matches` SSE channel (a
-	// mode-scoped seed fetch backs Live Results; a seed fetch for the wager rail/marquee). onMount opens the
-	// streams and pauses them while the tab is hidden (CPU discipline — mirrors /ranks).
+	// ▶ LIVE (route /match, nav label "Live" — LIVE-TAB-SPEC): live money matches, now playing, live results —
+	// and a live result expands in place into a ReplayEmbed rendered from the match tape. Everything pushes off
+	// the app-wide `matches` SSE channel (a mode-scoped seed fetch backs Live Results; a seed fetch for the
+	// wager rail/marquee). onMount opens the streams and pauses them while the tab is hidden (CPU discipline).
 	onMount(() => {
 		matchfeed.connect();
-		// wager's live subscription is owned app-wide by AppLive (+layout) now — here we only SEED-fetch the
-		// rail + arcade for this view (freshness); matchfeed stays the /match-scoped live stream we own here.
 		void wager.loadOpen();
 		if (auth.steamid) void wager.loadMine(auth.steamid);
 		const onVis = () => {
@@ -51,7 +63,7 @@
 
 	const nowPlaying = $derived(matchfeed.nowPlaying);
 
-	// 🎟 the rail board — locked money matches open for betting; 20s refresh while the tab is visible
+	// 🎟 the rail board — locked money matches (LIVE MONEY cards); 20s refresh while the tab is visible
 	let railBoard = $state<RailMatch[]>([]);
 	async function loadRail(): Promise<void> {
 		try {
@@ -62,9 +74,7 @@
 		}
 	}
 
-	// 🕹 THE ARCADE — live cabinets anyone can WATCH (referee lobbies: host spectates, seats free by
-	// design, so the steam:// join drops the viewer straight into a spectator slot). Same cadence as
-	// the rail board; only spectatable cabinets render.
+	// 🕹 THE ARCADE — live cabinets anyone can WATCH (referee lobbies: host spectates, seats free by design).
 	interface ArcadeCab {
 		steamid: string;
 		name?: string;
@@ -100,29 +110,24 @@
 	const mode = $derived(matchfeed.mode);
 	const me = $derived(auth.steamid);
 
-	// ── 🪙 one-tap accept funnel (share link → nobd.net/app/match?mm=<id>) ──────────────────────────────
-	// A first-time visitor opens the share link on the web, signs in with Steam, and is dropped straight onto
-	// the accept button — no app download. We NEVER surface a join/lobby link here (acceptance stays behind the
-	// quarter); the WagerRail below reveals the cabinet once the quarter is matched.
+	// ── 🪙 one-tap accept funnel (share link → nobd.net/app/match?mm=<id>) — unchanged ────────────────────
 	const mmId = $derived(appPage.url.searchParams.get('mm') ?? '');
 	let inviteEl = $state<HTMLElement | null>(null);
-	let inviteChecked = $state(false); // we've refreshed the lists at least once for this id
+	let inviteChecked = $state(false);
 	let inviteActing = $state(false);
 	let inviteNotice = $state<{ kind: 'ok' | 'err'; text: string } | null>(null);
-	// resolve the invited wager: an OPEN marquee quarter (public read), or the viewer's own state row when the
-	// challenge is directed at them (only visible once signed in).
 	const invite = $derived(
 		mmId ? (wager.open.find((x) => x.id === mmId) ?? (wager.mine?.id === mmId ? wager.mine : null)) : null
 	);
-	const inviteOpen = $derived(!!invite && invite.status === 'open' && invite.challenger !== me); // a taker can match it
-	const inviteOwn = $derived(!!invite && invite.status === 'open' && invite.challenger === me); // my own quarter
+	const inviteOpen = $derived(!!invite && invite.status === 'open' && invite.challenger !== me);
+	const inviteOwn = $derived(!!invite && invite.status === 'open' && invite.challenger === me);
 	const inviteStake = $derived(invite?.stake ?? 0);
 	const invitePot = $derived(invite ? (invite.pot ?? invite.stake * 2) : 0);
 	const inviteChallenger = $derived(invite?.challenger_name || 'A challenger');
 
 	async function acceptInvite() {
 		if (!auth.authed) {
-			auth.login(`/match?mm=${encodeURIComponent(mmId)}`); // round-trip the id back through Steam sign-in
+			auth.login(`/match?mm=${encodeURIComponent(mmId)}`);
 			return;
 		}
 		if (inviteActing || !invite) return;
@@ -135,9 +140,6 @@
 		else inviteNotice = { kind: 'err', text: r.error ?? 'Could not match that quarter.' };
 	}
 
-	// Resolve + reveal the invited challenge whenever ?mm= is present (a cold share-link load or an in-app nav
-	// to a new id). Refresh the open marquee (+ our own state when signed in) so the id resolves, then scroll
-	// the card into view so the accept button is right there.
 	$effect(() => {
 		const id = mmId;
 		if (!id) return;
@@ -151,33 +153,37 @@
 		})();
 	});
 
-	// ── Live Results mode filter (mirrors the /ranks scope tab-list) — Ranked is the default. ──
+	// ── Live Results scopes — 🪙 Money added (the server already filters it, routes.rs:1121-1132) ──
 	const MODES: { id: FeedMode; label: string; icon: string }[] = [
 		{ id: 'ranked', label: 'Ranked', icon: '⚔' },
 		{ id: 'lobby', label: 'Lobby', icon: '🎮' },
-		{ id: 'tourney', label: 'Tournament', icon: '🏆' }
+		{ id: 'tourney', label: 'Tournament', icon: '🏆' },
+		{ id: 'money', label: 'Money', icon: '🪙' }
 	];
-	const MODE_NAME: Record<FeedMode, string> = { ranked: 'ranked', lobby: 'lobby', tourney: 'tournament' };
+	const MODE_NAME: Record<FeedMode, string> = { ranked: 'ranked', lobby: 'lobby', tourney: 'tournament', money: 'money' };
 
 	function selectMode(m: FeedMode) {
 		if (m === matchfeed.mode) return;
+		open = null; // a scope change collapses the open replay (§6.2)
 		matchfeed.setMode(m);
-		page = 0; // a fresh mode starts on page 1
+		page = 0;
 	}
 
-	// ── Pagination — 5 per page, up to 20 rows (4 pages). A live delta prepends to page 1 (store cap 20). ──
+	// ── Pagination — 5 per page, up to 20 rows (4 pages). ──
 	const PER_PAGE = 5;
 	let page = $state(0);
 	const pageCount = $derived(Math.max(1, Math.ceil(results.length / PER_PAGE)));
-	// Keep the page in range as the list shrinks (mode switch / cap eviction).
 	$effect(() => {
 		if (page > pageCount - 1) page = pageCount - 1;
 	});
 	const pageResults = $derived(results.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE));
+	function gotoPage(p: number) {
+		open = null; // a page change collapses the open replay (§6.2)
+		page = Math.max(0, Math.min(pageCount - 1, p));
+	}
 
 	// ── Session ("set") modal — a result OR live row opens the game-by-game set view for its session_id. ──
 	let openSession = $state<string | null>(null);
-	// custom skins for every sprite on the feed — one batched prime per snapshot change
 	$effect(() => {
 		const ids = [
 			...nowPlaying.flatMap((p) => [p.a, p.b]),
@@ -188,46 +194,121 @@
 	function openSet(id: string) {
 		openSession = id;
 	}
-	// live when the open session belongs to a Now Playing pair → the modal keeps refreshing the set as it plays.
 	const openIsLive = $derived(!!openSession && nowPlaying.some((p) => p.session_id === openSession));
 
 	const isRanked = (m?: string) => m === 'ranked';
-	// A missing/short display name falls back to a shortened steamid rather than a raw 17-digit wall.
-	const nameFor = (sid: string, names: Record<string, string>) =>
-		(names && names[sid]) || (sid ? `…${sid.slice(-5)}` : 'Player');
 	const involvesMe = (a: string, b: string) => !!me && (a === me || b === me);
-
 	const coldLoad = $derived(matchfeed.loading && results.length === 0);
+
+	// ── Replay availability per result row (client-inferred until contract C1 lands, §7.11) ──
+	let avail = $state<Record<string, ReplayAvail>>({});
+	const asked = new Set<string>();
+	$effect(() => {
+		for (const r of pageResults) {
+			if (asked.has(r.key)) continue;
+			asked.add(r.key);
+			void availability(r).then((a) => (avail = { ...avail, [r.key]: a }));
+		}
+	});
+
+	// ── The expanded row → ReplayEmbed panel. ONE open per list; the same row again collapses. ──
+	interface OpenPanel {
+		key: string;
+		meta: ReplayMeta;
+		sessionId?: string;
+		source: ReplaySource | null; // null while the resolver runs (the poster shows meanwhile)
+		poster: string;
+	}
+	let open = $state<OpenPanel | null>(null);
+	const slug = (k: string) => k.replace(/[^a-z0-9_-]/gi, '');
+	// the interim poster is the OG fight card (§7.5); the embed falls back to the --board ground on a 404
+	const posterFor = (sessionId?: string) => (sessionId ? api(`/rr/ogimg/${encodeURIComponent(sessionId)}.png`) : '');
+
+	async function toggleRow(key: string, meta: ReplayMeta, sessionId: string | undefined, resolve: () => Promise<ReplaySource>) {
+		if (open?.key === key) {
+			open = null; // collapse; the embed disposes its player on unmount
+			return;
+		}
+		open = { key, meta, sessionId, source: null, poster: posterFor(sessionId) };
+		const src = await resolve();
+		if (open?.key === key) open = { ...open, source: src };
+		await tick();
+		document.getElementById(`replay-${slug(key)}`)?.scrollIntoView({ block: 'nearest' });
+	}
+
+	function metaOf(r: MatchResult): ReplayMeta {
+		const ranked = isRanked(r.mode);
+		return {
+			a: { steamid: r.winner, name: r.winner_name, rating: ranked ? (r.winner_rating ?? null) : null, team: r.winner_team },
+			b: { steamid: r.loser, name: r.loser_name, rating: ranked ? (r.loser_rating ?? null) : null, team: r.loser_team },
+			winner: 'a',
+			mode: r.mode ?? '',
+			ts: r.ts,
+			durationS: r.duration_s,
+			sessionId: r.session_id,
+			key: r.match_key ?? r.key
+		};
+	}
+
+	let copied = $state('');
+	async function copyLink(sessionId: string) {
+		try {
+			await navigator.clipboard.writeText(shortSetLink(sessionId));
+			copied = sessionId;
+			setTimeout(() => (copied = ''), 1800);
+		} catch {
+			/* clipboard blocked — the receipt itself has the link */
+		}
+	}
+
+	// ── DEV: TEST TAPES — the local packs as playable rows (dev build or ?dev=1) so the replay path can be
+	// watched with an empty/stale feed. Packs are ROM-derived and served only from the gitignored dev folder.
+	const dev = $derived(import.meta.env.DEV || appPage.url.searchParams.get('dev') === '1');
+	let testTapes = $state<[string, LocalTape][]>([]);
+	$effect(() => {
+		if (!dev) return;
+		void localTapes().then((t) => (testTapes = Object.entries(t)));
+	});
+	function metaOfLocal(id: string, t: LocalTape): ReplayMeta {
+		return {
+			a: { steamid: t.a.steamid, name: t.a.name, team: t.a.team },
+			b: { steamid: t.b.steamid, name: t.b.name, team: t.b.team },
+			winner: t.winner,
+			mode: t.mode,
+			ts: t.ts,
+			stageId: t.stageId,
+			durationS: t.frames ? Math.round(t.frames / 60) : undefined,
+			sessionId: t.sessionId,
+			key: id
+		};
+	}
 </script>
 
-<svelte:head><title>Match · Retro Receipts</title></svelte:head>
+<svelte:head><title>Live · Retro Receipts</title></svelte:head>
 
-<!-- Masthead: title + ghost watermark + accent seam + description (matches /ranks · /regions) -->
+<!-- Masthead: LIVE · ghost ON AIR · the LIVE pill (LIVE-TAB-SPEC §10) -->
 <Masthead
-	title="MATCH"
-	ghost="LIVE"
+	title="LIVE"
+	ghost="ON AIR"
 	accent="var(--live)"
-	desc="The live match center — games in progress and results as they land, pushed the moment they happen. Leave it open and watch the scene play out."
+	desc="Money on the line, games in progress, results as they land — and the tape of every one."
 >
 	{#snippet pills()}
 		<span class="pill live"><span class="dot" aria-hidden="true"></span>LIVE</span>
 	{/snippet}
 </Masthead>
 
-<!-- Result Check honest-beta banner — the reserved amber surface (DESIGN §gold budget) -->
 <ResultCheckBanner />
 
-<!-- 🎛 Your cabinet — shows only when the signed-in viewer is an online host node (self-hides otherwise). -->
 {#if me}<HostBanner steamid={me} self />{/if}
 
-<!-- 🪙 one-tap accept funnel — arrived via a share link (?mm=). The hero accept target: challenger + pot +
-     a single Accept button (Steam sign-in only, no app download). Never shows a join/lobby link. -->
+<!-- 🪙 one-tap accept funnel — arrived via a share link (?mm=). Unchanged. -->
 {#if mmId}
 	<section class="invite" bind:this={inviteEl} class:live={inviteOpen}>
 		<span class="lab">🪙 You've been challenged</span>
 		{#if inviteOpen}
 			<p class="iline">
-				<b>{inviteChallenger}</b> puts up 🪙 {inviteStake} · FT{invite?.ft ?? 2} — play them for coins: put
+				<b>{inviteChallenger}</b> puts up 🪙 {inviteStake} · FT{invite?.ft ?? 3} — play them for coins: put
 				up yours and the winner takes the 🪙 {invitePot} pot.
 			</p>
 			<div class="iacts">
@@ -249,10 +330,8 @@
 		{:else if inviteOwn}
 			<p class="iline dim">This is your quarter — it's up in the arcade below, waiting for a taker.</p>
 		{:else if invite}
-			<!-- resolved but not an open taker-able offer → I'm already a party to it (matched / underway) -->
 			<p class="iline dim">You're in this set — the live rail is below.</p>
 		{:else if !auth.authed}
-			<!-- signed out + unresolved: it may be a directed challenge we can't see until sign-in -->
 			<p class="iline dim">Sign in to see this challenge.</p>
 			<div class="iacts">
 				<button type="button" class="steam" onclick={acceptInvite}>
@@ -275,36 +354,47 @@
 	</section>
 {/if}
 
-<!-- 🆚 YOUR live match — the versus scoreboard + matchup intel (only while you're in a game, via the agent) -->
-<MyMatch />
+<!-- ▬ YOUR MATCH strip — the small VS (§3). Renders only signed-in; host nodes render nothing. -->
+<MyMatch onTape={openSet} />
 
-<!-- 🪙 Money Match: your wager rail + the open-challenge arcade (live off the same `matches` channel) -->
-<WagerRail />
-<Marquee />
-
-<!-- 🎟 THE RAIL — betting on locked money matches. Board rows come from GET /rr/rail/board; each match
-     carries its own RailPanel (place / take / cancel, live totals). Section hides when nothing's locked. -->
-{#if railBoard.length}
-	<h2 class="shead"><span class="ic tick">🎟</span> The Rail <span class="cnt">{railBoard.length}</span></h2>
-	<p class="subnote">Bet on who wins — 1:1, winner takes 90%, <b>10% of every bet feeds the fighters' pot</b>. Betting closes when the match starts.</p>
-	<div class="railboard">
-		{#each railBoard as rm (rm.wager_id)}
-			<div class="rmatch" class:on={rm.live}>
-				<div class="rmhead">
-					<span class="rmnames"><b>{rm.challenger_name || '?'}</b> <i class="rmvs">VS</i> <b>{rm.acceptor_name || '?'}</b></span>
-					<span class="rmmeta">
-						{#if rm.live || (rm.cw ?? 0) + (rm.aw ?? 0) > 0}<span class="rml">🔴 {rm.cw ?? 0}–{rm.aw ?? 0}</span>
-						{:else}<span class="rmo">BETS OPEN</span>{/if}
-						<span class="rmpot">POT 🪙 {(rm.pot ?? rm.stake * 2) + (rm.rail?.pot_feed ?? 0)}</span>
-					</span>
+<!-- 🪙 LIVE MONEY (§5): your wager first (WagerRail self-manages: state rail or the quarter-up CTA), then one
+     MoneyCard per locked wager on the rail board (RailPanel verbatim inside), then the arcade's open
+     challenges folded into a collapsed disclosure (Tris Q1). Money leads because its clock is the shortest. -->
+<section class="sec">
+	<h2 class="shead"><span class="ic coin" aria-hidden="true">🪙</span> Live Money {#if railBoard.length}<span class="cnt">{railBoard.length}</span>{/if}</h2>
+	<WagerRail />
+	{#if railBoard.length}
+		<p class="subnote">Bet on who wins — 1:1, winner takes 90%, <b>10% of every bet feeds the fighters' pot</b>. Betting closes when the match starts.</p>
+		<div class="railboard">
+			{#each railBoard as rm (rm.wager_id)}
+				<div class="mc" class:on={rm.live}>
+					<div class="mchd">
+						<span class="mlab">🪙 MONEY MATCH · FT{rm.ft ?? 3}</span>
+						<span class="pot">POT 🪙 {(rm.pot ?? rm.stake * 2) + (rm.rail?.pot_feed ?? 0)}</span>
+					</div>
+					<div class="mcvs">
+						<PlayerPlate steamid={rm.challenger} name={rm.challenger_name} density="tag" />
+						<span class="mcc">
+							<i class="vsm" aria-hidden="true">VS</i>
+							{#if rm.live || (rm.cw ?? 0) + (rm.aw ?? 0) > 0}<span class="sc">🔴 {rm.cw ?? 0} – {rm.aw ?? 0}</span>
+							{:else}<span class="sc open">BETS OPEN</span>{/if}
+						</span>
+						<PlayerPlate steamid={rm.acceptor} name={rm.acceptor_name} density="tag" align="right" />
+					</div>
+					<RailPanel m={rm} />
 				</div>
-				<RailPanel m={rm} />
-			</div>
-		{/each}
-	</div>
-{/if}
+			{/each}
+		</div>
+	{/if}
+	{#if wager.open.length}
+		<details class="arcade">
+			<summary><span>🪙 <b>{wager.open.length} quarter{wager.open.length === 1 ? '' : 's'}</b> up in the arcade — open challenges for coins</span><span class="chev" aria-hidden="true">▸</span></summary>
+			<div class="arcin"><Marquee /></div>
+		</details>
+	{/if}
+</section>
 
-<!-- 🟢 Now Playing — standardized live banners (same one-row family as Live Results) -->
+<!-- 🟢 NOW PLAYING (§4) — VersusCards unchanged, yours first via `mine`; THE ARCADE watch strip -->
 <section class="sec">
 	<h2 class="shead"><span class="ic on"><span class="dot" aria-hidden="true"></span></span> Now Playing {#if nowPlaying.length}<span class="cnt">{nowPlaying.length}</span>{/if}</h2>
 	{#if nowPlaying.length === 0}
@@ -328,7 +418,6 @@
 		</div>
 	{/if}
 
-	<!-- 🕹 THE ARCADE — cabinets anyone can watch live (referee lobbies; seats free, viewer lands as spectator) -->
 	{#if cabs.length}
 		<div class="cabhd">THE ARCADE — WATCH A LIVE CABINET</div>
 		{#each cabs as c (c.steamid)}
@@ -344,11 +433,31 @@
 	{/if}
 </section>
 
-<!-- 🔴 Live Results — mode-scoped, paginated; same one-row banner family, winner-vs-loser framing -->
+<!-- the expanded row's panel: ReplayEmbed + the actions row (THE TAPE › keeps commandment 5 through the panel) -->
+{#snippet replayPanel(o: OpenPanel)}
+	<section class="xp" id="replay-{slug(o.key)}" aria-label="Replay: {o.meta.a.name || 'Player'} vs {o.meta.b.name || 'Player'}">
+		<div class="xpin">
+			{#if o.source}
+				<ReplayEmbed source={o.source} poster={o.poster} meta={o.meta} />
+			{:else}
+				<div class="resolving"><span class="rail">Finding the tape</span></div>
+			{/if}
+			<div class="acts">
+				{#if o.sessionId}
+					<button type="button" class="a" onclick={() => openSet(o.sessionId ?? '')} title="THE TAPE — the set receipt"><span class="ico">🧾</span><span class="txt">THE TAPE ›</span></button>
+					<button type="button" class="a" onclick={() => copyLink(o.sessionId ?? '')} title="Copy link"><span class="ico">⧉</span><span class="txt">{copied === o.sessionId ? 'Copied' : 'Copy link'}</span></button>
+				{/if}
+				<!-- paid save (Tris Q2): affordance only, no price, disabled until the money lane wires it -->
+				<button type="button" class="a gold" disabled title="coming soon"><span class="ico">💾</span><span class="txt">Save this tape</span></button>
+			</div>
+		</div>
+	</section>
+{/snippet}
+
+<!-- 🔴 LIVE RESULTS (§6) — MatchBanner rows with the replay affordance; a row expands in place -->
 <section class="sec">
 	<div class="sechd">
 		<h2 class="shead"><span class="ic res" aria-hidden="true"></span> Live Results {#if results.length}<span class="cnt">{results.length}</span>{/if}</h2>
-		<!-- Mode filter — same tab-list pattern as /ranks scope. Selecting refetches that mode's feed. -->
 		<div class="scopes" role="tablist" aria-label="Results mode">
 			{#each MODES as m (m.id)}
 				<button
@@ -372,44 +481,75 @@
 		<div class="panel">
 			{#each pageResults as r (r.key)}
 				{@const ranked = isRanked(r.mode)}
-				<MatchBanner
-					a={{ steamid: r.winner, name: r.winner_name, rating: ranked ? (r.winner_rating ?? null) : null, team: r.winner_team ?? null }}
-					b={{ steamid: r.loser, name: r.loser_name, rating: ranked ? (r.loser_rating ?? null) : null, team: r.loser_team ?? null }}
-					winner="a"
-					mode={r.mode ?? ''}
-					ts={r.ts}
-					delta={ranked && r.elo ? r.elo : null}
-					dur={r.duration_s ?? null}
-					ocv={r.ocv ?? false}
-					perfect={r.perfect ?? false}
-					comeback={r.comeback ?? false}
-					verified={r.verified}
-					onOpen={r.session_id ? () => openSet(r.session_id ?? '') : null}
-				/>
+				<div class="rrow" class:open={open?.key === r.key}>
+					<MatchBanner
+						a={{ steamid: r.winner, name: r.winner_name, rating: ranked ? (r.winner_rating ?? null) : null, team: r.winner_team ?? null }}
+						b={{ steamid: r.loser, name: r.loser_name, rating: ranked ? (r.loser_rating ?? null) : null, team: r.loser_team ?? null }}
+						winner="a"
+						mode={r.mode ?? ''}
+						ts={r.ts}
+						delta={ranked && r.elo ? r.elo : null}
+						dur={r.duration_s ?? null}
+						ocv={r.ocv ?? false}
+						perfect={r.perfect ?? false}
+						comeback={r.comeback ?? false}
+						verified={r.verified}
+						replay={avail[r.key] ?? null}
+						expanded={open?.key === r.key}
+						controls="replay-{slug(r.key)}"
+						onOpen={() => toggleRow(r.key, metaOf(r), r.session_id, () => resolveSource(r))}
+					/>
+					{#if open?.key === r.key}{@render replayPanel(open)}{/if}
+				</div>
 			{/each}
 		</div>
 
 		{#if pageCount > 1}
 			<nav class="pager" aria-label="Live Results pages">
-				<button class="pg" disabled={page === 0} onclick={() => (page = Math.max(0, page - 1))}>‹ Prev</button>
+				<button class="pg" disabled={page === 0} onclick={() => gotoPage(page - 1)}>‹ Prev</button>
 				<div class="dots">
 					{#each Array(pageCount) as _, i (i)}
-						<button class="dot" class:on={i === page} onclick={() => (page = i)} aria-label="Page {i + 1}" aria-current={i === page}></button>
+						<button class="dot" class:on={i === page} onclick={() => gotoPage(i)} aria-label="Page {i + 1}" aria-current={i === page}></button>
 					{/each}
 				</div>
-				<button class="pg" disabled={page >= pageCount - 1} onclick={() => (page = Math.min(pageCount - 1, page + 1))}>Next ›</button>
+				<button class="pg" disabled={page >= pageCount - 1} onclick={() => gotoPage(page + 1)}>Next ›</button>
 			</nav>
 		{/if}
 	{/if}
 </section>
+
+<!-- 🧪 DEV ONLY: TEST TAPES — the local packs as playable rows (dev server or ?dev=1) -->
+{#if dev && testTapes.length}
+	<section class="sec" data-test="test-tapes">
+		<h2 class="shead"><span class="ic dev" aria-hidden="true">🧪</span> Test Tapes <span class="cnt">{testTapes.length}</span> <span class="devnote">dev only · local packs, never committed</span></h2>
+		<div class="panel">
+			{#each testTapes as [id, t] (id)}
+				<div class="rrow" class:open={open?.key === id} data-test="tape-row-{id}">
+					<MatchBanner
+						a={{ steamid: t.a.steamid, name: t.a.name, team: t.a.team ?? null }}
+						b={{ steamid: t.b.steamid, name: t.b.name, team: t.b.team ?? null }}
+						winner={t.winner}
+						mode={t.mode}
+						ts={t.ts}
+						dur={t.frames ? Math.round(t.frames / 60) : null}
+						replay="ready"
+						expanded={open?.key === id}
+						controls="replay-{slug(id)}"
+						onOpen={() => toggleRow(id, metaOfLocal(id, t), t.sessionId, async () => sourceOfLocal(t))}
+					/>
+					{#if open?.key === id}{@render replayPanel(open)}{/if}
+				</div>
+			{/each}
+		</div>
+	</section>
+{/if}
 
 {#if openSession}
 	<SessionModal sessionId={openSession} live={openIsLive} onClose={() => (openSession = null)} />
 {/if}
 
 <style>
-	/* 🪙 one-tap accept funnel card — the share-link hero. Gold-cut arena panel, same button vocabulary as
-	   the WagerRail so the two read as one system. */
+	/* 🪙 one-tap accept funnel card — unchanged */
 	.invite {
 		margin: 0 0 14px;
 		padding: 14px 16px;
@@ -518,7 +658,6 @@
 	.sec {
 		margin-top: 16px;
 	}
-	/* Section header: title on the left, the mode tab-list on the right (wraps under it on phones). */
 	.sechd {
 		display: flex;
 		align-items: center;
@@ -527,74 +666,128 @@
 		flex-wrap: wrap;
 		margin-bottom: 8px;
 	}
-	/* ── 🎟 the rail board ── */
+
+	/* ── 🪙 LIVE MONEY — MoneyCard (the .rmatch family; RailPanel inside, unchanged) ── */
 	.subnote {
-		margin: -4px 0 10px;
+		margin: 6px 0 10px;
 		font-size: 12px;
 		color: var(--dim);
 	}
 	.subnote b {
 		color: var(--gold);
 	}
-	.ic.tick {
+	.ic.coin {
 		font-size: 14px;
 	}
 	.railboard {
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-		margin-bottom: 18px;
+		margin-bottom: 10px;
 	}
-	.rmatch {
+	.mc {
 		border: 1px solid color-mix(in srgb, var(--gold) 26%, var(--line));
 		border-radius: 12px;
 		background: linear-gradient(120deg, var(--gold-soft), transparent 75%), var(--panel);
 		padding: 11px 13px;
 	}
-	.rmatch.on {
+	.mc.on {
 		border-left: 3px solid var(--live);
 	}
-	.rmhead {
+	.mchd {
 		display: flex;
 		justify-content: space-between;
 		align-items: baseline;
 		gap: 10px;
 		flex-wrap: wrap;
 	}
-	.rmnames {
-		font-size: 14px;
-		min-width: 0;
+	.mlab {
+		font-family: ui-monospace, monospace;
+		font-size: 9.5px;
+		letter-spacing: 0.15em;
+		color: var(--faint);
 	}
-	.rmnames b {
-		font-weight: 800;
+	.pot {
+		font-family: ui-monospace, monospace;
+		font-size: 10px;
+		letter-spacing: 0.08em;
+		color: var(--gold);
+		font-weight: 700;
 	}
-	.rmvs {
+	.mcvs {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+		align-items: center;
+		gap: 12px;
+		margin: 8px 0 4px;
+	}
+	.mcvs > :global(.pp:last-child) {
+		justify-self: end;
+	}
+	.mcc {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.vsm {
 		font-style: italic;
 		font-weight: 900;
-		font-size: 11px;
+		font-size: 14px;
+		transform: skewX(-8deg);
 		background: linear-gradient(175deg, #fff3c0 20%, var(--gold) 45%, #a3670a 80%);
 		-webkit-background-clip: text;
 		background-clip: text;
 		color: transparent;
-		margin: 0 3px;
 	}
-	.rmmeta {
-		display: flex;
-		gap: 10px;
-		align-items: baseline;
-		font-family: ui-monospace, monospace;
-		font-size: 10px;
-		letter-spacing: 0.08em;
-	}
-	.rml {
+	/* the live score is the card's heavy-italic voice; BETS OPEN is record voice in --good */
+	.sc {
+		font-style: italic;
+		font-weight: 900;
+		font-size: 20px;
 		color: var(--live);
+		letter-spacing: 0.02em;
+		font-variant-numeric: tabular-nums;
 	}
-	.rmo {
+	.sc.open {
+		font-family: ui-monospace, monospace;
+		font-style: normal;
+		font-weight: 600;
+		font-size: 10px;
+		letter-spacing: 0.14em;
 		color: var(--good);
 	}
-	.rmpot {
+	/* the arcade's open challenges — a collapsed disclosure (browse, not live) */
+	.arcade {
+		border: 1px dashed var(--line);
+		border-radius: 10px;
+		color: var(--dim);
+		font-size: 12.5px;
+		font-weight: 600;
+		margin-top: 4px;
+	}
+	.arcade summary {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 9px 13px;
+		cursor: pointer;
+		list-style: none;
+	}
+	.arcade summary::-webkit-details-marker {
+		display: none;
+	}
+	.arcade summary b {
 		color: var(--gold);
-		font-weight: 700;
+	}
+	.arcade[open] summary .chev {
+		transform: rotate(90deg);
+	}
+	.arcade .chev {
+		transition: transform 0.15s;
+	}
+	.arcin {
+		padding: 0 6px 6px;
 	}
 
 	.shead {
@@ -638,6 +831,16 @@
 		height: 8px;
 		background: var(--live);
 	}
+	.shead .ic.dev {
+		font-size: 13px;
+	}
+	.devnote {
+		font-family: ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.1em;
+		color: var(--faint);
+		font-weight: 400;
+	}
 	.cnt {
 		font-size: 11px;
 		font-weight: 800;
@@ -649,7 +852,6 @@
 		padding: 1px 7px;
 	}
 
-	/* Mode tab-list — a rounded segmented control, cloned from the /ranks scope switch. */
 	.scopes {
 		display: inline-flex;
 		align-items: center;
@@ -695,7 +897,89 @@
 		overflow: hidden;
 	}
 
-	/* pager — arena-styled prev/next + page dots */
+	/* ── the expandable result row (§6.3-6.4) ── */
+	.rrow {
+		border-bottom: 1px solid var(--line-soft);
+	}
+	.rrow:last-child {
+		border-bottom: 0;
+	}
+	.rrow > :global(.mb) {
+		border-radius: 0;
+		border-top: 0;
+		border-right: 0;
+		border-bottom: 0;
+	}
+	.xp {
+		display: grid;
+		grid-template-rows: 1fr;
+		background: var(--panel);
+		border-left: 3px solid var(--stream);
+		padding: 0 12px 12px 12px;
+	}
+	.xpin {
+		min-height: 0;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.xp {
+			animation: xpgrow 0.18s ease-out;
+		}
+		.xpin {
+			overflow: hidden;
+		}
+	}
+	@keyframes xpgrow {
+		from { grid-template-rows: 0fr; }
+		to { grid-template-rows: 1fr; }
+	}
+	.resolving {
+		aspect-ratio: 4 / 3;
+		max-width: 1280px;
+		margin: 0 auto;
+		display: grid;
+		place-items: center;
+		background: var(--board);
+		border: 1px solid color-mix(in srgb, var(--stream) 30%, var(--line));
+		border-radius: 12px;
+	}
+	.acts {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-top: 10px;
+	}
+	.acts .a {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font: inherit;
+		font-size: 11.5px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: var(--dim);
+		padding: 6px 12px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--panel-2);
+		cursor: pointer;
+	}
+	.acts .a:hover:not(:disabled) {
+		color: var(--ink);
+		border-color: color-mix(in srgb, var(--gold) 35%, var(--line));
+	}
+	.acts .a.gold {
+		color: var(--gold);
+		border-color: color-mix(in srgb, var(--gold) 40%, var(--line));
+	}
+	.acts .a:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.acts .ico {
+		display: none;
+	}
+
+	/* pager */
 	.pager {
 		display: flex;
 		align-items: center;
@@ -752,7 +1036,27 @@
 			justify-content: space-between;
 		}
 		.scope {
-			padding: 6px 10px;
+			padding: 6px 8px;
+		}
+		.slbl {
+			display: none;
+		}
+	}
+	@media (max-width: 720px) {
+		/* actions collapse to icons with labels on title (§6.3) */
+		.acts .ico {
+			display: inline;
+		}
+		.acts .txt {
+			display: none;
+		}
+		.acts .a {
+			min-width: 44px;
+			min-height: 44px;
+			justify-content: center;
+		}
+		.xp {
+			padding: 0 8px 10px;
 		}
 	}
 	/* 🕹 THE ARCADE watch strip */
@@ -797,7 +1101,7 @@
 		font-family: ui-monospace, monospace;
 		font-size: 9px;
 		letter-spacing: 0.1em;
-		color: var(--stream, #e33);
+		color: var(--live);
 		white-space: nowrap;
 	}
 	.cabbtn {

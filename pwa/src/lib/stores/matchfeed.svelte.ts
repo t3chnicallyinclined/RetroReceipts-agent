@@ -20,8 +20,9 @@ import type { SseFrame } from '$lib/types';
 const RESULTS_CAP = 20;
 const NOWPLAYING_CAP = 24;
 
-/** Live Results filter — which match origin feeds the board. `ranked` is the default (rating deltas). */
-export type FeedMode = 'ranked' | 'lobby' | 'tourney';
+/** Live Results filter — which match origin feeds the board. `ranked` is the default (rating deltas).
+ *  `money` added with the LIVE tab (LIVE-TAB-SPEC §2) — the server already filters it (routes.rs:1121-1132). */
+export type FeedMode = 'ranked' | 'lobby' | 'tourney' | 'money';
 
 export interface MatchResult {
 	/** dedupe key — winner+loser+ts (provisional and its later verified copy share this). */
@@ -38,6 +39,9 @@ export interface MatchResult {
 	elo?: number;
 	/** the set this game belongs to — opens the session modal (game-by-game set view). */
 	session_id?: string;
+	/** the server's tape/replay handle (`"key": m.key`, app.rs:970 — "→ GET /rr/replay?key="). Named match_key
+	 *  because `key` above is already the dedupe key. Feeds the replay source resolver (lib/replay/source.ts). */
+	match_key?: string;
 	/** ranked ELO for each player at match time — drives the rank badge (client-derived tier). */
 	winner_rating?: number;
 	loser_rating?: number;
@@ -92,6 +96,7 @@ type MatchFrame = SseFrame & {
 	mode?: unknown;
 	elo?: unknown;
 	session_id?: unknown;
+	key?: unknown;
 	winner_rating?: unknown;
 	loser_rating?: unknown;
 	winner_team?: unknown;
@@ -353,6 +358,8 @@ export class MatchFeedStore {
 		const comboN = Number(d.combo);
 		const combo = Number.isFinite(comboN) && comboN > 1 ? Math.round(comboN) : undefined;
 		const session_id = typeof d.session_id === 'string' && d.session_id ? d.session_id : undefined;
+		// the server's tape handle — was dropped here before the LIVE tab (LIVE-TAB-SPEC §0, §11)
+		const match_key = typeof d.key === 'string' && d.key ? d.key : undefined;
 		return {
 			key: `${winner}_${loser}_${ts}`,
 			winner,
@@ -365,6 +372,7 @@ export class MatchFeedStore {
 			duration_s,
 			elo,
 			session_id,
+			match_key,
 			winner_rating: toRating(d.winner_rating),
 			loser_rating: toRating(d.loser_rating),
 			winner_team: toTeam(d.winner_team),
@@ -414,6 +422,7 @@ export class MatchFeedStore {
 				mode: row.mode ?? cur.mode,
 				elo: row.elo ?? cur.elo,
 				session_id: row.session_id ?? cur.session_id,
+				match_key: row.match_key ?? cur.match_key,
 				winner_rating: row.winner_rating ?? cur.winner_rating,
 				loser_rating: row.loser_rating ?? cur.loser_rating,
 				winner_team: row.winner_team ?? cur.winner_team,
@@ -430,6 +439,7 @@ export class MatchFeedStore {
 				next.mode === cur.mode &&
 				next.elo === cur.elo &&
 				next.session_id === cur.session_id &&
+				next.match_key === cur.match_key &&
 				next.winner_rating === cur.winner_rating &&
 				next.loser_rating === cur.loser_rating &&
 				next.winner_team === cur.winner_team &&

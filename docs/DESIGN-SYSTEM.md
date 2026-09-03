@@ -12,7 +12,7 @@ full component audit + three-lens design review; mockups: the "Arena Card System
 | `--gold` #ffb020 | winner emphasis, money, verified/trust seals, the VS mark | links, hovers, decoration |
 | `--live` #ff3d68 | a MATCH on air: broadcast dot + LIVE pill | losses. LOSSES ARE NEVER RED. |
 | `--molten` #ff5c2c | violence flair (OCV/PERFECT/COMEBACK), challenge urgency | generic warnings (those are copy, not color) |
-| `--stream` #8b6dff | skins/worn, spectate, tournament streams | — |
+| `--stream` #8b6dff | skins/worn, spectate, tournament streams, **replay availability** (`▶ TAPE`, the expanded-row edge) — a replay is not on air, so `--live` stays reserved for a match on air | — |
 | losses | hollow chip + `--dim` ink (two-channel: fill + hue) | red, anywhere, including "you lost" pills and form pips |
 
 Tier identity colors (`.rk-*`, `RK_PLATE`/`RK_TEXT` in `lib/ranks.ts` + `app.css`) are RANK colors,
@@ -24,7 +24,9 @@ not outcome colors — they are exempt and defined ONCE globally (no local copie
 
 Banner = full-width strip about ONE finished event · Card = self-contained block about a live/standing
 thing · Row = aligned list entry · Plate = identity unit (skew signature) · Tile = one stat ·
-Receipt = certified paper · Strip/Rail = scrolling CONTAINERS of cards, never cards themselves.
+Receipt = certified paper · Strip/Rail = scrolling CONTAINERS of cards, never cards themselves ·
+**Embed** = a rendered media element (the game's OWN pixels) with transport chrome; never a Card, never
+carries actions beyond transport (added with the LIVE tab, `docs/LIVE-TAB-SPEC.md` §13; one consumer: `ReplayEmbed`).
 A new component takes one of these suffixes or amends this doc first.
 
 ## The taxonomy + adoption status
@@ -41,6 +43,9 @@ A new component takes one of these suffixes or amends this doc first.
 | StatTile | `StatTile.svelte`, accents from the charter | SHIPPED |
 | BracketMatch | `bracketChip()` in `lib/tourney.ts` = the ONE state taxonomy (public page + TO console consume it) | RESOLVED 2026-08-25: no shared card — public page renders a read-only card, the console an admin form; the taxonomy WAS the drift surface and it's consolidated. Re-open if a third bracket renderer appears |
 | Masthead | `lib/components/Masthead.svelte` | SHIPPED — all 10 inline copies migrated 2026-08-25 |
+| OpponentPlate | `lib/components/OpponentPlate.svelte` — Plate; wraps PlayerPlate + the a.k.a. line + the H2H line (win-rate via `winrateColor()`); leaf, owns no fetches | SHIPPED 2026-09-03 with the LIVE tab (the YOUR MATCH strip in `MyMatch.svelte`; the 38–56 px hero VS + ghost VS retired) |
+| MoneyCard | the `.mc` family on `/match` (LIVE MONEY) — header `🪙 MONEY MATCH · FTn` + `POT 🪙 N`, PlayerPlate tags, `RailPanel` inside unchanged; every number is a `rail.rs` field, absent = omitted | SHIPPED 2026-09-03 (markup lives in `routes/match/+page.svelte`; promote to a component if a second surface appears) |
+| ReplayEmbed | `lib/components/ReplayEmbed.svelte` — Embed; the match tape re-rendered by the proven tape engine (Web Worker + wasm emitter + WebGPU, `static/replay/engine/` verbatim from `d3dcap/replay`); chrome above/below inline, pillar bands + fading HUD in fullscreen; nothing ever overlays the 640×480 picture | SHIPPED 2026-09-03 (desktop tape path; phones try the same path and fall back to the `unsupported` state) |
 
 ## The commandments (all checkable)
 
@@ -48,7 +53,9 @@ A new component takes one of these suffixes or amends this doc first.
    leaf components `peek()` — leaves never fetch). Character names as text only inside mono record blocks.
 2. W/L is always the two-channel chip. Nothing else encodes outcome.
 3. Gold only per the charter. 4. Accents only per the charter.
-5. Every finished match anywhere is a MatchBanner and links to its receipt.
+5. Every finished match anywhere is a MatchBanner and links to its receipt. A MatchBanner may expand in
+   place (Live Results → ReplayEmbed); the receipt link then lives in the expanded panel's actions row
+   (`THE TAPE ›`). The row remains the single tap target.
 6. Identity renders through PlayerPlate; names resolve from SSOT fields at render time — never cached strings.
 7. Two text voices: mono = record language (ids, counts, timestamps, deltas, stakes); heavy condensed
    italic = scores, marks, and titles (VS, W/L, set scores, mastheads) — NEVER player names.
@@ -57,6 +64,9 @@ A new component takes one of these suffixes or amends this doc first.
 8. Density never changes structure — zones scale or shed from the edges inward.
 9. Sides are stable; the winner is marked (gold name + chip), never re-sorted.
 10. The suffix grammar is law.
+
+The gold VS mark appears at MatchBanner size (14 px) and VersusCard size (26 px) only; the 38–56 px hero
+VS was retired with MyMatch's scoreboard (LIVE tab, 2026-09-03).
 
 ## Sprite ladder
 

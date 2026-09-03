@@ -94,3 +94,6 @@ legacy/web/idle_frames.json
 legacy/web/studio/anim/
 legacy/**/skins/
 rr-render/target/
+
+# ── Replay packs (ROM-derived game pixels) — served in dev from a local folder/junction, NEVER committed ──
+pwa/static/replay/packs/

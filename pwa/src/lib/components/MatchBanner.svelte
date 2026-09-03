@@ -33,7 +33,10 @@
 		confirmed = false,
 		dur = null,
 		gameNo = null,
-		onOpen = null
+		onOpen = null,
+		replay = null,
+		expanded = false,
+		controls = null
 	}: {
 		/** side A — the POV player on POV surfaces (profile: the viewed player) */
 		a: BannerSide;
@@ -53,6 +56,13 @@
 		/** receipt density: game number replaces the timestamp */
 		gameNo?: number | null;
 		onOpen?: (() => void) | null;
+		/** replay availability (LIVE-TAB-SPEC §6.1): ready/saved → ▶ TAPE (--stream), pending → ⏳, none/expired → —;
+		 *  null = not a replay surface → the plain › chevron */
+		replay?: 'ready' | 'pending' | 'none' | 'expired' | 'saved' | null;
+		/** the row is expanded in place into its ReplayEmbed (stream-colored edge, aria-expanded) */
+		expanded?: boolean;
+		/** id of the expanded panel (aria-controls) — only when the row can expand */
+		controls?: string | null;
 	} = $props();
 
 	// recency reads as "5m ago"; HISTORY reads as a date — past 48h the banner shows the day itself
@@ -73,10 +83,13 @@
 	this={onOpen ? 'button' : 'div'}
 	class="mb"
 	class:won={winner === 'a'}
+	class:open={expanded}
 	class:tappable={!!onOpen}
 	onclick={onOpen ?? undefined}
 	type={onOpen ? 'button' : undefined}
 	role={onOpen ? 'button' : undefined}
+	aria-expanded={controls ? expanded : undefined}
+	aria-controls={controls ?? undefined}
 >
 	<span class="wl ca" class:w={winner === 'a'}>{winner === 'a' ? 'W' : 'L'}</span>
 	<span class="side sa">
@@ -111,7 +124,10 @@
 		<span class="r2">
 			{#if delta != null && delta !== 0}<span class="delta" class:neg={delta < 0}>{delta > 0 ? '+' : ''}{delta}</span>{/if}
 			{#if dur}<span>{Math.floor(dur / 60)}:{String(dur % 60).padStart(2, '0')}</span>{/if}{#if gameNo != null}<span>G{gameNo}</span>{:else if ts}<span>{when(ts)}</span>{/if}
-			<span class="chev">›</span>
+			{#if replay === 'ready' || replay === 'saved'}<span class="tapechip" title="Watch the tape">▶ TAPE</span>
+			{:else if replay === 'pending'}<span class="tapechip pend" title="Tape not in yet">⏳</span>
+			{:else if replay}<span class="none" aria-hidden="true">—</span>
+			{:else}<span class="chev">›</span>{/if}
 		</span>
 	</span>
 </svelte:element>
@@ -251,6 +267,31 @@
 	}
 	.chev {
 		color: var(--faint);
+	}
+	/* replay affordance — --stream marks replay availability (charter amendment, LIVE-TAB-SPEC §13.3) */
+	.tapechip {
+		font-size: 8.5px;
+		letter-spacing: 0.12em;
+		padding: 1px 6px;
+		border-radius: 5px;
+		border: 1px solid color-mix(in srgb, var(--stream) 45%, var(--line));
+		color: var(--stream);
+		font-weight: 600;
+		white-space: nowrap;
+	}
+	.tapechip.pend {
+		color: var(--faint);
+		border-color: var(--line);
+	}
+	.none {
+		color: var(--faint);
+	}
+	/* the expanded row: stream-colored edge + wash; it fuses with the panel below it */
+	.mb.open {
+		border-left-color: var(--stream);
+		background: linear-gradient(90deg, color-mix(in srgb, var(--stream) 9%, transparent), transparent 45%), var(--panel);
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
 	}
 	/* mobile: fold at the VS axis — explicit grid areas; zone order preserved, never re-laid-out.
 	   Steam names run to 32 chars — the name budget targets 20+ visible, so the avatar (usually a

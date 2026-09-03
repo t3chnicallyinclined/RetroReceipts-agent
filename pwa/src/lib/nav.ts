@@ -14,9 +14,10 @@ export interface NavItem {
 // and FLEET, which stays folded into Match as "The Arcade" cabinet map.
 export const NAV: NavItem[] = [
 	{
-		// Match — the money-match / live hub (the core of the app).
+		// LIVE — the money-match / live hub (the core of the app). Label is LIVE (LIVE-TAB-SPEC §1.1); the href
+		// stays /match so every share link (nobd.net/app/match?mm=<id>) and the ?mm= funnel keep working.
 		id: 'match',
-		label: 'Match',
+		label: 'Live',
 		href: '/match',
 		d: 'M4 20 L17 7 M17 7 h-3.6 M17 7 v3.6 M20 20 L7 7 M7 7 h3.6 M7 7 v3.6',
 		live: true

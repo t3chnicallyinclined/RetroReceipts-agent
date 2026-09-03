@@ -1,6 +1,45 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import path from 'node:path';
+
+// ── Replay packs in DEV (LIVE tab, ReplayEmbed) ──────────────────────────────────────────────────────
+// A pack (packs/<id>/manifest.json + files) is ROM-derived game pixels: NEVER committed, never in static/.
+// In dev the ReplayEmbed fetches /replay/packs/<id>/… and this middleware streams those files straight
+// out of the render lane's pack folder (d3dcap/replay/packs) — no copy, no second server. Override with
+// RR_PACKS_DIR. If a gitignored pwa/static/replay/packs/ junction exists instead, Vite's public-dir
+// handling serves it first and this middleware never sees the request. Production pack hosting is
+// lane-1 contract C3 (LIVE-TAB-SPEC §11) — this is dev-only by construction (configureServer).
+const PACKS_DIR =
+	process.env.RR_PACKS_DIR ??
+	path.resolve(__dirname, '../../mvc-live-skins-quarters/d3dcap/replay/packs');
+const PACK_MIME: Record<string, string> = {
+	'.json': 'application/json',
+	'.png': 'image/png',
+	'.gz': 'application/gzip', // tape.json.gz is handed to the wasm AS BYTES — never Content-Encoding it
+	'.bin': 'application/octet-stream',
+	'.BIN': 'application/octet-stream'
+};
+function replayPacksDev(): Plugin {
+	return {
+		name: 'rr-replay-packs-dev',
+		configureServer(server) {
+			server.middlewares.use((req, res, next) => {
+				const url = (req.url ?? '').split('?')[0];
+				if (!url.startsWith('/replay/packs/')) return next();
+				// /replay/packs/<id>/<file…> → <PACKS_DIR>/<id>/<file…>; refuse anything that escapes the dir.
+				const rel = decodeURIComponent(url.slice('/replay/packs/'.length));
+				const file = path.resolve(PACKS_DIR, rel);
+				if (!file.startsWith(PACKS_DIR + path.sep) || !existsSync(file) || statSync(file).isDirectory()) return next();
+				res.setHeader('Content-Type', PACK_MIME[path.extname(file)] ?? 'application/octet-stream');
+				res.setHeader('Content-Length', String(statSync(file).size));
+				res.setHeader('Cache-Control', 'no-store');
+				createReadStream(file).pipe(res);
+			});
+		}
+	};
+}
 
 // Same BASE_PATH the SvelteKit config reads (svelte.config.js). Prod deploy at nobd.net/app
 // sets BASE_PATH=/app; dev/bare build leave it '' (root). The PWA scope/start_url must match
@@ -15,6 +54,7 @@ const SCOPE = `${BASE}/`; // scope + start_url want a trailing slash; SvelteKit'
 export default defineConfig({
 	plugins: [
 		sveltekit(),
+		replayPacksDev(),
 		SvelteKitPWA({
 			strategies: 'generateSW',
 			registerType: 'autoUpdate',

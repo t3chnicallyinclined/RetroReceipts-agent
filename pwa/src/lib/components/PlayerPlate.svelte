@@ -30,7 +30,8 @@
 		density = 'plate',
 		link = true,
 		won = false,
-		align = 'left'
+		align = 'left',
+		rankHref = ''
 	}: {
 		steamid?: string;
 		name?: string;
@@ -45,6 +46,8 @@
 		/** winner emphasis — the name takes gold (charter: gold marks the winner) */
 		won?: boolean;
 		align?: 'left' | 'right';
+		/** wrap the rank badge in a link (ReplayEmbed chrome-top → the ladder at /ranks); '' = plain badge */
+		rankHref?: string;
 	} = $props();
 
 	const is17 = $derived(/^\d{17}$/.test(steamid));
@@ -68,7 +71,10 @@
 				{#if cc}<Flag {cc} w={density === 'hero' ? 14 : 12} />{/if}
 				{#if tier}<span class="tiern">{tier.n.toUpperCase()}</span>{/if}
 				{#if rating != null}<span class="rt">{rating}</span>{/if}
-				{#if rating != null}<RankBadge {rating} games={games ?? 999} size={density === 'hero' ? 18 : 14} />{/if}
+				{#if rating != null}
+					{#if rankHref}<a class="rkl" href={rankHref} title="Marvel ladder"><RankBadge {rating} games={games ?? 999} size={density === 'hero' ? 18 : 14} /></a>
+					{:else}<RankBadge {rating} games={games ?? 999} size={density === 'hero' ? 18 : 14} />{/if}
+				{/if}
 			</span>
 			{#if team?.length}
 				<span class="team" class:r={align === 'right'}>
@@ -98,6 +104,10 @@
 	}
 	.pp.ra {
 		flex-direction: row-reverse;
+	}
+	.rkl {
+		display: inline-flex;
+		line-height: 0;
 	}
 	.pp.d-hero {
 		gap: 12px;

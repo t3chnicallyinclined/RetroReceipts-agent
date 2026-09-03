@@ -1,0 +1,30 @@
+{
+  "_": "DEV/LOCAL replay manifest (LIVE-TAB-SPEC §11): match id → {tape, pack} until the server's C1/C2 contracts exist. URLs are relative to the app base. Packs are ROM-derived: pwa/static/replay/packs/ is gitignored; in dev vite.config.ts streams them from the render lane's d3dcap/replay/packs folder.",
+  "tapes": {
+    "local_stage9": {
+      "tape": "/replay/packs/local_stage9/tape.json.gz",
+      "pack": "/replay/packs/local_stage9",
+      "frames": 5222,
+      "stageId": 9,
+      "agent": "0.3.48",
+      "a": { "steamid": "76561197999665347", "name": "Tris", "team": [42, 52, 44] },
+      "b": { "steamid": "", "name": "local P2", "team": [23, 12, 46] },
+      "winner": "a",
+      "mode": "lobby",
+      "ts": 1788462750766
+    },
+    "59613662": {
+      "tape": "/replay/packs/59613662/tape.json.gz",
+      "pack": "/replay/packs/59613662",
+      "frames": 6272,
+      "stageId": 13,
+      "agent": "0.3.39",
+      "sessionId": "s_76561197999665347_76561199789482789_1a065872300",
+      "a": { "steamid": "76561197999665347", "name": "Tris", "team": [52, 44, 8] },
+      "b": { "steamid": "76561199789482789", "name": "", "team": [42, 44, 50] },
+      "winner": "b",
+      "mode": "ranked",
+      "ts": 1788409850210
+    }
+  }
+}
