@@ -128,7 +128,18 @@ const H_CATEGORY:            usize = 0x03;      // node category → render-list
 // the three wrong offsets: the render cluster maps DC→Steam at a CONFIRMED +0x44 delta (5 anchors: screen
 // 0xE0→0x124, screen_y 0xE4→0x128, drawgate 0x12C→0x170, sid 0x144→0x188, hitflash 0x12E→0x172). The old
 // H_GFX1_PTR=0x1a8 was δ0x4C = DC+0x164 = Dat_Pal (a PALETTE handle) — precisely why it never resolved (0/23742).
-const H_OBJ_OWNER:           usize = 0x28;      // u64 == owning fighter's H-base (blk+0x3DB8+i*0x738). CONFIRMED
+const H_OBJ_OWNER:           usize = 0x28;
+// ── 0.3.40 PALETTE STAGING ROWS — docs/PALETTE-SOURCE-GHIDRA.md (Ghidra-CONFIRMED, gate 494/518) ──
+// The palette a draw binds is NOT the fighter's DatPal: it is the bank the sheet registration gave the
+// part (slot base 0x10+8*slot + rec.flags>>4), whose colours the engine STAGES at blk+0x1040+bank*0x38
+// (FUN_1406146d0 = loc_8c035162) and uploads per frame (FUN_140613390). `pal` (read_pal(H+0x1B8)) is
+// DatPal+0 = costume 0 row 0 — wrong for every non-default colour, and why a same-character mirror
+// rendered both fighters alike.
+const PAL_STAGE_OFF:    usize = 0x13C0;  // blk + 0x1040 + 0x10*0x38: slot 0 row 0
+const PAL_STAGE_STRIDE: usize = 0x38;    // one line
+const PAL_STAGE_FLAG:   usize = 0x08;    // u32: 1 raw pending / 2 dim pending / 0 uploaded
+const PAL_STAGE_COLS:   usize = 0x18;    // 16 x u16 ARGB4444
+const PAL_STAGE_LEN:    usize = 6 * 8 * PAL_STAGE_STRIDE;   // 0x540: all six slots in one read      // u64 == owning fighter's H-base (blk+0x3DB8+i*0x738). CONFIRMED
                                                 //   live 48/52 & 40/40 (misses = ownerless super-flash → 0xFF).
                                                 //   Replaces the failing H+0x9c/0xc4 owner scan.
 // ⚠ 0.3.38 CORRECTION (Ghidra, the Steam sprite submit FUN_1406129f0): the GFX1 part table is
@@ -1483,6 +1494,7 @@ struct GsCapture {
     tie_ggpo_frame: i32,    // 0.3.29: GGPO Sync::_last_confirmed_frame read at battle start (pairs with start_sim_frame)
     // ── TAPE v5: System-A world-space nodes per frame + the interned polygon-list objects ──
     anodes: std::collections::BTreeMap<u32, Vec<ANode>>,
+    palrows: Vec<(u32, [[u8; 32]; 48], [u8; 48])>,   // 0.3.40: per frame the 48 (slot*8+row) staged palette rows + flags
     aobjs: Vec<Vec<u8>>,
     aobj_idx: HashMap<u64, u16>,
 }
@@ -1491,7 +1503,7 @@ impl Default for GsCapture {
                                        seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), stage_id: 0, anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, anchor_hash: 0,
                                        select_in: Vec::new(), start_sim_frame: 0, confirmed_in: std::collections::BTreeMap::new(), objs: std::collections::BTreeMap::new(),
                                        calib: Vec::new(), battle_blk: 0, tie_ggpo_frame: -1,
-                                       anodes: std::collections::BTreeMap::new(), aobjs: Vec::new(), aobj_idx: HashMap::new() } }
+                                       anodes: std::collections::BTreeMap::new(), palrows: Vec::new(), aobjs: Vec::new(), aobj_idx: HashMap::new() } }
 }
 fn gs_capture() -> &'static Mutex<GsCapture> {
     static S: OnceLock<Mutex<GsCapture>> = OnceLock::new();
@@ -1507,7 +1519,8 @@ struct GsSnapshot { frames: Vec<GsRow>, frame_addr: usize, synthetic: bool, assi
                     confirmed_in: std::collections::BTreeMap<u32, [u32; 2]>,
                     objs: std::collections::BTreeMap<u32, Vec<ObjNode>>,
                     calib: Vec<(u32, Vec<Vec<u8>>)>, battle_blk: u64, tie_ggpo_frame: i32,
-                    anodes: std::collections::BTreeMap<u32, Vec<ANode>>, aobjs: Vec<Vec<u8>> }
+                    anodes: std::collections::BTreeMap<u32, Vec<ANode>>, aobjs: Vec<Vec<u8>>,
+                    palrows: Vec<(u32, [[u8; 32]; 48], [u8; 48])> }
 // Return the buffered game IFF it was actively updating within the last few seconds (i.e. it IS the game
 // that just ended). This guards against attaching a stale/other game's buffer to a late (pending-flush) win.
 fn gamestate_snapshot() -> Option<GsSnapshot> {
@@ -1520,7 +1533,7 @@ fn gamestate_snapshot() -> Option<GsSnapshot> {
                       anchor_hash: c.anchor_hash, select_in: c.select_in.clone(),
                       start_sim_frame: c.start_sim_frame, confirmed_in: c.confirmed_in.clone(), objs: c.objs.clone(),
                       calib: c.calib.clone(), battle_blk: c.battle_blk, tie_ggpo_frame: c.tie_ggpo_frame,
-                      anodes: c.anodes.clone(), aobjs: c.aobjs.clone() })
+                      anodes: c.anodes.clone(), aobjs: c.aobjs.clone(), palrows: c.palrows.clone() })
 }
 
 fn le32(b: &[u8], o: usize) -> u32 { u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]) }
@@ -2233,7 +2246,21 @@ fn start_gamestate_capture() {
                             last_node_count = objs.len();
                             // TAPE v5: the world-space class, same moment, same block
                             let mut araw: Vec<ANodeRaw> = Vec::new();
-                            if let Some(blk) = base.checked_sub(BLK_BACK) { unsafe { harvest_anodes(h, blk, &mut araw); } }
+                            let mut prow: Option<([[u8; 32]; 48], [u8; 48])> = None;
+                            if let Some(blk) = base.checked_sub(BLK_BACK) {
+                                unsafe { harvest_anodes(h, blk, &mut araw); }
+                                // 0.3.40: the engine-resolved palette rows, one 0x540-B read, same block, same instant
+                                if let Some(pb) = unsafe { read_at(h, blk + PAL_STAGE_OFF, PAL_STAGE_LEN) }.filter(|b| b.len() >= PAL_STAGE_LEN) {
+                                    let mut rows = [[0u8; 32]; 48];
+                                    let mut flags = [0u8; 48];
+                                    for i in 0..48 {
+                                        let o = i * PAL_STAGE_STRIDE;
+                                        rows[i].copy_from_slice(&pb[o + PAL_STAGE_COLS..o + PAL_STAGE_COLS + 32]);
+                                        flags[i] = pb[o + PAL_STAGE_FLAG] & 3;
+                                    }
+                                    prow = Some((rows, flags));
+                                }
+                            }
                             row.layer = flayers;
                             {
                                 let mut c = gs_capture().lock().unwrap();
@@ -2243,6 +2270,9 @@ fn start_gamestate_capture() {
                                     c.frames.insert(frame, row.clone());
                                     if !objs.is_empty() && (c.objs.len() < GS_CAP || c.objs.contains_key(&frame)) {
                                         c.objs.insert(frame, objs);   // 0.3.27: per-frame effects, keyed like frames
+                                    }
+                                    if let Some((rows, flags)) = prow {
+                                        if c.palrows.len() < GS_CAP { c.palrows.push((frame, rows, flags)); }
                                     }
                                     if !araw.is_empty() && (c.anodes.len() < GS_CAP || c.anodes.contains_key(&frame)) {
                                         // intern each object's bytes by content hash; the node keeps the index
@@ -2516,6 +2546,25 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         b
     };
     let aobjs_b64 = b64_encode(&gzip_bytes(&aobjs_raw));
+    // 0.3.40 `palrows`: [u32 frame][48 x u16 pal index (slot*8+row)][48 x u8 flag] = 148 B/frame, interned
+    // through the SAME `pal_tab` so `pals` stays one table (built BEFORE pals_raw on purpose).
+    let palrows_raw: Vec<u8> = {
+        let mut b = Vec::new();
+        for (f, rows, flags) in &gs.palrows {
+            b.extend_from_slice(&f.to_le_bytes());
+            for r in rows.iter() {
+                let pi = match pal_tab.iter().position(|p| p == r) {
+                    Some(i) => i as u16,
+                    None if pal_tab.len() < 0xFFFE => { pal_tab.push(*r); (pal_tab.len() - 1) as u16 }
+                    None => 0xFFFF,
+                };
+                b.extend_from_slice(&pi.to_le_bytes());
+            }
+            b.extend_from_slice(flags);
+        }
+        b
+    };
+    let palrows_b64 = b64_encode(&gzip_bytes(&palrows_raw));
     // the palette table the nodes' `pal` indexes into: 32 B of ARGB4444 each, in first-seen order.
     let pals_raw: Vec<u8> = pal_tab.iter().flat_map(|p| p.iter().copied()).collect();
     let pals_b64 = b64_encode(&gzip_bytes(&pals_raw));
@@ -2579,6 +2628,8 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         // The consumer paints by index -- no sort key to apply, no layer direction to choose, no
         // registration model to reproduce. `pals` is the palette table `pal` indexes into.
         "nodes": nodes_b64, "nodes_frames": gs.objs.len(), "pals": pals_b64, "pals_n": pal_tab.len(),
+        "palrows": palrows_b64, "palrows_frames": gs.palrows.len(), "palrows_stride": 148, "palrows_ver": 1,
+        "palrows_enc": "0.3.40 -- gzip+base64 of per-frame [u32 frame][48 x u16 index into `pals` (slot*8+row: the engine-resolved 16-colour rows staged at blk+0x13C0+slot*0x1C0+row*0x38+0x18, FUN_1406146d0)][48 x u8 flag (line +8: 1 raw pending, 2 dim pending, 0 uploaded)]. Per-part row = rec.flags>>4. Supersedes `pal` (DatPal+0 = costume 0 row 0). docs/PALETTE-SOURCE-GHIDRA.md",
         "nodes_stride": NODES_STRIDE,
         "nodes_ver": 4,
         // ⭐ TAPE v5: the world-space class (shadows, markers, glows, hail, HUD, stage props).
