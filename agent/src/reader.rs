@@ -2191,9 +2191,19 @@ fn start_gamestate_capture() {
             let mut conf_next: i64 = -1;   // 0.3.26: cursor for the confirmed-input ring harvest (seeds on first call)
             loop {
                 if !SHARE_GAMEPLAY.load(SeqCst) { break; }
+                let frame = match fc { Some(a) => unsafe { rpm_u32(h, a) }.unwrap_or(0), None => { synth += 1; synth } };
+                // 0.3.42: the 0.5 ms poll costs ONE 4-byte read. Everything else -- the GGPO input harvest
+                // (>= 4 reads), the closure, array_valid (3 reads) -- runs once per TICK. Before this the loop
+                // issued ~16k syscalls/s and burned ~140% of a core whenever the game was open (measured
+                // 2026-09-03 on 0.3.39/40/41 alike). The stall/quit checks still run every poll.
+                if fc.is_some() && last != u32::MAX && frame == last {
+                    if last_new.elapsed().as_millis() > 2500 { why = "counter-stalled"; break; }
+                    if wipe_since.map_or(false, |t| t.elapsed().as_millis() > 600) { why = "team-wiped"; break; }
+                    std::thread::sleep(std::time::Duration::from_micros(500));
+                    continue;
+                }
                 // 0.3.26: pull GGPO's CONFIRMED inputs up to the watermark (the pure-forward replay stream).
                 unsafe { harvest_confirmed_in(h, exe_base, &mut conf_next) };
-                let frame = match fc { Some(a) => unsafe { rpm_u32(h, a) }.unwrap_or(0), None => { synth += 1; synth } };
                 // P0.3: guard the per-frame read+record so one panicking frame can't kill the capture thread.
                 // Returns true when the freeze-guard wants to stop the tape (kept as a signal so the `break`
                 // still fires outside the closure); a panic is logged and treated as "no row this frame".
@@ -2754,6 +2764,15 @@ fn drain_gs_cache() {
         let base = &fname[..fname.len() - 5];
         let meta_path = dir.join(&fname);
         let gz_path = dir.join(format!("{base}.json.gz"));
+        // 0.3.42: a 413 (server body limit) is PERMANENT for this file -- retrying it every idle cycle
+        // re-read + re-base64'd a 3..14 MB tape and did a dedup GET, per tape, per cycle (34 tapes in the
+        // spool = the ~140%-of-a-core burn seen 2026-09-03). Mark it and skip for 6 h; the tape stays.
+        let big_marker = dir.join(format!("{base}.toolarge"));
+        if let Ok(md) = std::fs::metadata(&big_marker) {
+            let age = md.modified().ok().and_then(|m| m.elapsed().ok()).map(|d| d.as_secs()).unwrap_or(0);
+            if age < 6 * 3600 { continue; }
+            let _ = std::fs::remove_file(&big_marker);
+        }
         // ⭐ RR_KEEP_TAPES=1: never delete the local spool after upload. For testing a tape format
         // change you need the file on THIS machine, and the normal path deletes it the moment the
         // server has it -- which for a v3 test means the one artefact you wanted is gone.
@@ -2783,6 +2802,10 @@ fn drain_gs_cache() {
         if let Some(o) = body.as_object_mut() { o.remove("designated"); o.remove("spool_ts"); o.insert("frames_gz".into(), serde_json::Value::from(b64_encode(&gz))); }
         match auth_post(RR_GAMESTATE).timeout(std::time::Duration::from_secs(30)).send_json(body) {
             Ok(_) => { trace(&format!("[gamestate] uploaded {base} ({} bytes gz)", gz.len())); cleanup(); }
+            Err(ureq::Error::Status(413, _)) => {
+                let _ = std::fs::write(&big_marker, gz.len().to_string());
+                trace(&format!("[gamestate] upload {base} REJECTED 413 ({} bytes gz) -- server body limit; parked 6 h, tape kept", gz.len()));
+            }
             Err(e) => { trace(&format!("[gamestate] upload {base} failed ({e}) — retry next cycle")); }
         }
     }
