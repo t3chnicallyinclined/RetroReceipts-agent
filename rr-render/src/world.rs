@@ -193,14 +193,20 @@ pub struct WorldState {
     pub arc: Option<ArcModels>,
     pub prop_cache: HashMap<u16, Option<Vec<ObjRec>>>,
     pub prop_stats: std::collections::BTreeMap<i64, (usize, usize)>,
+    /// deck cache (2026-09-03): keyed by the deck colour bits; the deck's vertex bytes and per-mesh metadata do not
+    /// depend on the frame, so they are built once and memcpy'd per frame (was 95% of the frame: 28 of 30 ms).
+    pub deck_cache: Option<(u64, DeckCache)>,
 }
+
+pub struct DeckGeo { pub first_rel: u32, pub nv: u32, pub tkey: String, pub page: Page, pub opaque: bool, pub centre: [f64; 3], pub radius: Option<f64>, pub hdr: (Option<i64>, Option<i64>, Option<i64>), pub centroid_note: bool }
+pub struct DeckCache { pub verts: Vec<u8>, pub geo: Vec<DeckGeo>, pub missing: Vec<(usize, i64)> }
 
 impl WorldState {
     pub fn new(assets: &WorldAssets, tape: &Tape) -> WorldState {
         let mut tape_pages = HashMap::new();
         for (k, p) in &assets.stage_preload { tape_pages.entry(k.clone()).or_insert_with(|| p.clone()); }
         for (k, p) in &tape.pages { tape_pages.insert(k.clone(), p.clone()); }
-        WorldState { tape_pages, arc: assets.stage_rip.as_ref().map(ArcModels::build), prop_cache: HashMap::new(), prop_stats: Default::default() }
+        WorldState { deck_cache: None, tape_pages, arc: assets.stage_rip.as_ref().map(ArcModels::build), prop_cache: HashMap::new(), prop_stats: Default::default() }
     }
 }
 
@@ -264,10 +270,12 @@ fn cam_of(tape: &Tape, r: &Value) -> (f64, f64) {
     (tape.num(r, "eyeX").unwrap_or(0.0), tape.num(r, "eyeY").unwrap_or(0.0))
 }
 
-/// `emit_stage(cam, deck_col)`: the arc deck (model 0 at identity) through the world path.
-pub fn emit_stage(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, ws: &mut WorldState, rip: &StageRip, cam: (f64, f64), deck_col: (f64, f64, f64)) {
-    struct Geo { fi: u32, nv: u32, tkey: String, opaque: bool, centre: [f64; 3], radius: Option<f64>, hdr: (Option<i64>, Option<i64>, Option<i64>) }
-    let mut stage_geo: Vec<Geo> = Vec::new();
+
+/// Build the deck's vertex bytes + per-mesh metadata for one deck colour (the old per-frame loop, arithmetic verbatim).
+fn build_deck_cache(ws: &mut WorldState, rip: &StageRip, deck_col: (f64, f64, f64)) -> DeckCache {
+    let mut verts: Vec<u8> = Vec::new();
+    let mut geo: Vec<DeckGeo> = Vec::new();
+    let mut missing: Vec<(usize, i64)> = Vec::new();
     for (mi, mesh) in rip.meshes.iter().enumerate() {
         if mesh.model != 0 || !mesh.placed || mesh.tris.is_empty() { continue; }
         let ti = mesh.tex_index;
@@ -280,37 +288,55 @@ pub fn emit_stage(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, ws: 
             key = "FLAT_WHITE".to_string();
             page = Some(ws.tape_pages.entry(key.clone()).or_insert_with(|| Page { w: 1, h: 1, fmt: 28, data: vec![255, 255, 255, 255] }).clone());
         }
-        let page = match page { Some(p) => p, None => { *ctx.stats.world_missing.entry(format!("stage mesh {}: no texture {}", mi, ti)).or_insert(0) += 1; continue; } };
+        let page = match page { Some(p) => p, None => { missing.push((mi, ti as i64)); continue; } };
         let tkey = format!("world_{}", key);
-        add_texture(ctx, &tkey, &page);
-        let first = (ctx.verts.len() / STRIDE) as u32;
+        let first_rel = (verts.len() / STRIDE) as u32;
         let mut nv = 0u32;
         for tri in &mesh.tris {
             for vtx in tri.iter() {
                 let c = vtx.col.unwrap_or([255, 255, 255, 255]);
                 let c = [((c[0] as f64 * deck_col.0) as i64).min(255), ((c[1] as f64 * deck_col.1) as i64).min(255), ((c[2] as f64 * deck_col.2) as i64).min(255), c[3]];
-                for f in [vtx.pos[0] as f32, vtx.pos[1] as f32, vtx.pos[2] as f32, 0.0] { ctx.verts.extend_from_slice(&f.to_le_bytes()); }
-                ctx.verts.extend_from_slice(&0.0f32.to_le_bytes()); ctx.verts.extend_from_slice(&0.0f32.to_le_bytes());
-                ctx.verts.extend_from_slice(&[c[0] as u8, c[1] as u8, c[2] as u8, c[3] as u8]);
-                ctx.verts.extend_from_slice(&[0, 0, 0, 0]);
-                ctx.verts.extend_from_slice(&(vtx.uv[0] as f32).to_le_bytes()); ctx.verts.extend_from_slice(&(vtx.uv[1] as f32).to_le_bytes());
+                for f in [vtx.pos[0] as f32, vtx.pos[1] as f32, vtx.pos[2] as f32, 0.0] { verts.extend_from_slice(&f.to_le_bytes()); }
+                verts.extend_from_slice(&0.0f32.to_le_bytes()); verts.extend_from_slice(&0.0f32.to_le_bytes());
+                verts.extend_from_slice(&[c[0] as u8, c[1] as u8, c[2] as u8, c[3] as u8]);
+                verts.extend_from_slice(&[0, 0, 0, 0]);
+                verts.extend_from_slice(&(vtx.uv[0] as f32).to_le_bytes()); verts.extend_from_slice(&(vtx.uv[1] as f32).to_le_bytes());
                 nv += 1;
             }
         }
-        let fi = ctx.idxs.len() as u32;
-        ctx.idxs.extend(first..first + nv);
-        let (centre, radius) = match mesh.center {
-            Some(c) => (c, mesh.radius),
+        let (centre, radius, centroid_note) = match mesh.center {
+            Some(c) => (c, mesh.radius, false),
             None => {
                 let pts: Vec<[f64; 3]> = mesh.tris.iter().flat_map(|t| t.iter()).map(|v| v.pos).collect();
                 let n = pts.len() as f64;
                 let mut s = [0.0f64; 3];
                 for p in &pts { for k in 0..3 { s[k] += p[k]; } }
-                *ctx.stats.world_missing.entry(format!("deck mesh {}: sort centre from the vertex centroid (rip lacks the header sphere)", mi)).or_insert(0) += 1;
-                ([s[0] / n, s[1] / n, s[2] / n], None)
+                ([s[0] / n, s[1] / n, s[2] / n], None, true)
             }
         };
-        stage_geo.push(Geo { fi, nv, tkey, opaque: mesh.is_opaque, centre, radius, hdr: (mesh.base_params, mesh.tex_instr, mesh.tsp) });
+        geo.push(DeckGeo { first_rel, nv, tkey, page, opaque: mesh.is_opaque, centre, radius, hdr: (mesh.base_params, mesh.tex_instr, mesh.tsp), centroid_note });
+    }
+    DeckCache { verts, geo, missing }
+}
+
+/// `emit_stage(cam, deck_col)`: the arc deck (model 0 at identity) through the world path.
+pub fn emit_stage(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, ws: &mut WorldState, rip: &StageRip, cam: (f64, f64), deck_col: (f64, f64, f64)) {
+    struct Geo { fi: u32, nv: u32, tkey: String, opaque: bool, centre: [f64; 3], radius: Option<f64>, hdr: (Option<i64>, Option<i64>, Option<i64>) }
+    let ckey = (deck_col.0.to_bits() ^ deck_col.1.to_bits().rotate_left(21) ^ deck_col.2.to_bits().rotate_left(42)) as u64;
+    if ws.deck_cache.as_ref().map_or(true, |(k, _)| *k != ckey) {
+        ws.deck_cache = Some((ckey, build_deck_cache(ws, rip, deck_col)));
+    }
+    let cache = &ws.deck_cache.as_ref().unwrap().1;
+    for (mi, ti) in &cache.missing { *ctx.stats.world_missing.entry(format!("stage mesh {}: no texture {}", mi, ti)).or_insert(0) += 1; }
+    let base = (ctx.verts.len() / STRIDE) as u32;
+    ctx.verts.extend_from_slice(&cache.verts);
+    let mut stage_geo: Vec<Geo> = Vec::with_capacity(cache.geo.len());
+    for g in &cache.geo {
+        add_texture(ctx, &g.tkey, &g.page);
+        let fi = ctx.idxs.len() as u32;
+        ctx.idxs.extend(base + g.first_rel..base + g.first_rel + g.nv);
+        if g.centroid_note { *ctx.stats.world_missing.entry("deck mesh: sort centre from the vertex centroid (rip lacks the header sphere)".to_string()).or_insert(0) += 1; }
+        stage_geo.push(Geo { fi, nv: g.nv, tkey: g.tkey.clone(), opaque: g.opaque, centre: g.centre, radius: g.radius, hdr: g.hdr });
     }
     let mut ident = Vec::with_capacity(48);
     for f in [1.0f32, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0] { ident.extend_from_slice(&f.to_le_bytes()); }
@@ -384,11 +410,14 @@ pub fn emit_world(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, asse
         let objrecs: &[ObjRec] = match &own { Some(o) => o, None => &tape.aobjs[nd.obj as usize] };
         for rec in objrecs {
             let key = &rec.key;
-            let mut page = ws.tape_pages.get(key).cloned();
-            if page.is_none() {
+            let tkey = format!("world_{}", key);
+            // (2026-09-03) look the page up ONLY when the texture is not registered yet: the old code cloned a full
+            // 256 KB page per record per frame (~440 records/frame) before add_texture discarded it -- most of the frame.
+            let mut page = if ctx.textures.contains(&tkey) { None } else { ws.tape_pages.get(key).cloned() };
+            if page.is_none() && !ctx.textures.contains(&tkey) {
                 if let Some(p) = assets.lib_pages.get(key) { page = Some(p.clone()); ws.tape_pages.insert(key.clone(), p.clone()); }
             }
-            if page.is_none() {
+            if page.is_none() && !ctx.textures.contains(&tkey) {
                 if let Some(rip) = &assets.stage_rip {
                     if key.len() == 8 && key.chars().all(|c| c.is_ascii_alphanumeric()) {
                         if let Ok(v) = i64::from_str_radix(key, 16) {
@@ -400,9 +429,10 @@ pub fn emit_world(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, asse
                     }
                 }
             }
-            let page = match page { Some(p) => p, None => { *ctx.stats.world_missing.entry(format!("no page for {}", key)).or_insert(0) += 1; continue; } };
-            let tkey = format!("world_{}", key);
-            add_texture(ctx, &tkey, &page);
+            if !ctx.textures.contains(&tkey) {
+                let page = match page { Some(p) => p, None => { *ctx.stats.world_missing.entry(format!("no page for {}", key)).or_insert(0) += 1; continue; } };
+                add_texture(ctx, &tkey, &page);
+            }
             let kind: u32 = if nd.flags & 0x20 != 0 { 3 } else if nd.list == 11 || nd.list == 13 { 0 } else { 2 };
             let col = rec.colour;
             let cmul: (f64, f64, f64) = if nd.flags & 0x400 != 0 { (nd.colour[0] as f64, nd.colour[1] as f64, nd.colour[2] as f64) } else { (1.0, 1.0, 1.0) };
