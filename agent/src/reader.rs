@@ -1188,7 +1188,7 @@ fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
 // screen_x = 320 + (world_x − eyeX), screen_y = ground − world_y, exact to sub-pixel on drawn objects.
 // ⚠ consumers gating on that camera identity: use a ~8px threshold, NOT tight — real frames sit 0.0–0.7px
 // off, stale ones 215px+ (a 0.5px cut silently dropped 80% of a character's frames in testing).
-const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],drawn[6],sid[6],atimer[6],eyeX,eyeY,ground,seat_in[2],sx[6],sy[6],zx[6],zy[6],flash[6],glow[6],layer[6],timer,p2_meter_fill,round_no]";
+const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],drawn[6],sid[6],atimer[6],eyeX,eyeY,ground,seat_in[2],sx[6],sy[6],zx[6],zy[6],flash[6],glow[6],layer[6],timer,p2_meter_fill,round_no,zoom]";   // 0.3.37: +zoom (blk+0x691C, the render camera z = scene CB focal)
 
 fn gs_now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
@@ -1294,6 +1294,7 @@ struct GsRow {
     vx: [f32; 6], vy: [f32; 6], rhp: [u16; 6], face: [u8; 6], hitstun: [u8; 6], act: [u8; 6],
     // replay columns (0.3.23): raw sprite ids + anim countdown per slot, camera globals + ground line
     sid: [u16; 6], atimer: [u8; 6], eye_x: f32, eye_y: f32, ground: f32,
+    zoom: f32,         // 0.3.37: blk+0x691C -- the render camera's z (812.357 in every capture so far; the scene CB's focal)
     // 0.3.24: the AUTHORITATIVE inputs — the raw pad words at G+0x218+seat*4, UPSTREAM of the 12-entry
     // translation table. This is the column a re-simulator feeds back into the real engine; p1_in/p2_in
     // are the downstream decoded values and are kept only for compatibility with existing consumers.
@@ -1612,10 +1613,10 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
     if hp_arr.iter().any(|&v| v > HP_FULL) { return None; }
     // camera globals — one read covers eyeX/eyeY/ground; (0,0,0) = camera unknown this frame (the
     // consumer falls back / treats it as no-gate rather than failing the whole frame)
-    let cam: (f32, f32, f32) = match base.checked_sub(BLK_BACK)
+    let cam: (f32, f32, f32, f32) = match base.checked_sub(BLK_BACK)
         .and_then(|blk| read_at(h, blk + CAM_EYE_OFF, CAM_WIN)) {
-        Some(c) if c.len() >= CAM_WIN => (lef32(&c, 0), lef32(&c, 4), lef32(&c, CAM_GROUND_REL)),
-        _ => (0.0, 0.0, 0.0),
+        Some(c) if c.len() >= CAM_WIN => (lef32(&c, 0), lef32(&c, 4), lef32(&c, CAM_GROUND_REL), lef32(&c, 8)),   // +8 = zoom (blk+0x691C)
+        _ => (0.0, 0.0, 0.0, 0.0),
     };
     Some(GsRow {
         frame,
@@ -1644,6 +1645,7 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
         sid: [u16le(&o[0], H_SPRITE_ID), u16le(&o[1], H_SPRITE_ID), u16le(&o[2], H_SPRITE_ID), u16le(&o[3], H_SPRITE_ID), u16le(&o[4], H_SPRITE_ID), u16le(&o[5], H_SPRITE_ID)],
         atimer: [o[0][H_ANIM_TMR], o[1][H_ANIM_TMR], o[2][H_ANIM_TMR], o[3][H_ANIM_TMR], o[4][H_ANIM_TMR], o[5][H_ANIM_TMR]],
         eye_x: cam.0, eye_y: cam.1, ground: cam.2,
+        zoom: cam.3,
         // 0.3.24: both seats' RAW input words in ONE read (they are adjacent u32s at G+0x218).
         seat_in: match if exe_base != 0 { read_at(h, exe_base + SEATIN_OFF, 8) } else { None } {
             Some(b) if b.len() >= 8 => [le32(&b, 0), le32(&b, 4)],
@@ -2119,6 +2121,8 @@ fn start_gamestate_capture() {
             #[cfg(windows)]
             let _timer_period = { unsafe { windows::Win32::Media::timeBeginPeriod(1) }; TimerPeriodGuard };
             let mut last = u32::MAX;
+            let mut last_node_count: usize = 0;   // 0.3.37: stub-list retry state
+            let mut torn_retries: u32 = 0;
             let mut synth = 0u32;
             let mut wipe_since: Option<std::time::Instant> = None;
             let mut last_new = std::time::Instant::now();
@@ -2172,6 +2176,20 @@ fn start_gamestate_capture() {
                             let want_calib = { gs_capture().lock().unwrap().calib.len() < CALIB_MAX_FRAMES };
                             let mut calib_nodes: Vec<Vec<u8>> = Vec::new();
                             unsafe { harvest_objs(h, base, &mut objs, &mut flayers, if want_calib { Some(&mut calib_nodes) } else { None }); }
+                            // 0.3.37 TORN-LIST RETRY. The engine clears and rebuilds the draw list every frame; a
+                            // read that lands mid-rebuild sees a stub (0-1 nodes where the previous frame had
+                            // 3+). Measured on the first v5 tape: 88 torn lists + 30 rows without one in 5,619
+                            // frames -- every one a frame the renderer cannot draw. Re-read at 1 ms steps,
+                            // bounded; the tape's END trace reports how often it had to.
+                            let mut retries = 0u32;
+                            while objs.len() < 2 && last_node_count >= 3 && retries < 6 {
+                                retries += 1;
+                                std::thread::sleep(std::time::Duration::from_millis(1));
+                                objs.clear(); flayers = [0xFFu8; 6]; calib_nodes.clear();
+                                unsafe { harvest_objs(h, base, &mut objs, &mut flayers, if want_calib { Some(&mut calib_nodes) } else { None }); }
+                            }
+                            torn_retries += retries;
+                            last_node_count = objs.len();
                             // TAPE v5: the world-space class, same moment, same block
                             let mut araw: Vec<ANodeRaw> = Vec::new();
                             if let Some(blk) = base.checked_sub(BLK_BACK) { unsafe { harvest_anodes(h, blk, &mut araw); } }
@@ -2245,7 +2263,7 @@ fn start_gamestate_capture() {
             }
             {
                 let n = gs_capture().lock().unwrap().frames.len();
-                trace(&format!("[gamestate] recording END frames={n} why={why} rollbacks={rb_delta} \
+                trace(&format!("[gamestate] recording END frames={n} why={why} rollbacks={rb_delta} torn_retries={torn_retries} \
                                 (held for upload on win-report)"));
             }
             // handle (proc) is dropped at the end of this outer-loop iteration → its Drop closes it
@@ -2322,7 +2340,8 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         r.sid, r.atimer, r.eye_x, r.eye_y, r.ground, r.seat_in,
         r.sx, r.sy, r.zx, r.zy,
         r.flash, r.glow, r.layer, r.timer,
-        r.p2_mfill, r.round_no   // 0.3.29 — appended
+        r.p2_mfill, r.round_no,  // 0.3.29 — appended
+        r.zoom                   // 0.3.37 — appended
     ])).collect();
     // the complete artifact that lands on disk (server writes the gunzip-able bytes verbatim)
     let assist_p1 = [gs.assist[0], gs.assist[2], gs.assist[4]];
