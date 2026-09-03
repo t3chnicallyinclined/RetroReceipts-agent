@@ -74,6 +74,11 @@ export interface TapePlayerLike {
 	cache: Map<number, { res: { vertexBuffer: GpuBufferLike; indexBuffer: GpuBufferLike; uniformBuffer: GpuBufferLike } }>;
 	decoded: Map<number, unknown>;
 	_onMessage(m: { type: string; i?: number; fill?: boolean }): void;
+	/** re-target the display (scale / canvas) without reloading the tape — PWA engine addition (player.mjs) */
+	setDisplay(o: { scale?: number; filter?: 'box' | 'nearest'; canvas?: { w: number; h: number } }): boolean;
+	/** the scene render target's size (replayer.width/height = sceneRT × scale) */
+	replayer?: { width: number; height: number; scale: number };
+	blitTaps?: [number, number];
 }
 
 interface EngineModule {
@@ -98,7 +103,34 @@ export function loadEngine(): Promise<EngineModule> {
 	return mod;
 }
 
-/** Display quality → the dev player's `?res=&filter=` (player.html): high = res 4 box, base = res 2 nearest. */
+/**
+ * The display plan for a picture drawn `cssW` CSS px wide (Tris 2026-09-04: "keep the correct render/pixel ratios so
+ * the quality does not stretch to the canvas — render at the highest internal resolution and display at half").
+ *   backing  = the canvas in DEVICE pixels: 4·floor(cssW·dpr/4) wide, exactly ¾ of that tall (4:3 by construction,
+ *              never stretched — the CSS box is 4:3 too, `.pic { aspect-ratio: 4/3 }`)
+ *   res      = the internal resolution as a multiple of 640×480: the smallest even r ∈ {2, 4, 6} with r·640 ≥ 2·backingW
+ *              (cap res 6 = 3840×2880); even so the engine's `scale` (= r/2, relative to the capture's own 2×) stays an
+ *              INTEGER and every per-draw viewport stays exact
+ *   taps     = round(r·640 / backingW) — integer by construction whenever the backing is a multiple of 640 (inline 1×,
+ *              1080p fullscreen 2×, 1440p 3×); at other widths (phones, the 4K cap) the box filter averages a rounded
+ *              tap count — accepted
+ *   base quality (after a GPU error) = res 2, nearest — the same backing, no supersampling.
+ */
+export function displayPlan(quality: 'high' | 'base', cssW: number, dpr = 1) {
+	const bw = Math.max(4, 4 * Math.floor((Math.max(1, cssW) * Math.max(1, dpr)) / 4));
+	const bh = (bw * 3) / 4;
+	const res = quality === 'base' ? 2 : ([2, 4, 6].find((r) => r * 640 >= 2 * bw) ?? 6);
+	const taps = Math.max(1, Math.round((res * 640) / bw));
+	return {
+		scale: res / 2,
+		filter: quality === 'high' ? ('box' as const) : ('nearest' as const),
+		canvas: { w: bw, h: bh },
+		res,
+		taps
+	};
+}
+
+/** Display quality → the dev player's `?res=&filter=` (player.html) at a fixed 640×480 canvas (legacy; the embed uses displayPlan). */
 export function displayOpts(quality: 'high' | 'base') {
 	// scale is relative to the capture's own 2× of native (SequencePlayer.opts.scale semantics)
 	return quality === 'high'

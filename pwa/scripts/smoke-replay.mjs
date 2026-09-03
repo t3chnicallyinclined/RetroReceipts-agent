@@ -81,7 +81,7 @@ const READY = ['ready', 'playing', 'paused', 'ended', 'error', 'nopack'];
 /** wait for an embed's hook (window.__rrEmbed by default; the hero registers as window.__rrHero) to reach a settled state */
 async function waitEmbed(page, hook = '__rrEmbed', states = READY) {
 	await page.waitForFunction((h, R) => window[h] && R.includes(window[h].state), { timeout: 600000, polling: 250 }, hook, states);
-	return page.evaluate((h) => ({ state: window[h].state, count: window[h].count, quality: window[h].quality, ttffMs: window[h].ttffMs, key: window[h].key }), hook);
+	return page.evaluate((h) => ({ state: window[h].state, count: window[h].count, quality: window[h].quality, ttffMs: window[h].ttffMs, key: window[h].key, res: window[h].res, taps: window[h].taps, backing: window[h].backing, rt: window[h].rt }), hook);
 }
 async function frame0sha(page, hook = '__rrEmbed') {
 	await page.evaluate((h) => window[h].pause(), hook);
@@ -133,6 +133,8 @@ try {
 	log('embed', JSON.stringify(st), `after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 	check(st.state !== 'error' && st.state !== 'nopack', `embed reached ${st.state}`);
 	check(st.count > 0, `tape has ${st.count} frames`);
+	log('display plan (inline)', JSON.stringify({ res: st.res, taps: st.taps, backing: st.backing, rt: st.rt }));
+	check(st.backing && st.backing.w === 640 && st.backing.h === 480 && st.res === 2 && st.taps === 2 && st.rt && st.rt.w === 2048 && st.rt.h === 1024, `display: inline 640 CSS @ DPR 1 → backing 640×480, res 2 (RT 2048×1024), 2 box taps (got ${JSON.stringify({ res: st.res, taps: st.taps, backing: st.backing, rt: st.rt })})`);
 	if (has('--hero')) check(await page.evaluate(() => window.__rrHero && window.__rrHero.state !== 'playing'), 'expanding a row pauses the hero (one picture at a time)');
 
 	await page.evaluate(() => window.__rrEmbed.play());
@@ -169,14 +171,15 @@ try {
 		const tapes = await page.evaluate(async () => (await (await fetch('/replay/index.json')).json()).tapes);
 		const t = tapes[ROW];
 		const rel = t.pack.replace(/^\/replay\//, '');
-		const u = `${L3}/player.html?tape=${encodeURIComponent(`${rel}/tape.json.gz`)}&pack=${encodeURIComponent(rel)}&auto=1${st.quality === 'high' ? '&res=4&filter=box' : ''}`;
+		// the embed's internal res follows its displayed size (displayPlan): compare against the dev player at the SAME res
+		const u = `${L3}/player.html?tape=${encodeURIComponent(`${rel}/tape.json.gz`)}&pack=${encodeURIComponent(rel)}&auto=1${st.quality === 'high' ? `&res=${st.res}&filter=box` : ''}`;
 		log('L3 dev player', u);
 		await p2.goto(u, { waitUntil: 'load', timeout: 120000 });
 		await p2.waitForFunction(() => window.__rr && window.__rr.ready === true, { timeout: 600000, polling: 250 });
 		await p2.evaluate(() => window.__rr.show(0));
 		const rbDev = await p2.evaluate(() => window.__rr.readback());
 		log('dev player frame 0 readback', JSON.stringify(rbDev));
-		check(rbDev.sha === rb0.sha && rbDev.bytes === rb0.bytes, `L3: embed frame-0 sha == dev player frame-0 sha (${rb0.sha.slice(0, 12)}…)`);
+		check(rbDev.sha === rb0.sha && rbDev.bytes === rb0.bytes, `L3 (res ${st.res}): embed frame-0 sha == dev player frame-0 sha (${rb0.sha.slice(0, 12)}…)`);
 		await p2.close();
 	}
 
@@ -356,11 +359,25 @@ try {
 			await p6.waitForFunction((s) => !document.querySelector(`${s}.fs`), { timeout: 10000 }, SEL);
 			await sleep(200);
 		}
+		let rbFs = null;
 		await goFs(1920, 1080, 'fs 1920×1080');
 		await p6.evaluate((h) => window[h].setOverlay('full'), H);
 		await sleep(100);
 		g = await geom(SEL);
 		check(near(g.canvas.w, 1280, 1) && near(g.k, 2, 0.01), `fs 1920×1080: picture 2× = 1280 px wide, k ${g.k.toFixed(3)}`);
+		{
+			const d = await p6.evaluate((h) => ({ res: window[h].res, taps: window[h].taps, backing: window[h].backing, rt: window[h].rt, css: (() => { const c = document.querySelector('[data-test="hero"] .emb canvas').getBoundingClientRect(); return { w: c.width, h: c.height }; })() }), H);
+			log('display plan (fs 1920×1080)', JSON.stringify(d));
+			check(d.backing.w === 1280 && d.backing.h === 960 && d.res === 4 && d.taps === 2 && d.rt && d.rt.w === 4096 && d.rt.h === 2048, `fs 1920×1080: backing 1280×960 device px, res 4 (RT 4096×2048 = viewport 2560×1920), 2 integer box taps`);
+			check(Math.abs(d.css.h / d.css.w - 0.75) < 0.002 && d.backing.h / d.backing.w === 0.75, `fs 1920×1080: picture aspect exactly 4:3 (CSS ${d.css.w.toFixed(0)}×${d.css.h.toFixed(0)}, backing ${d.backing.w}×${d.backing.h}) — never stretched`);
+			if (L3) {
+				// the same scene at res 4 must equal the dev player at res 4 — read it back HERE (in fullscreen); the dev-player
+				// tab opens after leaveFs() (a new tab drops the page out of the Fullscreen API)
+				rbFs = await frame0sha(p6, H);
+				await p6.evaluate((h) => window[h].seek(900), H);
+				await p6.waitForFunction((h) => window[h].frame === 900, { timeout: 60000 }, H);
+			}
+		}
 		placement(g, 'fs 1920×1080');
 		check(g.tr && near(g.tr.bottom, g.canvas.bottom, 1), `fs 1920×1080: transport HUD anchored to the picture's bottom edge (HUD bottom ${g.tr?.bottom.toFixed(0)}, picture bottom ${g.canvas.bottom.toFixed(0)})`);
 		const shotFs = path.join(OUT, 'overlay-fullscreen-1920x1080.png');
@@ -378,6 +395,20 @@ try {
 		log('screenshot (fullscreen 1920×1080, minimal, HUD faded)', shotFsMin);
 		await p6.evaluate((h) => window[h].pause(), H);
 		await leaveFs();
+		if (L3 && rbFs) {
+			const p2b = await newPage();
+			const tapes = await p6.evaluate(async () => (await (await fetch('/replay/index.json')).json()).tapes);
+			const t = tapes[h6.key];
+			if (t) {
+				const rel = t.pack.replace(/^\/replay\//, '');
+				await p2b.goto(`${L3}/player.html?tape=${encodeURIComponent(`${rel}/tape.json.gz`)}&pack=${encodeURIComponent(rel)}&auto=1&res=4&filter=box`, { waitUntil: 'load', timeout: 120000 });
+				await p2b.waitForFunction(() => window.__rr && window.__rr.ready === true, { timeout: 600000, polling: 250 });
+				await p2b.evaluate(() => window.__rr.show(0));
+				const rbDev4 = await p2b.evaluate(() => window.__rr.readback());
+				check(rbDev4.sha === rbFs.sha && rbDev4.bytes === rbFs.bytes, `L3 (res 4, fullscreen re-target): embed frame-0 sha == dev player res-4 sha (${rbFs.sha.slice(0, 12)}…, ${rbFs.bytes} bytes)`);
+			} else check(false, `L3 res-4: hero key ${h6.key} is a local tape`);
+			await p2b.close();
+		}
 
 		// phone landscape 844×390: picture fit to height 520×390 → k 0.8125
 		await goFs(844, 390, 'phone landscape 844×390');
@@ -385,6 +416,11 @@ try {
 		await sleep(100);
 		g = await geom(SEL);
 		check(near(g.canvas.w, 520, 1) && near(g.k, 0.8125, 0.01), `phone landscape: picture 520 px wide (fit to height), k ${g.k.toFixed(4)}`);
+		{
+			const d = await p6.evaluate((h) => ({ res: window[h].res, taps: window[h].taps, backing: window[h].backing, rt: window[h].rt }), H);
+			log('display plan (phone landscape)', JSON.stringify(d));
+			check(d.backing.w === 520 && d.backing.h === 390 && d.res === 2 && d.backing.h / d.backing.w === 0.75, `phone landscape: backing 520×390 (4:3 exactly), res 2 (RT ${d.rt?.w}×${d.rt?.h}), ${d.taps} rounded box taps`);
+		}
 		placement(g, 'phone landscape 844×390');
 		const shotPl = path.join(OUT, 'overlay-phone-landscape-844x390.png');
 		await p6.screenshot({ path: shotPl });

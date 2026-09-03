@@ -10,7 +10,7 @@
 		loadEngine,
 		gpuDevice,
 		canvasFormat,
-		displayOpts,
+		displayPlan,
 		disposePlayer,
 		hasWebGPU,
 		type TapePlayerLike,
@@ -152,6 +152,12 @@
 	let ovMode = $state<'auto' | OverlayMode>('auto'); // the viewer's `o` choice; auto = the timer decides
 	let ovToast = $state(''); // "overlay · minimal" for 1.2 s after `o`
 	let k = $state(1); // overlay scale = rendered picture width / 640 (ResizeObserver on .pic)
+	// the display plan (Tris 2026-09-04): the canvas BACKING follows the displayed size in device pixels (4:3 by
+	// construction) and the internal resolution is the smallest even multiple of 640×480 ≥ 2× the backing width
+	let backing = $state({ w: 640, h: 480 });
+	let res = $state(2);
+	let taps = $state(2);
+	let planTimer: ReturnType<typeof setTimeout> | null = null;
 	let turnHint = $state(false);
 	let portrait = $state(false);
 	let fsScale = $state(1);
@@ -166,6 +172,7 @@
 	let retried = false;
 
 	let wrap = $state<HTMLDivElement | null>(null);
+	let picEl = $state<HTMLDivElement | null>(null);
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let playBtn = $state<HTMLButtonElement | null>(null);
 	let ctx: GpuCanvasContextLike | null = null;
@@ -404,7 +411,16 @@
 			ctx = canvas.getContext('webgpu' as never) as unknown as GpuCanvasContextLike | null;
 			if (!ctx) throw Object.assign(new Error('no WebGPU canvas context'), { code: 'webgpu' });
 			ctx.configure({ device, format, alphaMode: 'opaque' });
-			const p = new TapePlayer(device, format, displayOpts(q));
+			// the display plan at open: the picture's CURRENT width (the observer keeps it current after)
+			const plan0 = displayPlan(q, picEl?.clientWidth || 640, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1);
+			backing = plan0.canvas;
+			res = plan0.res;
+			taps = plan0.taps;
+			if (canvas.width !== plan0.canvas.w || canvas.height !== plan0.canvas.h) {
+				canvas.width = plan0.canvas.w;
+				canvas.height = plan0.canvas.h;
+			}
+			const p = new TapePlayer(device, format, { scale: plan0.scale, filter: plan0.filter, canvas: plan0.canvas });
 			player = p;
 			// observe the worker's feed-order serve so a forward seek can show its catch-up (§7.8)
 			const orig = p._onMessage.bind(p);
@@ -818,13 +834,40 @@
 		};
 	}
 
-	/** The overlay's scale: the picture's rendered width over 640 — identical geometry inline, fullscreen, phones. */
+	/** The overlay's scale: the picture's rendered width over 640 — identical geometry inline, fullscreen, phones.
+	 *  The same observer drives the display plan (canvas backing + internal resolution), debounced 120 ms. */
 	function fitOverlay(node: HTMLElement) {
-		const measure = () => (k = node.clientWidth / 640 || 1);
+		const measure = () => {
+			k = node.clientWidth / 640 || 1;
+			if (planTimer) clearTimeout(planTimer);
+			planTimer = setTimeout(() => applyPlan(node.clientWidth), 120);
+		};
 		const ro = new ResizeObserver(measure);
 		ro.observe(node);
 		measure();
-		return { destroy: () => ro.disconnect() };
+		return {
+			destroy: () => {
+				ro.disconnect();
+				if (planTimer) clearTimeout(planTimer);
+			}
+		};
+	}
+	/** Size the canvas backing to the displayed size × DPR and re-target the player's RT/crop when the plan changes. */
+	function applyPlan(cssW: number) {
+		if (disposed) return;
+		const plan = displayPlan(q, cssW, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1);
+		const changed = plan.canvas.w !== backing.w || plan.res !== res;
+		backing = plan.canvas;
+		res = plan.res;
+		taps = plan.taps;
+		if (canvas && (canvas.width !== plan.canvas.w || canvas.height !== plan.canvas.h)) {
+			canvas.width = plan.canvas.w;
+			canvas.height = plan.canvas.h;
+		}
+		if (player && changed) {
+			player.setDisplay({ scale: plan.scale, filter: plan.filter, canvas: plan.canvas });
+			if (!playing && isPlayable) void show(frame); // redraw the held frame at the new size
+		}
 	}
 
 	// ── test hook (headless smoke test reads window.__rrEmbed) ──
@@ -864,6 +907,19 @@
 		},
 		get scale() {
 			return k;
+		},
+		/** the display plan: canvas backing (device px), internal res (multiple of 640×480), box taps, scene RT size */
+		get res() {
+			return res;
+		},
+		get taps() {
+			return taps;
+		},
+		get backing() {
+			return { ...backing };
+		},
+		get rt() {
+			return player?.replayer ? { w: player.replayer.width, h: player.replayer.height } : null;
 		},
 		setOverlay: (m: 'auto' | OverlayMode) => setOverlay(m),
 		load: () => load(),
@@ -1000,13 +1056,14 @@
 	<!-- the picture: 4:3, the game's own pixels + THE OVERLAY (DOM, 640×480 space, scaled with the picture).
 	     Tap = play/pause, double-tap = fullscreen (§6.5); keyboard equivalents live on the wrapper + the transport. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-	<div class="pic" role="presentation" use:fitOverlay class:dim={st === 'loading' || st === 'unavailable' || st === 'nopack' || st === 'unsupported' || st === 'error'} onclick={onPicTap}>
+	<div class="pic" role="presentation" bind:this={picEl} use:fitOverlay class:dim={st === 'loading' || st === 'unavailable' || st === 'nopack' || st === 'unsupported' || st === 'error'} onclick={onPicTap}>
 		{#if poster && posterOk && !isPlayable}
 			<img class="poster" src={poster} alt="" onerror={() => (posterOk = false)} />
 		{:else if !isPlayable}
 			<span class="ground">{#if st !== 'closed'}<span class="mode big">{meta.mode === 'money' ? '🪙 ' : ''}{modeLabel}</span>{/if}</span>
 		{/if}
-		<canvas bind:this={canvas} width="640" height="480" class:hidden={!isPlayable} aria-label={ariaPic}></canvas>
+		<!-- backing = displayed size × DPR (4:3 exactly); CSS keeps it at 100% of the 4:3 box — never stretched -->
+		<canvas bind:this={canvas} width={backing.w} height={backing.h} class:hidden={!isPlayable} aria-label={ariaPic}></canvas>
 
 		{#if st === 'closed'}
 			<div class="ov closed">
