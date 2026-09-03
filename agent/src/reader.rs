@@ -2191,6 +2191,7 @@ fn start_gamestate_capture() {
             let mut conf_next: i64 = -1;   // 0.3.26: cursor for the confirmed-input ring harvest (seeds on first call)
             loop {
                 if !SHARE_GAMEPLAY.load(SeqCst) { break; }
+                snap_clear();   // 0.3.43: the clock poll + rollback spin-reads must see live memory
                 let frame = match fc { Some(a) => unsafe { rpm_u32(h, a) }.unwrap_or(0), None => { synth += 1; synth } };
                 // 0.3.42: the 0.5 ms poll costs ONE 4-byte read. Everything else -- the GGPO input harvest
                 // (>= 4 reads), the closure, array_valid (3 reads) -- runs once per TICK. Before this the loop
@@ -2234,6 +2235,7 @@ fn start_gamestate_capture() {
                         }
                     }
                     if frame != last {
+                        if let Some(blk) = base.checked_sub(BLK_BACK) { unsafe { snap_install(h, blk); } }   // 0.3.43
                         if let Some(mut row) = unsafe { read_gs_row(h, base, frame, exe_base) } {
                             // 0.3.27/0.3.28: collect this frame's drawn object-pool (effects) + the per-fighter draw
                             // layers, from ONE draw-list walk — RPM reads, done before the lock.
@@ -2252,6 +2254,7 @@ fn start_gamestate_capture() {
                             while objs.len() < 2 && last_node_count >= 3 && retries < 6 {
                                 retries += 1;
                                 std::thread::sleep(std::time::Duration::from_millis(1));
+                                if let Some(blk) = base.checked_sub(BLK_BACK) { unsafe { snap_install(h, blk); } }   // 0.3.43: fresh copy per retry
                                 objs.clear(); flayers = [0xFFu8; 6]; calib_nodes.clear();
                                 unsafe { harvest_objs(h, base, &mut objs, &mut flayers, if want_calib { Some(&mut calib_nodes) } else { None }); }
                             }
@@ -3747,7 +3750,31 @@ fn trace_cycle(prev: &mut String, src: &str, state: &str, roster: &[Found], opp:
     if line != *prev { *prev = line.clone(); trace(&line); }
 }
 
+// ── 0.3.43 PER-TICK BLOCK SNAPSHOT ─────────────────────────────────────────────────────────────
+// The capture thread issued 500-800 small RPM reads per frame (fighters, draw-list nodes, world nodes) =
+// 30-48k syscalls/s = ~90% of a core in a match (measured 2026-09-03). One 211,736-B read of the whole
+// GGPO block per tick is ~100 us and is COHERENT (one instant, not 800 instants); every read_at that
+// falls inside the block is then served from the copy. Out-of-block reads (objects in the DC-RAM image,
+// GGPO inputs, exe globals) still go to the process. Installed right before the per-frame read, cleared
+// at the top of every poll so the clock and the rollback spin-reads always see live memory.
+thread_local! { static BLK_SNAP: std::cell::RefCell<Option<(usize, Vec<u8>)>> = std::cell::RefCell::new(None); }
+pub(crate) unsafe fn snap_install(h: &mem::Proc, blk: usize) {
+    let buf = read_at_raw(h, blk, BLK_SIM_LEN);
+    BLK_SNAP.with(|c| *c.borrow_mut() = buf.filter(|b| b.len() >= BLK_SIM_LEN).map(|b| (blk, b)));
+}
+pub(crate) fn snap_clear() { BLK_SNAP.with(|c| *c.borrow_mut() = None); }
 pub(crate) unsafe fn read_at(h: &mem::Proc, addr: usize, len: usize) -> Option<Vec<u8>> {
+    let hit = BLK_SNAP.with(|c| {
+        let g = c.borrow();
+        match g.as_ref() {
+            Some((b, buf)) if addr >= *b && addr + len <= *b + buf.len() => Some(buf[addr - *b..addr - *b + len].to_vec()),
+            _ => None,
+        }
+    });
+    if hit.is_some() { return hit; }
+    read_at_raw(h, addr, len)
+}
+pub(crate) unsafe fn read_at_raw(h: &mem::Proc, addr: usize, len: usize) -> Option<Vec<u8>> {
     h.read(addr, len)
 }
 
@@ -3996,6 +4023,17 @@ fn reader_loop() {
                                                       // host idles nor count as match-activity that pins the hold.
         let mut opp_lost: Option<std::time::Instant> = None; // when the pairing first went missing while holding an opp → set-over grace
         let mut exe_base = 0usize;                     // game module base (for localPlayerNum @ exe+LOCALPLAYER_OFF)
+        // 0.3.43 CPU (measured with the slow-cycle trace, game at char-select/training, no opponent):
+        //   occ_work ~90 ms EVERY cycle at the 150 ms picking cadence (the working-region signature scan), and
+        //   opp_net + opp_lobby ~2.2 s EACH every ~5 s (cold full-memory sweeps that can never resolve offline)
+        //   = the reader thread at ~90% of a core. Two throttles, no behaviour change on the success paths:
+        //   (1) the working scan re-runs at most every 300 ms while picking / 1000 ms otherwise (the previous
+        //       result is reused in between); (2) a cold opponent sweep that finds nothing backs off
+        //       1.5 s -> 3 -> 6 -> ... -> 30 s (reset the moment one resolves or the game pid changes).
+        let mut last_work_scan: Option<std::time::Instant> = None;
+        let mut last_team: Vec<Found> = Vec::new();
+        let mut opp_cold_backoff_ms: u128 = 1500;
+        let mut opp_cold_fail_at: Option<std::time::Instant> = None;
         let mut sess_key = String::new();
         let mut ss = ScoreState::default();          // per-set score, keyed to the sticky opponent
         let mut last_active = std::time::Instant::now(); // last time fighters were loaded / in a match
@@ -4016,6 +4054,8 @@ fn reader_loop() {
                                                      // DIFFERENT opponent still switches instantly, and it's hidden
                                                      // at a true menu, so a stale name never actually shows.
         loop {
+            let prof_t0 = std::time::Instant::now();
+            let mut prof: Vec<(&'static str, u128)> = Vec::new();   // 0.3.43: slow-cycle attribution (see trace)
             READER_TICK.store(gs_now_ms(), std::sync::atomic::Ordering::SeqCst); // L3 liveness beacon: proves the reader is cycling (watchdog restarts the process if this goes stale while a game is up)
             READER_DEGRADED.store(false, std::sync::atomic::Ordering::SeqCst);   // reached a cycle top ⇒ reader is alive, not a zombie ⇒ clear the tray warning
             // ── TRAY: presence heartbeat (was the webview's sync_heartbeat on a 60s timer). Runs regardless of
@@ -4079,9 +4119,15 @@ fn reader_loop() {
             // BOUNDS it to the located array's region (~MBs — the same bounded scan that already ran every cycle
             // at char-select, so its cost is proven). anchor_roster survives only as a last-resort so the
             // opponent still surfaces in the brief window before the region is bounded (may carry a phantom Ryu).
+            let work_due = last_work_scan.map_or(true, |t| t.elapsed().as_millis() >= 600);   // `picking` is decided later in the cycle; 600 ms = a pick shows within ~4 picking cycles
             let mut team = if let Some((lo, hi)) = work {
-                pick_working(unsafe { rpm_occurrences(h, lo, hi) })
-            } else { Vec::new() };
+                if work_due || last_team.is_empty() {
+                    let _t = std::time::Instant::now();
+                    let r = pick_working(unsafe { rpm_occurrences(h, lo, hi) });
+                    prof.push(("occ_work", _t.elapsed().as_millis()));
+                    last_work_scan = Some(std::time::Instant::now()); last_team = r.clone(); r
+                } else { last_team.clone() }
+            } else { last_team.clear(); Vec::new() };
             if !team.is_empty() {
                 empty_streak = 0;
                 if let (Some(f), Some(l)) = (team.first(), team.last()) {
@@ -4112,7 +4158,9 @@ fn reader_loop() {
                         || live_seen.map_or(false, |t| t.elapsed().as_secs() < LIVE_ACTIVE_SECS); // a live fight is/was just happening
                     if active || last_wide.elapsed().as_millis() >= IDLE_WIDE_MS {
                         last_wide = std::time::Instant::now();
+                        let _t = std::time::Instant::now();
                         team = pick_working(unsafe { rpm_occurrences(h, 0x0200_0000, 0x4000_0000) });
+                        prof.push(("occ_wide", _t.elapsed().as_millis()));
                         work = match (team.first(), team.last()) {
                             (Some(f), Some(l)) => Some((f.addr.saturating_sub(0x10_0000), l.addr + 0x10_0000)),
                             _ => None,
@@ -4156,9 +4204,10 @@ fn reader_loop() {
                 // timer from last_wide so the roster scan and opponent sweep never starve each other of their slots.
                 const IDLE_OPP_SWEEP_MS: u128 = 1500;   // max spacing between cold opponent sweeps while truly idle
                 const LIVE_ACTIVE_SECS: u64 = 3;        // "recently in a live fight" window that forces full cadence
-                let allow_cold = !roster.is_empty()
+                let allow_cold = (!roster.is_empty()
                     || live_seen.map_or(false, |t| t.elapsed().as_secs() < LIVE_ACTIVE_SECS)
-                    || last_opp_sweep.elapsed().as_millis() >= IDLE_OPP_SWEEP_MS;
+                    || last_opp_sweep.elapsed().as_millis() >= IDLE_OPP_SWEEP_MS)
+                    && opp_cold_fail_at.map_or(true, |t| t.elapsed().as_millis() >= opp_cold_backoff_ms);   // 0.3.43 backoff
                 if allow_cold { last_opp_sweep = std::time::Instant::now(); }
                 // ⚠ UNIVERSAL match-activity gate for NEW locks — BOTH paths (0.3.19). 0.3.14 gated only the
                 // lobby MemberInfo scan, believing the ranked pairing geometry "only exists inside a real
@@ -4174,14 +4223,23 @@ fn reader_loop() {
                     || live_seen.map_or(false, |t| t.elapsed().as_secs() < LIVE_ACTIVE_SECS);
                 let allow_lock = match_activity || opp.is_some();
                 let resolved = if allow_lock {
-                    find_opponent_netplay(cur_pid, my_id, &mut opp_addr, &mut opp_region, allow_cold)
+                    let _t = std::time::Instant::now();
+                    let r = find_opponent_netplay(cur_pid, my_id, &mut opp_addr, &mut opp_region, allow_cold);
+                    prof.push(("opp_net", _t.elapsed().as_millis())); r
                 } else { None };
                 let net_hit = resolved.is_some();
                 let resolved = resolved.or_else(|| {
                     if allow_lock {
-                        find_opponent_lobby(cur_pid, my_id, exe_base, &mut opp_addr, allow_cold)
+                        let _t = std::time::Instant::now();
+                        let r = find_opponent_lobby(cur_pid, my_id, exe_base, &mut opp_addr, allow_cold);
+                        prof.push(("opp_lobby", _t.elapsed().as_millis())); r
                     } else { None }
                 });
+                // 0.3.43: a cold sweep that found nothing backs off exponentially (cap 30 s); a hit resets it
+                if allow_lock && allow_cold {
+                    if resolved.is_none() { opp_cold_fail_at = Some(std::time::Instant::now()); opp_cold_backoff_ms = (opp_cold_backoff_ms * 2).min(30_000); }
+                    else { opp_cold_fail_at = None; opp_cold_backoff_ms = 1500; }
+                }
                 match resolved {
                     Some((oid, onm, oside)) => {
                         // DETERMINISTIC → lock immediately (no anti-flip). Cached slot makes re-validation near-free.
@@ -4336,7 +4394,9 @@ fn reader_loop() {
                     if dps.len() == 6 {
                         let lo = (*dps.iter().min().unwrap() as usize).saturating_sub(0x160000);
                         let hi = (*dps.iter().max().unwrap() as usize) + 0x160000;
+                        let _t = std::time::Instant::now();
                         let mut occ = unsafe { rpm_occurrences(h, lo, hi) };   // (addr, cid, name), unsorted, no dedup
+                        prof.push(("occ_dps", _t.elapsed().as_millis()));
                         occ.sort_by_key(|o| o.0);
                         // one hit per DAT bank: keep the first of each cluster separated by >= 0x100000 (banks are
                         // 0x150000 apart). A mirror (same char, two banks) correctly yields two same-cid entries.
@@ -4467,7 +4527,9 @@ fn reader_loop() {
                         // Ranked has no shareable lobby (d0328==1) so we skip the scan entirely there → "".
                         if new_opp {
                             live_rep_link = if is_custom_lobby() == Some(true) {
-                                read_my_lobby().get("join_link").and_then(|v| v.as_str()).unwrap_or("").to_string()
+                                let _t = std::time::Instant::now();
+                                let r = read_my_lobby().get("join_link").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                prof.push(("lobby", _t.elapsed().as_millis())); r
                             } else { String::new() };
                         }
                         live_rep_opp = oid.clone();
@@ -4537,6 +4599,11 @@ fn reader_loop() {
             { let cur = (ram_base, opp_region, work); if cur != saved_anchors { save_anchors(cur_pid, ram_base, opp_region, work); saved_anchors = cur; } }
             // faster cadence while picking (picks present) so characters pop in near-instantly; fast with a
             // team/session; back off only when truly idle at menus.
+            let cyc = prof_t0.elapsed().as_millis();
+            if cyc >= 80 {
+                trace(&format!("[reader] slow cycle {cyc} ms: {} (picking {picking}, roster {}, session {in_session})",
+                    prof.iter().map(|(k, v)| format!("{k} {v}ms")).collect::<Vec<_>>().join(", "), roster.len()));
+            }
             std::thread::sleep(std::time::Duration::from_millis(
                 if picking { 150 } else if !roster.is_empty() || in_session { 300 } else { 500 }));
             }));   // end P0.3 per-cycle panic guard
