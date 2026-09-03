@@ -97,6 +97,7 @@
 	let count = $state(0);
 	let speed = $state(60); // game frames per second: 60 = real time
 	let halfAuto = $state(false); // "playing at half speed" (worker can't keep up)
+	let userSpeed = $state(false); // the user chose a speed: the auto half-speed never overrides it
 	let seekTarget = $state(-1);
 	let seekServed = $state(-1);
 	let scrubPreview = $state<number | null>(null);
@@ -408,7 +409,8 @@
 			const s = player.stats();
 			if (s.frames > 30 && s.avgMs > 16) over++;
 			else over = 0;
-			if (over >= 2 && speed === 60) {
+			// only drop to half speed once, and never after the user has picked a speed themselves
+			if (over >= 2 && speed === 60 && !userSpeed && !halfAuto) {
 				speed = 30;
 				halfAuto = true;
 			}
@@ -690,7 +692,7 @@
 		</div>
 		<button type="button" class="btn sm" disabled={!isPlayable} title="+5 s" aria-label="Forward 5 seconds" onclick={() => step(300)}>5»</button>
 		<span class="ro"><b>{mmss(scrubPreview ?? frame)}</b> / {mmss(count)}</span>
-		<select class="spd" bind:value={speed} disabled={!isPlayable} title="speed" aria-label="Playback speed" onchange={() => (halfAuto = false)}>
+		<select class="spd" bind:value={speed} disabled={!isPlayable} title="speed" aria-label="Playback speed" onchange={() => { halfAuto = false; userSpeed = true; }}>
 			<option value={60}>1×</option>
 			<option value={30}>½×</option>
 			<option value={15}>¼×</option>
@@ -865,11 +867,12 @@
 		font-size: 11px;
 		padding: 4px 10px;
 	}
-	/* the picture — 640×480 CSS-scaled, pixelated; full content width inline, capped at 2× and centered */
+	/* the picture — 640×480 CSS-scaled, pixelated; COMPACT inline (Tris 2026-09-03): capped at 1× (640 px) and
+	   centered, so an expanded result row stays a card, not a screen; fullscreen is where it gets big */
 	.pic {
 		position: relative;
 		width: 100%;
-		max-width: 1280px;
+		max-width: 640px;
 		margin: 0 auto;
 		aspect-ratio: 4 / 3;
 		background: #000;
