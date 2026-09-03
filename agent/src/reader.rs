@@ -219,7 +219,11 @@ const ARENA_PTR_OFF:   usize = 0xac6d40;    // exe global → the single 256 MiB
 // netcode, not by our inference. A copy of it + the per-frame inputs re-simulates the match exactly.
 const BLK_SIM_LEN:     usize = 0x33b18;     // 211,736 B
 const BLK_MODE_OFF:    usize = 0x3cb8;      // blk+0x3CB8 byte[2]: 1 = CHARACTER SELECT, 2 = IN BATTLE
-const STG_OFF:         usize = 0x6d3c;      // blk+0x6D3C: STG_ID (u8) — RNG-picked stage; the tape ships only
+// ⚠ 0x6D3C read 0 in EVERY capture of 2026-09-02 (training AND an online match). The stage id is
+// blk+0x6D04 (u32): 0x0B in training mode (the Training Stage), tested by Steam's own render
+// dispatcher FUN_140620960 (`*(blk+0x6d04) != 8` picks the per-stage pass), and it sits right before
+// the per-layer depth-base table at blk+0x6D08 (the DC LayerZ table 15,17,19,...). Read as u8.
+const STG_OFF:         usize = 0x6d04;      // blk+0x6D04: STG_ID — RNG-picked stage; the tape ships only
                                             //   this number, the renderer pulls stage art from the Collection arc
 const BLK_FRAME_OFF:   usize = 0x3cc8;      // blk+0x3CC8: the sim frame counter (used as a torn-read guard)
 const BLK_H0_OFF:      usize = 0x3db8;      // blk+0x3DB8 = fighter slot 0. ⚠ NOT MATCH_ARR_ADD (0x3f24),
