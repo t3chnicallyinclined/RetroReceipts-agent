@@ -110,6 +110,19 @@ const BLACKOUT_OFF: usize = 0x3D50;    // 0.3.39: u8 (G+0x98) -- != 0 skips the 
 // white/black strobe frame), fade colour @+0x3C (blk+0x6CF0). Plus the gate bytes the rule tests: G+0..2 (fight
 // = 2,1,2), G+0x2E (bit 0), and the entity list's +6 / +0x96 (DAT_142edf628 = *(exe+0x2edf628); +0x96 is the
 // super-blackout source that FUN_14061f030 copies into G+0x98 every frame). The renderer applies the rule offline.
+// 0.3.47 BATTLE-FRAME ANCHOR (docs/DETERMINISM-CONTRACT.md s1.1b, docs/RECEIPT-PLAYER-G.md): a blk-only anchor at
+// character select cannot be driven through the shell into a match (Track H falsification). The receipt is
+// therefore taken at the FIRST BATTLE FRAME and carries everything the tick reads outside blk: the game_state
+// page (exe+0xAC6D40, 4 KB: frame fn, pads, seat map, picks, gates), the exe page 0x142edf300..0x700 (blk/G
+// pointers, bank POL pointers, DAT_142edf628 = blk+0x324E0, stage models, HUD state), the ctx texture-slot table
+// (ctx+0x1e0030..0x1e31CC) and ctx+8 (the DC-RAM base). PL images come from the arc (AFS 209+cid) on the replay host.
+const GS_PAGE_OFF:   usize = 0xAC6D40;    // exe-relative game_state page
+const GS_PAGE_LEN:   usize = 0x1000;
+const EXE_PAGE_OFF:  usize = 0x2EDF300;   // exe-relative 0x142edf300
+const EXE_PAGE_LEN:  usize = 0x400;
+const CTX_PTR_OFF:   usize = 0x2EF0AB0;   // exe-relative DAT_142ef0ab0 -> ctx
+const CTX_SLOT_OFF:  usize = 0x1E0030;    // ctx-relative texture-slot table
+const CTX_SLOT_LEN:  usize = 0x319C;
 const BG_OFF:       usize = 0x6CB4;    // blk-relative window start
 const BG_WIN:       usize = 0x40;      // ..0x6CF4
 const ENTITY_PTR_OFF: usize = 0x2edf628;   // exe-relative: DAT_142edf628 (u64 pointer to the entity list)
@@ -1513,6 +1526,8 @@ struct GsCapture {
     anchor_arena: u64,                              // *(exe+ARENA_PTR_OFF), the 256 MiB arena — the two
     anchor_frame: u32,                              // deltas needed to relocate it; blk+0x3CC8 at capture
     anchor_hash: u64,                               // FNV-1a of the RAW region — identity + dedup key
+    // 0.3.47: the battle-frame receipt anchor: gzip of [blk 0x33B18][game_state page 0x1000][exe page 0x400][ctx slots 0x319C]
+    battle_anchor: Option<Vec<u8>>, battle_anchor_blk: u64, battle_anchor_frame: u32, battle_anchor_ctx: u64, battle_anchor_dcram: u64,
     select_in: Vec<(u32, u32, u32)>,                // (frame, seat0, seat1) from the anchor frame to the
                                                     //   first battle frame — WITHOUT these the anchor and
                                                     //   the match frames do not compose (see the capture)
@@ -1538,6 +1553,7 @@ struct GsCapture {
 impl Default for GsCapture {
     fn default() -> Self { GsCapture { frames: std::collections::BTreeMap::new(), frame_addr: 0, synthetic: false, assist: [0; 6], costume: [0; 6], local_pn: 255, set_start: None, last_update: None,
                                        seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), stage_id: 0, anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, anchor_hash: 0,
+                                       battle_anchor: None, battle_anchor_blk: 0, battle_anchor_frame: 0, battle_anchor_ctx: 0, battle_anchor_dcram: 0,
                                        select_in: Vec::new(), start_sim_frame: 0, confirmed_in: std::collections::BTreeMap::new(), objs: std::collections::BTreeMap::new(),
                                        calib: Vec::new(), battle_blk: 0, tie_ggpo_frame: -1,
                                        anodes: std::collections::BTreeMap::new(), palrows: Vec::new(), aobjs: Vec::new(), aobj_idx: HashMap::new() } }
@@ -1553,6 +1569,7 @@ struct GsSnapshot { frames: Vec<GsRow>, frame_addr: usize, synthetic: bool, assi
                     seat_map: [i32; 4], rollbacks: u32, build_id: String, stage_id: u8,
                     anchor: Option<Vec<u8>>, anchor_blk: u64, anchor_arena: u64, anchor_frame: u32,
                     anchor_hash: u64, select_in: Vec<(u32, u32, u32)>, start_sim_frame: u32,
+                    battle_anchor: Option<Vec<u8>>, battle_anchor_blk: u64, battle_anchor_frame: u32, battle_anchor_ctx: u64, battle_anchor_dcram: u64,
                     confirmed_in: std::collections::BTreeMap<u32, [u32; 2]>,
                     objs: std::collections::BTreeMap<u32, Vec<ObjNode>>,
                     calib: Vec<(u32, Vec<Vec<u8>>)>, battle_blk: u64, tie_ggpo_frame: i32,
@@ -1568,6 +1585,7 @@ fn gamestate_snapshot() -> Option<GsSnapshot> {
                       seat_map: c.seat_map, rollbacks: c.rollbacks, build_id: c.build_id.clone(), stage_id: c.stage_id,
                       anchor: c.anchor.clone(), anchor_blk: c.anchor_blk, anchor_arena: c.anchor_arena, anchor_frame: c.anchor_frame,
                       anchor_hash: c.anchor_hash, select_in: c.select_in.clone(),
+                      battle_anchor: c.battle_anchor.clone(), battle_anchor_blk: c.battle_anchor_blk, battle_anchor_frame: c.battle_anchor_frame, battle_anchor_ctx: c.battle_anchor_ctx, battle_anchor_dcram: c.battle_anchor_dcram,
                       start_sim_frame: c.start_sim_frame, confirmed_in: c.confirmed_in.clone(), objs: c.objs.clone(),
                       calib: c.calib.clone(), battle_blk: c.battle_blk, tie_ggpo_frame: c.tie_ggpo_frame,
                       anodes: c.anodes.clone(), aobjs: c.aobjs.clone(), palrows: c.palrows.clone() })
@@ -2223,6 +2241,32 @@ fn start_gamestate_capture() {
             let rb0 = if exe_base != 0 { unsafe { rpm_u32(h, exe_base + ROLLBACK_OFF) }.unwrap_or(0) } else { 0 };
             trace(&format!("[gamestate] recording START base=0x{base:x} fc={} rb0={rb0} (share={})",
                 fc.map(|a| format!("0x{a:x}")).unwrap_or_else(|| "SYNTHETIC".into()), SHARE_GAMEPLAY.load(SeqCst)));
+            // 0.3.47: battle-frame receipt anchor, taken at a clock edge so the four regions describe one frame
+            if exe_base != 0 {
+                if let Some(blk) = base.checked_sub(BLK_BACK) {
+                    let f0 = fc.and_then(|a| unsafe { rpm_u32(h, a) }).unwrap_or(0);
+                    let b = unsafe { read_at(h, blk, BLK_SIM_LEN) }.filter(|b| b.len() >= BLK_SIM_LEN);
+                    let g = unsafe { read_at(h, exe_base + GS_PAGE_OFF, GS_PAGE_LEN) }.filter(|b| b.len() >= GS_PAGE_LEN);
+                    let e = unsafe { read_at(h, exe_base + EXE_PAGE_OFF, EXE_PAGE_LEN) }.filter(|b| b.len() >= EXE_PAGE_LEN);
+                    let ctx = unsafe { read_at(h, exe_base + CTX_PTR_OFF, 8) }.filter(|b| b.len() >= 8).map(|b| le64(&b, 0) as usize).unwrap_or(0);
+                    let c_ = if ctx > 0x10000 { unsafe { read_at(h, ctx + CTX_SLOT_OFF, CTX_SLOT_LEN) }.filter(|b| b.len() >= CTX_SLOT_LEN) } else { None };
+                    let dcram = if ctx > 0x10000 { unsafe { read_at(h, ctx + 8, 8) }.filter(|b| b.len() >= 8).map(|b| le64(&b, 0)).unwrap_or(0) } else { 0 };
+                    let f1 = fc.and_then(|a| unsafe { rpm_u32(h, a) }).unwrap_or(0);
+                    if let (Some(b), Some(g), Some(e), Some(c_)) = (b, g, e, c_) {
+                        if f1 == f0 {
+                            let mut raw = Vec::with_capacity(BLK_SIM_LEN + GS_PAGE_LEN + EXE_PAGE_LEN + CTX_SLOT_LEN);
+                            raw.extend_from_slice(&b); raw.extend_from_slice(&g); raw.extend_from_slice(&e); raw.extend_from_slice(&c_);
+                            let gz = gzip_bytes(&raw);
+                            trace(&format!("[gamestate] battle anchor blk=0x{blk:x} ctx=0x{ctx:x} dcram=0x{dcram:x} frame={f0} {} B -> {} B gz", raw.len(), gz.len()));
+                            let mut c = gs_capture().lock().unwrap();
+                            c.battle_anchor = Some(gz); c.battle_anchor_blk = blk as u64; c.battle_anchor_frame = f0;
+                            c.battle_anchor_ctx = ctx as u64; c.battle_anchor_dcram = dcram;
+                        } else {
+                            trace("[gamestate] battle anchor skipped: clock moved during the read (retry not attempted this match)");
+                        }
+                    }
+                }
+            }
 
             // ── fast per-frame loop until the game ends ──
             // ⚠ WINDOWS TIMER RESOLUTION. std::thread::sleep(500us) rounds up to the system timer
@@ -2700,6 +2744,10 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         // only); anchor is gzip+base64 of blk[0..0x33B18) taken at CHARACTER SELECT — restore it, relocate its
         // pointers by (new_blk − anchor_blk) / (new_arena − anchor_arena), then feed seat_in[] frame by frame.
         "seat_map": gs.seat_map, "rollbacks": gs.rollbacks, "build_id": gs.build_id, "stage_id": gs.stage_id,
+        "battle_anchor": gs.battle_anchor.as_ref().map(|g| b64_encode(g)).unwrap_or_default(),
+        "battle_anchor_blk": gs.battle_anchor_blk, "battle_anchor_frame": gs.battle_anchor_frame,
+        "battle_anchor_ctx": gs.battle_anchor_ctx, "battle_anchor_dcram": gs.battle_anchor_dcram,
+        "battle_anchor_enc": "0.3.47 -- gzip+base64 of [blk 0x33B18 B][game_state page 0x1000 B @exe+0xAC6D40][exe page 0x400 B @exe+0x2EDF300][ctx texture-slot table 0x319C B @ctx+0x1E0030], all read at ONE clock edge at the first battle frame; carry list = docs/DETERMINISM-CONTRACT.md s1.1b. Relocate blk pointers by (blk_new - battle_anchor_blk), DC-RAM pointers by (dcram_new - battle_anchor_dcram).",
         "anchor": anchor_b64, "anchor_gz_len": anchor_gz_len,
         "anchor_sim_len": BLK_SIM_LEN as u64, "anchor_enc": "gzip+base64",
         "anchor_blk": gs.anchor_blk, "anchor_arena": gs.anchor_arena, "anchor_frame": gs.anchor_frame,
