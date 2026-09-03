@@ -2318,6 +2318,24 @@ fn start_gamestate_capture() {
                                 objs.clear(); flayers = [0xFFu8; 6]; calib_nodes.clear();
                                 unsafe { harvest_objs(h, base, &mut objs, &mut flayers, if want_calib { Some(&mut calib_nodes) } else { None }); }
                             }
+                            // 0.3.46 STABILITY READ. A stub (0-1 nodes) is not the only tear: a read that lands
+                            // mid-rebuild can also see a PARTIAL list (k of N nodes) that passes the stub test. The
+                            // list is only accepted when two reads 0.5 ms apart agree in count, per-slot layers and
+                            // the sum of sprite ids; bounded to 4 extra reads (~2 ms) so a frame is never skipped.
+                            {
+                                let sig = |o: &Vec<ObjNode>, fl: &[u8; 6]| (o.len(), *fl, o.iter().map(|n| n.sid as u64).sum::<u64>());
+                                let mut cur = sig(&objs, &flayers);
+                                let mut stable = 0u32;
+                                while stable < 4 {
+                                    std::thread::sleep(std::time::Duration::from_micros(500));
+                                    if let Some(blk) = base.checked_sub(BLK_BACK) { unsafe { snap_install(h, blk); } }
+                                    let mut o2 = Vec::new(); let mut f2 = [0xFFu8; 6];
+                                    unsafe { harvest_objs(h, base, &mut o2, &mut f2, None); }
+                                    let s2 = sig(&o2, &f2);
+                                    if s2 == cur { break; }
+                                    retries += 1; stable += 1; cur = s2; objs = o2; flayers = f2;
+                                }
+                            }
                             torn_retries += retries;
                             last_node_count = objs.len();
                             // TAPE v5: the world-space class, same moment, same block
