@@ -93,3 +93,4 @@ pwa/static/chars-png/
 legacy/web/idle_frames.json
 legacy/web/studio/anim/
 legacy/**/skins/
+rr-render/target/

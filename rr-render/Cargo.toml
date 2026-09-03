@@ -1,0 +1,30 @@
+[package]
+name = "rr-render"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+description = "Retro Receipts tape decoder + sprite assembly emitter (port of d3dcap/replay/tape_to_seq.py). Core is std::fs-free and thread-free so it builds for wasm32; the emit_seq bin is the native gate driver."
+
+[lib]
+name = "rr_render"
+path = "src/lib.rs"
+
+[[bin]]
+name = "emit_seq"
+path = "src/bin/emit_seq.rs"
+
+[dependencies]
+# JSON envelope of the tape + the RRSQ/RRPK manifests. preserve_order keeps the template draw's key order
+# (pack_sequence.py / tape_to_seq.py write dicts in insertion order).
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }   # float_roundtrip: correctly-rounded f64 parse (Python float() semantics) -- eyeX/eyeY feed the camera P
+# gzip (tape envelope, nodes/pals/anodes/aobjs/palrows streams). rust_backend = miniz_oxide, wasm-friendly.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+base64 = "0.22"
+# sha256 -> sha8 texture keys + pool dedupe, exactly as tape_to_seq.sha8 / intern().
+sha2 = "0.10"
+# PLxx_idx.png (R channel = palette index), pure Rust decoder.
+png = "0.17"
+
+[profile.release]
+opt-level = 2
