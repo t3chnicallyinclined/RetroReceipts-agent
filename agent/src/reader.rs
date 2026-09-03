@@ -1509,6 +1509,7 @@ struct GsCapture {
     synthetic: bool,                                // true when no counter found → monotonic per-frame index
     assist: [u8; 6],                                // assist type per slot (alpha=0/beta=1/gamma=2) — fixed per match
     costume: [u8; 6],                               // 0.3.28: costume/color id per slot (H+0x6C1) — fixed per match
+    team_ids: [u8; 6],                              // 0.3.48: char id per slot (H+H_CID) at match start — the roster for LOCAL tapes
     local_pn: u8,                                   // ★ raw localPlayerNum (exe+LOCALPLAYER_OFF) at match start — the
                                                     //   game's own local netplay index (0/1), UN-overridden by any app
                                                     //   layer. Candidate side signal; validated offline vs the frame KO.
@@ -1552,7 +1553,7 @@ struct GsCapture {
 }
 impl Default for GsCapture {
     fn default() -> Self { GsCapture { frames: std::collections::BTreeMap::new(), frame_addr: 0, synthetic: false, assist: [0; 6], costume: [0; 6], local_pn: 255, set_start: None, last_update: None,
-                                       seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), stage_id: 0, anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, anchor_hash: 0,
+                                       seat_map: [-1; 4], rollbacks: 0, build_id: String::new(), stage_id: 0, anchor: None, anchor_blk: 0, anchor_arena: 0, anchor_frame: 0, anchor_hash: 0, team_ids: [0; 6],
                                        battle_anchor: None, battle_anchor_blk: 0, battle_anchor_frame: 0, battle_anchor_ctx: 0, battle_anchor_dcram: 0,
                                        select_in: Vec::new(), start_sim_frame: 0, confirmed_in: std::collections::BTreeMap::new(), objs: std::collections::BTreeMap::new(),
                                        calib: Vec::new(), battle_blk: 0, tie_ggpo_frame: -1,
@@ -2180,6 +2181,8 @@ fn start_gamestate_capture() {
             // 0.3.28: costume/color id per fighter (H+0x6C1, adjacent to CID) — chosen at select, static per match.
             let mut costume = [0u8; 6];
             for i in 0..6 { costume[i] = unsafe { (base + i * STRIDE).checked_sub(OBJ_BACK).and_then(|hb| rpm_u8(h, hb + H_CID + 1)) }.unwrap_or(0); }
+            let mut team_ids = [0u8; 6];   // 0.3.48
+            for i in 0..6 { team_ids[i] = unsafe { (base + i * STRIDE).checked_sub(OBJ_BACK).and_then(|hb| rpm_u8(h, hb + H_CID)) }.unwrap_or(0); }
             // Tier-3: snapshot the game's own per-set WINS tally at THIS game's START (read-only, guarded → None
             // on any failure). Paired with set_end (read at win-report) so the server auto-confirms via the delta.
             let set_start = unsafe { read_set_score(h, exe_base) };
@@ -2193,6 +2196,7 @@ fn start_gamestate_capture() {
                 c.synthetic = fc.is_none();
                 c.assist = assist;
                 c.costume = costume;   // 0.3.28
+                c.team_ids = team_ids; // 0.3.48
                 c.local_pn = if exe_base != 0 { unsafe { rpm_u32(h, exe_base + LOCALPLAYER_OFF) }.unwrap_or(255) as u8 } else { 255 };
                 c.set_start = set_start;
                 c.last_update = None;
@@ -2474,6 +2478,32 @@ fn start_gamestate_capture() {
                 let n = gs_capture().lock().unwrap().frames.len();
                 trace(&format!("[gamestate] recording END frames={n} why={why} rollbacks={rb_delta} torn_retries={torn_retries} \
                                 (held for upload on win-report)"));
+            }
+            // 0.3.48: local copy of every finished tape (offline matches have no win-report and were lost before).
+            if let Some(snap) = gamestate_snapshot() {
+                if snap.frames.len() >= 60 {
+                    let (team_ids, stage_id) = { let c = gs_capture().lock().unwrap(); (c.team_ids, c.stage_id) };
+                    let p1: Vec<u8> = vec![team_ids[0], team_ids[2], team_ids[4]];
+                    let p2: Vec<u8> = vec![team_ids[1], team_ids[3], team_ids[5]];
+                    let side = match snap.local_pn { 1 => 2u8, _ => 1u8 };
+                    let me = { let (id, _) = self_ident(); if id == 0 { "local".to_string() } else { id.to_string() } };
+                    let key = format!("local_{}_stage{}", gs_now_ms(), stage_id);
+                    spool_gamestate(&key, &me, side, &p1, &p2, "local", "local", &snap, "", 0, None);
+                    let base = format!("{}_{}", key, me);
+                    let src_dir = gs_cache_dir();
+                    let dst_dir = rr_state_dir().join("gs-cache-local");
+                    let _ = std::fs::create_dir_all(&dst_dir);
+                    let _ = std::fs::remove_file(src_dir.join(format!("{base}.meta")));          // never uploaded
+                    let _ = std::fs::rename(src_dir.join(format!("{base}.json.gz")), dst_dir.join(format!("{base}.json.gz")));
+                    // keep the newest 8 local tapes
+                    if let Ok(rd) = std::fs::read_dir(&dst_dir) {
+                        let mut files: Vec<(std::time::SystemTime, std::path::PathBuf)> = rd.flatten()
+                            .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (t, e.path()))).collect();
+                        files.sort();
+                        while files.len() > 8 { let (_, p) = files.remove(0); let _ = std::fs::remove_file(p); }
+                    }
+                    trace(&format!("[gamestate] local tape kept: gs-cache-local/{base}.json.gz ({} frames, rollbacks={rb_delta})", snap.frames.len()));
+                }
             }
             // handle (proc) is dropped at the end of this outer-loop iteration → its Drop closes it
             // don't immediately re-lock the just-ended game: the both-alive gate at the top of the loop already
