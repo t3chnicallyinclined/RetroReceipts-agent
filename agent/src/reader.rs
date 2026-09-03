@@ -104,6 +104,15 @@ const CAMX_OFF:     usize = 0x6908;    // 0.3.39: camera state u32 (0 = fight ca
 const CAMX_WIN:     usize = 0x94;      //   ..0x699C: look-at @+0x54, fov @+0x6C, y-off @+0x80, roll u16 @+0x84
 const DECK_COL_OFF: usize = 0x6CA8;    // 0.3.39: 3 f32 -- the stage deck (POL model 0) vertex-colour multiplier
 const BLACKOUT_OFF: usize = 0x3D50;    // 0.3.39: u8 (G+0x98) -- != 0 skips the deck draw (FUN_140620960)
+// 0.3.45: the FRAME BACKGROUND inputs (docs/FRAME-BACKGROUND-GHIDRA.md, Ghidra FUN_1406101b0 == SH4 loc_8c02dc4c).
+// One 0x40-B read at blk+0x6CB4: mode u32 @+0, three packed 0x00RRGGBB words @+4/+8/+0xC (stage constants,
+// FUN_140620200 / re-asserted per frame by FUN_140620420), fade word @+0x30 (blk+0x6CE4, FUN_140619970: != 0 =
+// white/black strobe frame), fade colour @+0x3C (blk+0x6CF0). Plus the gate bytes the rule tests: G+0..2 (fight
+// = 2,1,2), G+0x2E (bit 0), and the entity list's +6 / +0x96 (DAT_142edf628 = *(exe+0x2edf628); +0x96 is the
+// super-blackout source that FUN_14061f030 copies into G+0x98 every frame). The renderer applies the rule offline.
+const BG_OFF:       usize = 0x6CB4;    // blk-relative window start
+const BG_WIN:       usize = 0x40;      // ..0x6CF4
+const ENTITY_PTR_OFF: usize = 0x2edf628;   // exe-relative: DAT_142edf628 (u64 pointer to the entity list)
 // REMOVED: OFF_ACTION 0x76c and OFF_COMBO_RECV 0x902. Both are >0x5CC, i.e. the NEXT character's
 // fields (0x76c → char i+1's +0x600 region; 0x902 → char i+1's combo-dealt). There is no known
 // correct Steam analogue for either; do NOT re-add one without a live proof.
@@ -1214,7 +1223,7 @@ fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
 // screen_x = 320 + (world_x − eyeX), screen_y = ground − world_y, exact to sub-pixel on drawn objects.
 // ⚠ consumers gating on that camera identity: use a ~8px threshold, NOT tight — real frames sit 0.0–0.7px
 // off, stale ones 215px+ (a 0.5px cut silently dropped 80% of a character's frames in testing).
-const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],drawn[6],sid[6],atimer[6],eyeX,eyeY,ground,seat_in[2],sx[6],sy[6],zx[6],zy[6],flash[6],glow[6],layer[6],timer,p2_meter_fill,round_no,zoom,cam_state,look[3],fov,yoff,roll,deck[3],blackout]";   // 0.3.39: +camera state/look-at/fov/y-off/roll (blk+0x6908..0x698C), deck colour (0x6CA8), blackout gate (0x3D50)   // 0.3.37: +zoom (blk+0x691C, the render camera z = scene CB focal)
+const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],drawn[6],sid[6],atimer[6],eyeX,eyeY,ground,seat_in[2],sx[6],sy[6],zx[6],zy[6],flash[6],glow[6],layer[6],timer,p2_meter_fill,round_no,zoom,cam_state,look[3],fov,yoff,roll,deck[3],blackout,bg_mode,bg_col[3],fade_mode,fade_col,bg_gate[6]]";   // 0.3.45: +frame background inputs (blk+0x6CB4..0x6CF4, gate bytes)   // 0.3.39: +camera state/look-at/fov/y-off/roll (blk+0x6908..0x698C), deck colour (0x6CA8), blackout gate (0x3D50)   // 0.3.37: +zoom (blk+0x691C, the render camera z = scene CB focal)
 
 fn gs_now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
@@ -1327,6 +1336,10 @@ struct GsRow {
     // shipped so a SCRIPTED camera (state 1) can be rendered exactly. Deck colour blk+0x6CA8..0x6CB0
     // = the POL model-0 vertex-colour multiplier; blackout blk+0x3D50 != 0 skips the deck draw.
     cam_state: u32, look: [f32; 3], fov: f32, yoff: f32, roll: u16, deck: [f32; 3], blackout: u8,
+    // 0.3.45 (APPENDED): frame background inputs. bg_mode = blk+0x6CB4; bg_col = blk+0x6CB8/BC/C0 raw words;
+    // fade_mode = blk+0x6CE4; fade_col = blk+0x6CF0; bg_gate = [G+0, G+1, G+2, G+0x2E, entity+6, entity+0x96]
+    // (0xFF in the entity bytes = pointer read failed).
+    bg_mode: u32, bg_col: [u32; 3], fade_mode: u32, fade_col: u32, bg_gate: [u8; 6],
     // 0.3.24: the AUTHORITATIVE inputs — the raw pad words at G+0x218+seat*4, UPSTREAM of the 12-entry
     // translation table. This is the column a re-simulator feeds back into the real engine; p1_in/p2_in
     // are the downstream decoded values and are kept only for compatibility with existing consumers.
@@ -1694,6 +1707,27 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
         }
         None => (0, [0.0; 3], 0.0, 0.0, 0, [1.0, 1.0, 1.0], 0),
     };
+    // 0.3.45: background window + gate bytes (docs/FRAME-BACKGROUND-GHIDRA.md)
+    let bgw: (u32, [u32; 3], u32, u32) = match base.checked_sub(BLK_BACK).and_then(|blk| unsafe { read_at(h, blk + BG_OFF, BG_WIN) }) {
+        Some(w) if w.len() >= BG_WIN => (le32(&w, 0), [le32(&w, 4), le32(&w, 8), le32(&w, 0xC)], le32(&w, 0x30), le32(&w, 0x3C)),
+        _ => (0, [0; 3], 0, 0),
+    };
+    let bg_gate: [u8; 6] = {
+        let mut g = [0xFFu8; 6];
+        if let Some(blk) = base.checked_sub(BLK_BACK) {
+            if let Some(b) = unsafe { read_at(h, blk + 0x3CB8, 0x30) } { if b.len() >= 0x2F { g[0] = b[0]; g[1] = b[1]; g[2] = b[2]; g[3] = b[0x2E]; } }
+        }
+        if exe_base != 0 {
+            if let Some(p) = unsafe { read_at(h, exe_base + ENTITY_PTR_OFF, 8) }.filter(|b| b.len() >= 8) {
+                let ent = u64::from_le_bytes([p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]]) as usize;
+                if ent > 0x10000 {
+                    if let Some(e6) = unsafe { rpm_u8(h, ent + 6) } { g[4] = e6; }
+                    if let Some(e96) = unsafe { rpm_u8(h, ent + 0x96) } { g[5] = e96; }
+                }
+            }
+        }
+        g
+    };
     Some(GsRow {
         frame,
         p1_in: u16le(&s[0], OFF_INPUT), p2_in: u16le(&s[1], OFF_INPUT),
@@ -1723,6 +1757,7 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
         eye_x: cam.0, eye_y: cam.1, ground: cam.2,
         zoom: cam.3,
         cam_state: camx.0, look: camx.1, fov: camx.2, yoff: camx.3, roll: camx.4, deck: camx.5, blackout: camx.6,
+        bg_mode: bgw.0, bg_col: bgw.1, fade_mode: bgw.2, fade_col: bgw.3, bg_gate,   // 0.3.45 -- appended
         // 0.3.24: both seats' RAW input words in ONE read (they are adjacent u32s at G+0x218).
         seat_in: match if exe_base != 0 { read_at(h, exe_base + SEATIN_OFF, 8) } else { None } {
             Some(b) if b.len() >= 8 => [le32(&b, 0), le32(&b, 4)],
@@ -2454,7 +2489,8 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         r.flash, r.glow, r.layer, r.timer,
         r.p2_mfill, r.round_no,  // 0.3.29 — appended
         r.zoom,                  // 0.3.37 — appended
-        r.cam_state, r.look, r.fov, r.yoff, r.roll, r.deck, r.blackout   // 0.3.39 — appended
+        r.cam_state, r.look, r.fov, r.yoff, r.roll, r.deck, r.blackout,  // 0.3.39 — appended
+        r.bg_mode, r.bg_col, r.fade_mode, r.fade_col, r.bg_gate          // 0.3.45 — appended
     ])).collect();
     // the complete artifact that lands on disk (server writes the gunzip-able bytes verbatim)
     let assist_p1 = [gs.assist[0], gs.assist[2], gs.assist[4]];
