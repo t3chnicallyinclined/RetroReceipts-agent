@@ -97,3 +97,4 @@ rr-render/target/
 
 # ── Replay packs (ROM-derived game pixels) — served in dev from a local folder/junction, NEVER committed ──
 pwa/static/replay/packs/
+pwa/smoke-out/
