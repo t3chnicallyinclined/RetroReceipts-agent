@@ -8,9 +8,11 @@ Module map, gate numbers and the W2 plan: `mvc-live-skins-quarters/docs/RR-RENDE
 
 ```
 cargo build --release
-target/release/emit_seq <tape.json.gz> --start 1500 --count 60 -o out.seq      # sprites only (== tape_to_seq.py --no-world)
+target/release/emit_seq <tape.json.gz> --start 1500 --count 60 -o out.seq      # full frame (== tape_to_seq.py); --no-world = sprites only
+target/release/emit_seq <tape.json.gz> --start 1500 --count 60 --camera-gate   # closed-form camera vs the fitted block (report)
 python tools/seq_diff.py py.seq out.seq                                          # exact per draw
-bash tools/gate_l1.sh                                                            # the whole L1 table
+bash tools/gate_l1.sh                                                            # the whole gate table (MODE=sprites for W1)
+python tools/freeze_template.py                                                  # regenerate src/frozen/*.json from the two packs
 cargo check --lib --target wasm32-unknown-unknown                                # the core is wasm-friendly
 ```
 

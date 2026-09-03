@@ -3,15 +3,20 @@
 //!   head = { frames: [per-frame head], source, first, count, note }
 //!   per-frame head = { frame, sceneRTFile: null, viewport, sceneRT, clears, vb{off,len}, ib{off,len},
 //!                      inputLayouts, textures{key: {w,h,fmt,off,len}}, constantBuffers{hash: {off,len}}, draws[] }
-//! Pipeline state for every sprite draw is COPIED from a real captured indexed draw (`tape_to_seq.template`:
-//! the first `psVariant == 'indexed'` draw of frame_2574.pack) and the pack's constant buffers are interned
-//! first, exactly as `cb_recs = {h: intern(b) ...}` does. Pool payloads are deduped by sha256 (`intern`).
+//! Sprite draws copy the state of a real captured indexed draw (`tape_to_seq.template`): FROZEN in
+//! `src/frozen/template_2574.json` from `frame_2574.pack` (sha256
+//! 0b22d966e3880c40814d1fe1075243c589bd95c4ffbd293e89315c8b47ae38b1, draw i=548), or loaded from a pack given at
+//! run time. The pack's constant buffers are interned first (`cb_recs = {h: intern(b) ...}`); pool payloads are
+//! deduped by sha256 (`intern`).
 use crate::sprites::{Draw, Frame, Texture};
 use crate::util::{sha256, u32le, OrderedMap, Res};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
+pub const FROZEN_TEMPLATE_2574: &str = include_str!("frozen/template_2574.json");
+
 pub struct Template {
+    pub source: String, pub pack_sha256: String,
     pub viewport: Value, pub scene_rt: Value, pub input_layouts: Value,
     /// the template draw dict (all its keys; i/firstIndex/indexCount/stride/voff/tex are overwritten per draw)
     pub draw: Map<String, Value>,
@@ -20,7 +25,28 @@ pub struct Template {
     pub cbs: Vec<(String, Vec<u8>)>,
 }
 
-/// `tape_to_seq.load_pack_rrpk` + `template(path)`.
+fn hex(s: &str) -> Vec<u8> { (0..s.len() / 2).map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap_or(0)).collect() }
+
+impl Template {
+    /// The frozen `frame_2574.pack` template.
+    pub fn frozen() -> Template {
+        let v: Value = serde_json::from_str(FROZEN_TEMPLATE_2574).expect("frozen template_2574.json");
+        let d = v.get("draw").and_then(|x| x.as_object()).cloned().unwrap_or_default();
+        let cbs = v.get("cbs").and_then(|x| x.as_object()).map(|m| m.iter().map(|(h, b)| (h.clone(), hex(b.as_str().unwrap_or("")))).collect()).unwrap_or_default();
+        Template {
+            source: v.get("pack").and_then(|x| x.as_str()).unwrap_or("frame_2574.pack").to_string(),
+            pack_sha256: v.get("pack_sha256").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            viewport: v.get("viewport").cloned().unwrap_or(Value::Null), scene_rt: v.get("sceneRT").cloned().unwrap_or(Value::Null),
+            input_layouts: v.get("inputLayouts").cloned().unwrap_or(Value::Null),
+            draw_i: d.get("i").and_then(|x| x.as_i64()).unwrap_or(-1),
+            vs_variant: d.get("vsVariant").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            ps_variant: d.get("psVariant").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            draw: d, cbs,
+        }
+    }
+}
+
+/// `tape_to_seq.load_pack_rrpk` + `template(path)` from a pack's bytes.
 pub fn load_template(pack: &[u8]) -> Res<Template> {
     if pack.len() < 8 || &pack[..4] != b"RRPK" { return Err("template: not an RRPK pack".into()); }
     let n = u32le(pack, 4) as usize;
@@ -38,6 +64,7 @@ pub fn load_template(pack: &[u8]) -> Res<Template> {
         }
     }
     Ok(Template {
+        source: "pack".into(), pack_sha256: String::new(),
         viewport: man.get("viewport").cloned().unwrap_or(Value::Null),
         scene_rt: man.get("sceneRT").cloned().unwrap_or(Value::Null),
         input_layouts: man.get("inputLayouts").cloned().unwrap_or(Value::Null),
@@ -52,22 +79,27 @@ pub fn load_template(pack: &[u8]) -> Res<Template> {
 pub struct SeqWriter {
     pool: Vec<u8>,
     index: HashMap<[u8; 32], (usize, usize)>,
+    /// hash -> {off,len}: the template's CBs first, then every emitter CB in first-seen order
     cb_recs: Map<String, Value>,
+    cb_interned: usize,
     heads: Vec<Value>,
-    /// per emitter texture (by position in `Emitter.textures`): its pool record
     tex_recs: Vec<Value>,
     source: String,
+    input_layouts: Value,
 }
 
 impl SeqWriter {
-    /// `cb_recs = {h: intern(b) for h, b in tcbs.items()}`
-    pub fn new(tpl: &Template, source: &str) -> SeqWriter {
-        let mut w = SeqWriter { pool: Vec::new(), index: HashMap::new(), cb_recs: Map::new(), heads: Vec::new(), tex_recs: Vec::new(), source: source.to_string() };
+    /// `cb_recs = {h: intern(b) for h, b in tcbs.items()}`; `world_layouts` = `wt.inputLayouts` (merged over the
+    /// template's, `{**man['inputLayouts'], **wt.inputLayouts}`).
+    pub fn new(tpl: &Template, world_layouts: Option<&Value>, source: &str) -> SeqWriter {
+        let mut il = tpl.input_layouts.as_object().cloned().unwrap_or_default();
+        if let Some(w) = world_layouts.and_then(|x| x.as_object()) { for (k, v) in w { il.insert(k.clone(), v.clone()); } }
+        let mut w = SeqWriter { pool: Vec::new(), index: HashMap::new(), cb_recs: Map::new(), cb_interned: 0, heads: Vec::new(),
+                                tex_recs: Vec::new(), source: source.to_string(), input_layouts: Value::Object(il) };
         for (h, b) in &tpl.cbs { let r = w.intern(b); w.cb_recs.insert(h.clone(), r); }
         w
     }
 
-    /// `intern(b)` -> {off, len}, storing the bytes once (sha256 keyed).
     fn intern(&mut self, b: &[u8]) -> Value {
         let h = sha256(b);
         let (off, len) = match self.index.get(&h) {
@@ -77,9 +109,8 @@ impl SeqWriter {
         json!({"off": off, "len": len})
     }
 
-    /// Intern this frame's NEW textures (first-seen order, as the Python interns them while emitting), then
-    /// vb and ib, and append the frame head.
-    pub fn push_frame(&mut self, tpl: &Template, textures: &OrderedMap<Texture>, fr: &Frame) {
+    /// Intern this frame's NEW textures and constant buffers (first-seen order), then vb and ib; append the head.
+    pub fn push_frame(&mut self, tpl: &Template, textures: &OrderedMap<Texture>, cb_recs: &OrderedMap<Vec<u8>>, fr: &Frame) {
         while self.tex_recs.len() < textures.len() {
             let i = self.tex_recs.len();
             let t = &textures.vals[i];
@@ -88,6 +119,12 @@ impl SeqWriter {
             rec["off"] = r["off"].clone(); rec["len"] = r["len"].clone();
             self.tex_recs.push(rec);
         }
+        while self.cb_interned < cb_recs.len() {
+            let i = self.cb_interned;
+            let (h, b) = (&cb_recs.keys[i], &cb_recs.vals[i]);
+            if !self.cb_recs.contains_key(h) { let r = self.intern(b); self.cb_recs.insert(h.clone(), r); }   // setdefault
+            self.cb_interned += 1;
+        }
         let vb = self.intern(&fr.verts);
         let mut ib = Vec::with_capacity(fr.idxs.len() * 4);
         for i in &fr.idxs { ib.extend_from_slice(&i.to_le_bytes()); }
@@ -95,8 +132,8 @@ impl SeqWriter {
         let mut used: OrderedMap<()> = OrderedMap::new();
         let mut draws = Vec::with_capacity(fr.draws.len());
         for (i, d) in fr.draws.iter().enumerate() {
-            draws.push(self.draw_json(tpl, i, d));
-            for k in &d.tex { used.insert_new(k, ()); }
+            draws.push(draw_json(i, d));
+            for k in d.tex.iter().flatten() { used.insert_new(k, ()); }
         }
         let mut tex = Map::new();
         for k in &used.keys {
@@ -110,23 +147,11 @@ impl SeqWriter {
         head.insert("clears".into(), json!([{"kind": "ClearRenderTargetView", "colour": [0, 0, 0, 0]}]));
         head.insert("vb".into(), vb);
         head.insert("ib".into(), ib);
-        head.insert("inputLayouts".into(), tpl.input_layouts.clone());
+        head.insert("inputLayouts".into(), self.input_layouts.clone());
         head.insert("textures".into(), Value::Object(tex));
         head.insert("constantBuffers".into(), Value::Object(self.cb_recs.clone()));
         head.insert("draws".into(), Value::Array(draws));
         self.heads.push(Value::Object(head));
-    }
-
-    /// `d = dict(tdraw); d.update({'i', 'firstIndex', 'indexCount', 'stride', 'voff', 'tex'})`
-    fn draw_json(&self, tpl: &Template, i: usize, d: &Draw) -> Value {
-        let mut m = tpl.draw.clone();
-        m.insert("i".into(), json!(i));
-        m.insert("firstIndex".into(), json!(d.first_index));
-        m.insert("indexCount".into(), json!(d.index_count));
-        m.insert("stride".into(), json!(d.stride));
-        m.insert("voff".into(), json!(d.voff));
-        m.insert("tex".into(), json!([d.tex[0], d.tex[1]]));
-        Value::Object(m)
     }
 
     pub fn frames(&self) -> usize { self.heads.len() }
@@ -146,4 +171,18 @@ impl SeqWriter {
         out.extend_from_slice(&self.pool);
         Ok(out)
     }
+}
+
+/// `d = dict(state); d.update({'i', 'firstIndex', 'indexCount', 'stride', 'voff', 'tex' [, 'vscbHash', 'pscbHash']})`
+fn draw_json(i: usize, d: &Draw) -> Value {
+    let mut m = d.state.clone();
+    m.insert("i".into(), json!(i));
+    m.insert("firstIndex".into(), json!(d.first_index));
+    m.insert("indexCount".into(), json!(d.index_count));
+    m.insert("stride".into(), json!(d.stride));
+    m.insert("voff".into(), json!(d.voff));
+    m.insert("tex".into(), json!([d.tex[0], d.tex[1]]));
+    if let Some(v) = &d.vscb { m.insert("vscbHash".into(), json!(v)); }
+    if let Some(p) = &d.pscb { m.insert("pscbHash".into(), json!(p)); }
+    Value::Object(m)
 }

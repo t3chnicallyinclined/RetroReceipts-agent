@@ -40,8 +40,10 @@ pub fn gz_b64(s: &str) -> Res<Vec<u8>> {
 #[inline] pub fn f32le(b: &[u8], o: usize) -> f32 { f32::from_bits(u32le(b, o)) }
 
 /// Insertion-ordered string map (Python dict / OrderedDict semantics) without an extra dependency.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct OrderedMap<V> { pub keys: Vec<String>, pub vals: Vec<V>, index: std::collections::HashMap<String, usize> }
+
+impl<V> Default for OrderedMap<V> { fn default() -> Self { Self::new() } }
 
 impl<V> OrderedMap<V> {
     pub fn new() -> Self { Self { keys: Vec::new(), vals: Vec::new(), index: Default::default() } }

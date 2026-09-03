@@ -14,11 +14,14 @@ OUT="${GATE_OUT:-$TEMP/rr-render-gate}"; mkdir -p "$OUT"
 EMIT="$HERE/../target/release/emit_seq.exe"
 [ -x "$EMIT" ] || (cd "$HERE/.." && cargo build --release)
 
+# MODE=sprites (W1: both sides --no-world) or MODE=full (W2: the whole frame -- preamble, deck, world lists, sprites, HUD)
+MODE="${MODE:-full}"
 gate() {  # name tape start count [extra-diff-args]
-  local name=$1 tape=$2 start=$3 count=$4 extra=$5
-  echo "== $name  ($(basename "$tape") --start $start --count $count)"
-  (cd "$PY" && PYTHONIOENCODING=utf-8 python tape_to_seq.py "$tape" --start "$start" --count "$count" --no-world -o "$OUT/py_$name.seq" >/dev/null)
-  "$EMIT" "$tape" --start "$start" --count "$count" -o "$OUT/rs_$name.seq" >/dev/null
+  local name=$1 tape=$2 start=$3 count=$4 extra=$5 nw=""
+  [ "$MODE" = sprites ] && nw=--no-world
+  echo "== $MODE $name  ($(basename "$tape") --start $start --count $count)"
+  (cd "$PY" && PYTHONIOENCODING=utf-8 python tape_to_seq.py "$tape" --start "$start" --count "$count" $nw -o "$OUT/py_$name.seq" >/dev/null)
+  "$EMIT" "$tape" --start "$start" --count "$count" $nw -o "$OUT/rs_$name.seq" >/dev/null
   python "$HERE/seq_diff.py" "$OUT/py_$name.seq" "$OUT/rs_$name.seq" $extra
 }
 
@@ -33,7 +36,7 @@ gate train_4445_4505 "$T11" 3430 80
 gate palrows_1000 "$TPAL" 1000 60
 gate rot_3245 "$TROT" 3245 60
 
-# the sprite subsequence of a FULL Python run (world + preamble + sprites) must equal the Rust sprite list
-echo "== stage13_1500 sprites-only vs the full Python run"
-(cd "$PY" && PYTHONIOENCODING=utf-8 python tape_to_seq.py "$T13" --start 1500 --count 60 -o "$OUT/py_stage13_1500_world.seq" >/dev/null)
-python "$HERE/seq_diff.py" "$OUT/py_stage13_1500_world.seq" "$OUT/rs_stage13_1500.seq" --sprites-only
+# closed-form camera vs the fitted camera_block.json rows (report only; the emitter keeps the fitted model)
+echo "== camera closed form vs fitted block"
+"$EMIT" "$T13" --start 1500 --count 60 --camera-gate | grep "camera gate"
+"$EMIT" "$TPAL" --start 1000 --count 60 --camera-gate | grep "camera gate"

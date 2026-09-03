@@ -1,0 +1,1921 @@
+{
+"pack": "capgate/frame_4445.pack",
+"pack_sha256": "2399a079a7768d1f49a35e86b68c1e9bc380daeac6c042c24fff069409ff6ad6",
+"inputLayouts": {
+"95f0fedec8839b0f": [
+{
+"semantic": "POSITION",
+"index": 0,
+"format": 2,
+"slot": 0,
+"offset": 0,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "NORMAL",
+"index": 0,
+"format": 6,
+"slot": 0,
+"offset": 16,
+"class": 0,
+"step": 0
+}
+],
+"8b2b8641a460cbb8": [
+{
+"semantic": "POSITION",
+"index": 0,
+"format": 2,
+"slot": 0,
+"offset": 0,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "NORMAL",
+"index": 0,
+"format": 16,
+"slot": 0,
+"offset": 16,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "TANGENT",
+"index": 0,
+"format": 28,
+"slot": 0,
+"offset": 24,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "BINORMAL",
+"index": 0,
+"format": 28,
+"slot": 0,
+"offset": 28,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "TEXCOORD",
+"index": 0,
+"format": 16,
+"slot": 0,
+"offset": 32,
+"class": 0,
+"step": 0
+}
+],
+"c3a2bc89ef1823b3": [
+{
+"semantic": "POSITION",
+"index": 0,
+"format": 2,
+"slot": 0,
+"offset": 0,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "NORMAL",
+"index": 0,
+"format": 16,
+"slot": 0,
+"offset": 16,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "TANGENT",
+"index": 0,
+"format": 28,
+"slot": 0,
+"offset": 24,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "BINORMAL",
+"index": 0,
+"format": 28,
+"slot": 0,
+"offset": 28,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "TEXCOORD",
+"index": 0,
+"format": 16,
+"slot": 0,
+"offset": 32,
+"class": 0,
+"step": 0
+}
+],
+"be56041675a43580": [
+{
+"semantic": "POSITION",
+"index": 0,
+"format": 2,
+"slot": 0,
+"offset": 0,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "NORMAL",
+"index": 0,
+"format": 16,
+"slot": 0,
+"offset": 16,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "TANGENT",
+"index": 0,
+"format": 28,
+"slot": 0,
+"offset": 24,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "BINORMAL",
+"index": 0,
+"format": 28,
+"slot": 0,
+"offset": 28,
+"class": 0,
+"step": 0
+},
+{
+"semantic": "TEXCOORD",
+"index": 0,
+"format": 16,
+"slot": 0,
+"offset": 32,
+"class": 0,
+"step": 0
+}
+]
+},
+"draw": {
+"opaque": {
+"vs": "a6fb2c16baaccf5e",
+"ps": "1e9eff1d054fa8ad",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 1,
+"v": 1,
+"w": 1,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+},
+"texalpha": {
+"vs": "a6fb2c16baaccf5e",
+"ps": "bf338c9550f2b5fd",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 1,
+"v": 1,
+"w": 1,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 2,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+},
+"pscb": {
+"opaque": [
+"000000000000000000000000000000000000803f000000000000000000000000",
+null,
+null,
+null
+],
+"texalpha": [
+"000000000000000000000000000000000000803f000000000000000000000000",
+null,
+"0000000000000000000000000000000000000040abaaaa3a000000008096184b00000000000000000000803f0000803f9e067f3fb57eb2bd0000000000000000b57eb23d9e067f3f0000000000000000",
+null
+]
+},
+"by_state": [
+[
+[
+"opaque",
+[
+21,
+1,
+1
+],
+[
+5,
+6
+],
+[
+1,
+1
+],
+1
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "1e9eff1d054fa8ad",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 1,
+"v": 1,
+"w": 1,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"opaque",
+[
+21,
+1,
+1
+],
+[
+5,
+6
+],
+[
+1,
+1
+],
+2
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "1e9eff1d054fa8ad",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 1,
+"v": 1,
+"w": 1,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 2,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"opaque",
+[
+21,
+3,
+3
+],
+[
+5,
+6
+],
+[
+1,
+1
+],
+2
+],
+{
+"vs": "2a7797c47f7673ac",
+"ps": "b105dc823362dea2",
+"il": "be56041675a43580",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": true,
+"samp": [
+{
+"filter": 21,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 2,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"opaque",
+[
+21,
+3,
+3
+],
+[
+5,
+6
+],
+[
+1,
+1
+],
+3
+],
+{
+"vs": "2a7797c47f7673ac",
+"ps": "b105dc823362dea2",
+"il": "be56041675a43580",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": true,
+"samp": [
+{
+"filter": 21,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 3,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"opaque",
+[
+0,
+1,
+1
+],
+[
+5,
+6
+],
+[
+1,
+1
+],
+2
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "1e9eff1d054fa8ad",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": false,
+"samp": [
+{
+"filter": 0,
+"u": 1,
+"v": 1,
+"w": 1,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 2,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"opaque",
+[
+0,
+3,
+3
+],
+[
+5,
+6
+],
+[
+1,
+1
+],
+2
+],
+{
+"vs": "2a7797c47f7673ac",
+"ps": "b105dc823362dea2",
+"il": "be56041675a43580",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": true,
+"samp": [
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 2,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"texalpha",
+[
+21,
+1,
+1
+],
+[
+5,
+2
+],
+[
+0,
+0
+],
+1
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "bf338c9550f2b5fd",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 1,
+"v": 1,
+"w": 1,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 2,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"texalpha",
+[
+21,
+3,
+3
+],
+[
+5,
+6
+],
+[
+0,
+0
+],
+1
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "bf338c9550f2b5fd",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"texalpha",
+[
+21,
+3,
+3
+],
+[
+5,
+2
+],
+[
+0,
+0
+],
+1
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "bf338c9550f2b5fd",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 2,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"texalpha",
+[
+21,
+3,
+3
+],
+[
+5,
+6
+],
+[
+0,
+0
+],
+2
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "bf338c9550f2b5fd",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 21,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 2,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"texalpha",
+[
+0,
+3,
+3
+],
+[
+5,
+6
+],
+[
+0,
+0
+],
+1
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "bf338c9550f2b5fd",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+}
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"texalpha",
+[
+0,
+3,
+3
+],
+[
+5,
+2
+],
+[
+0,
+0
+],
+2
+],
+{
+"vs": "a6fb2c16baaccf5e",
+"ps": "bf338c9550f2b5fd",
+"il": "c3a2bc89ef1823b3",
+"vsVariant": "vs_world",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+}
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 2,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 2,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+],
+[
+[
+"opaque",
+[
+21,
+3,
+3
+],
+[
+5,
+6
+],
+[
+0,
+0
+],
+2
+],
+{
+"vs": "2a7797c47f7673ac",
+"ps": "b105dc823362dea2",
+"il": "be56041675a43580",
+"vsVariant": "vs_world",
+"psVariant": "opaque",
+"psFog": true,
+"samp": [
+{
+"filter": 21,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+}
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 0,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 2,
+"ccw": 1,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 1,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40
+}
+]
+],
+"preamble": [
+{
+"vs": "4718687148562057",
+"ps": "cd8012caa4038c99",
+"il": "95f0fedec8839b0f",
+"vsVariant": "vs_flat",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+null,
+null
+],
+"blend": {
+"en": 0,
+"src": 2,
+"dst": 1,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 8,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 0,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 28,
+"vscbHash": [
+"00000000",
+"00000000",
+"00000000",
+"00000000"
+],
+"pscbHash": [
+"00000000",
+"00000000",
+"00000000",
+"00000000"
+]
+},
+{
+"vs": "eecdd8debcfbab72",
+"ps": "bf338c9550f2b5fd",
+"il": "8b2b8641a460cbb8",
+"vsVariant": "vs_flat",
+"psVariant": "texalpha",
+"psFog": false,
+"samp": [
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 1,
+"src": 5,
+"dst": 6,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 15,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 4,
+"sten": 0,
+"srmask": 255,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 1,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 1
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 0,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 40,
+"vscbHash": [
+"00000000",
+"00000000",
+"00000000",
+"00000000"
+],
+"pscbHash": [
+"28111758",
+"00000000",
+"00000000",
+"00000000"
+]
+},
+{
+"vs": "4718687148562057",
+"ps": null,
+"il": "95f0fedec8839b0f",
+"vsVariant": "vs_flat",
+"psVariant": null,
+"psFog": true,
+"samp": [
+{
+"filter": 0,
+"u": 3,
+"v": 3,
+"w": 3,
+"bias": 0,
+"maxaniso": 0,
+"cmp": 1,
+"minlod": 0,
+"maxlod": 3.40282e+38
+},
+null
+],
+"blend": {
+"en": 0,
+"src": 2,
+"dst": 1,
+"op": 1,
+"srcA": 2,
+"dstA": 1,
+"opA": 1,
+"mask": 0,
+"a2c": 0
+},
+"bfactor": [
+1,
+1,
+1,
+1
+],
+"smask": 4294967295,
+"depth": {
+"en": 1,
+"write": 1,
+"func": 8,
+"sten": 1,
+"srmask": 0,
+"swmask": 255,
+"sref": 0,
+"ffunc": 8,
+"ffail": 1,
+"fzfail": 1,
+"fpass": 3,
+"bfunc": 8,
+"bfail": 1,
+"bzfail": 1,
+"bpass": 3
+},
+"raster": {
+"fill": 3,
+"cull": 1,
+"ccw": 0,
+"scissor": 0,
+"depthclip": 1,
+"dbias": 0,
+"dbiasclamp": 0,
+"dbiasslope": 0,
+"ms": 0,
+"aaline": 0
+},
+"vp": [
+384,
+32,
+1280,
+960,
+0,
+1
+],
+"scissor": null,
+"stride": 28,
+"vscbHash": [
+"00000000",
+"00000000",
+"00000000",
+"00000000"
+],
+"pscbHash": [
+"28111758",
+"00000000",
+"00000000",
+"00000000"
+]
+}
+],
+"preamble_cb": [
+{},
+{
+"28111758": "000000000000000000000000000000000000803f000000000000000000000000"
+},
+{
+"28111758": "000000000000000000000000000000000000803f000000000000000000000000"
+}
+]
+}

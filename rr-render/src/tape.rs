@@ -13,6 +13,10 @@ use crate::util::{f32le, gz_b64, i16le, i32le, u16le, u32le, u64le, Res};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
+/// A texture page as the seq carries it: fmt 61 = R8 (w x h bytes), fmt 28 = RGBA8.
+#[derive(Clone, Debug)]
+pub struct Page { pub w: u32, pub h: u32, pub fmt: u32, pub data: Vec<u8> }
+
 /// 256-entry RGBA palette as tape_to_seq builds it (np.zeros((256, 4), uint8) with 16 entries filled).
 pub type Pal256 = [[u8; 4]; 256];
 
@@ -56,7 +60,7 @@ pub struct ObjRec {
     pub colour: [f32; 4],
     /// (group flags, TRIANGLE LIST of (x y z nx ny nz u v)) per polygon group -- `nl_groups`.
     pub groups: Vec<(u32, Vec<[f32; 8]>)>,
-    pub centre: Option<[f32; 3]>, pub radius: Option<f32>,
+    pub centre: Option<[f64; 3]>, pub radius: Option<f64>,
 }
 
 impl ObjRec {
@@ -97,6 +101,8 @@ pub struct Tape {
     pub palrows: HashMap<u32, PalRows>,
     pub anodes: HashMap<u32, Vec<ANode>>,
     pub aobjs: Vec<Vec<ObjRec>>,
+    /// `tape['pages']` (synthetic tapes only): key -> {w,h,fmt,data gz+b64}
+    pub pages: Vec<(String, Page)>,
 }
 
 fn as_u8_vec(v: Option<&Value>) -> Vec<u8> {
@@ -132,8 +138,16 @@ impl Tape {
             stage_id: o.get("stage_id").and_then(|x| x.as_i64()),
             p1_team: as_u8_vec(o.get("p1_team")), p2_team: as_u8_vec(o.get("p2_team")), costume,
             schema, cols, frames,
-            nodes: BTreeMap::new(), pals: Vec::new(), palrows: HashMap::new(), anodes: HashMap::new(), aobjs: Vec::new(),
+            nodes: BTreeMap::new(), pals: Vec::new(), palrows: HashMap::new(), anodes: HashMap::new(), aobjs: Vec::new(), pages: Vec::new(),
         };
+        if let Some(pg) = o.get("pages").and_then(|x| x.as_object()) {
+            for (k, v) in pg {
+                let g = |n: &str| v.get(n).and_then(|x| x.as_u64()).unwrap_or(0) as u32;
+                if let Some(d) = v.get("data").and_then(|x| x.as_str()) {
+                    if let Ok(data) = gz_b64(d) { t.pages.push((k.clone(), Page { w: g("w"), h: g("h"), fmt: g("fmt"), data })); }
+                }
+            }
+        }
         if let Some(s) = o.get("nodes").and_then(|x| x.as_str()).filter(|s| !s.is_empty()) {
             t.nodes = decode_nodes(&gz_b64(s)?, nodes_stride);
             if let Some(p) = o.get("pals").and_then(|x| x.as_str()) { t.pals = decode_pals(&gz_b64(p)?); }
@@ -299,8 +313,8 @@ pub fn decode_aobjs(ob: &[u8]) -> Vec<Vec<ObjRec>> {
                 tcw, key, pcw: pcw_w, isp: isp_w, tsp: tsp_w, texnum: i32le(hdr, 0x20),
                 colour: [f32le(hdr, 0x2C), f32le(hdr, 0x30), f32le(hdr, 0x34), f32le(hdr, 0x38)],
                 groups,
-                centre: if ok { None } else { Some([f32le(hdr, 0x10), f32le(hdr, 0x14), f32le(hdr, 0x18)]) },
-                radius: if ok { None } else { Some(f32le(hdr, 0x1C)) },
+                centre: if ok { None } else { Some([f32le(hdr, 0x10) as f64, f32le(hdr, 0x14) as f64, f32le(hdr, 0x18) as f64]) },
+                radius: if ok { None } else { Some(f32le(hdr, 0x1C) as f64) },
             });
             q += 0x50 + size.max(0) as usize;
         }
