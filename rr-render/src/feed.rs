@@ -29,6 +29,7 @@ pub struct FrameFeed {
     em: Emitter,
     tpl: Template,
     state_ids: HashMap<String, u32>,
+    state_fp: HashMap<u64, u32>,
     tex_sent: usize,
     cb_ids: HashMap<String, u32>,
     template_cbs: HashMap<String, Vec<u8>>,
@@ -53,7 +54,7 @@ impl FrameFeed {
         let wt = WorldTemplate::frozen();
         let template_cbs: HashMap<String, Vec<u8>> = tpl.cbs.iter().cloned().collect();
         let em = Emitter::new(tape, atlases, camera, tpl.draw.clone(), wt, world_assets, opts);
-        Ok(FrameFeed { em, tpl, state_ids: HashMap::new(), tex_sent: 0, cb_ids: HashMap::new(), template_cbs, log })
+        Ok(FrameFeed { em, tpl, state_ids: HashMap::new(), state_fp: HashMap::new(), tex_sent: 0, cb_ids: HashMap::new(), template_cbs, log })
     }
 
     pub fn frame_count(&self) -> usize { self.em.tape.frames.len() }
@@ -74,13 +75,33 @@ impl FrameFeed {
     }
 
     fn state_id(&mut self, d: &Draw, new_states: &mut Vec<(u32, String)>) -> u32 {
+        // (2026-09-03 perf) fingerprint the state map WITHOUT cloning/serialising it: ~500 draws/frame were each
+        // cloned + JSON-encoded just to look up an id (~10 ms/frame). Only an unseen fingerprint pays for the JSON.
+        use std::hash::{Hash, Hasher};
+        fn hv(v: &Value, h: &mut std::collections::hash_map::DefaultHasher) {
+            match v {
+                Value::Null => 0u8.hash(h),
+                Value::Bool(b) => { 1u8.hash(h); b.hash(h) }
+                Value::Number(n) => { 2u8.hash(h); if let Some(i) = n.as_i64() { i.hash(h) } else { n.as_f64().unwrap_or(0.0).to_bits().hash(h) } }
+                Value::String(s) => { 3u8.hash(h); s.hash(h) }
+                Value::Array(a) => { 4u8.hash(h); a.len().hash(h); for x in a { hv(x, h) } }
+                Value::Object(m) => { 5u8.hash(h); m.len().hash(h); for (k, x) in m { k.hash(h); hv(x, h) } }
+            }
+        }
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for (k, v) in &d.state { if PER_DRAW_KEYS.contains(&k.as_str()) { continue; } k.hash(&mut h); hv(v, &mut h); }
+        let fp = h.finish();
+        if let Some(&id) = self.state_fp.get(&fp) { return id; }
         let mut m: Map<String, Value> = d.state.clone();
         for k in PER_DRAW_KEYS { m.remove(k); }
         let js = Value::Object(m).to_string();
-        if let Some(&id) = self.state_ids.get(&js) { return id; }
-        let id = self.state_ids.len() as u32;
-        self.state_ids.insert(js.clone(), id);
-        new_states.push((id, js));
+        let id = match self.state_ids.get(&js) { Some(&id) => id, None => {
+            let id = self.state_ids.len() as u32;
+            self.state_ids.insert(js.clone(), id);
+            new_states.push((id, js));
+            id
+        } };
+        self.state_fp.insert(fp, id);
         id
     }
 

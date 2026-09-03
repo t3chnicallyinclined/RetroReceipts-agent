@@ -136,6 +136,15 @@ impl Emitter {
 
     /// One tape row -> one frame. Mirrors the body of `for r in rows:` in main().
     pub fn emit_row(&mut self, row: usize) -> Option<Frame> {
+        #[cfg(not(target_arch = "wasm32"))]
+        thread_local! { static PROF: std::cell::RefCell<std::collections::HashMap<String, (f64, u64)>> = std::cell::RefCell::new(std::collections::HashMap::new()); }
+        // RR_PROF=1 (native only): per-phase timing, printed every 60 rows
+        #[cfg(not(target_arch = "wasm32"))]
+        let prof = std::env::var("RR_PROF").is_ok();
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut tick = std::time::Instant::now();
+        #[cfg(not(target_arch = "wasm32"))]
+        let lap = |name: &str, tick: &mut std::time::Instant| { if prof { let d = tick.elapsed().as_secs_f64() * 1000.0; PROF.with(|c| { let mut m = c.borrow_mut(); let e = m.entry(name.to_string()).or_insert((0.0, 0)); e.0 += d; e.1 += 1; }); *tick = std::time::Instant::now(); } };
         let r = self.tape.frames.get(row)?.clone();
         let fr_clock = self.tape.num(&r, "frame").unwrap_or(0.0) as i64;
         let frc = fr_clock as u32;
@@ -145,6 +154,7 @@ impl Emitter {
 
         // ── FRAME PREAMBLE (three clear quads)
         if self.world_assets.is_some() && !self.opts.no_preamble { world::emit_preamble(&mut ctx, &self.wt, &self.tape, &r); }
+        #[cfg(not(target_arch = "wasm32"))] lap("preamble", &mut tick);
 
         // ── the ordered items (bodies AND objects)
         let have_nodes = !self.nodes.is_empty();
@@ -219,17 +229,24 @@ impl Emitter {
         });
 
         // ── stage + world lists 5/6/12/13: behind the sprites
+        #[cfg(not(target_arch = "wasm32"))] lap("items", &mut tick);
         if let (Some(assets), Some(cm), Some(ws)) = (&self.world_assets, &self.camera, self.world_state.as_mut()) {
             world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[5, 6, 12, 13]);
         }
+        #[cfg(not(target_arch = "wasm32"))] lap("world 5/6/12/13", &mut tick);
         // ── the sprites
         emit_sprites(&self.tape, &self.opts, &self.sprite_state, have_nodes, &mut ctx, items, ps);
+        #[cfg(not(target_arch = "wasm32"))] lap("sprites", &mut tick);
         // ── effects/shadows/markers after the sprites, the HUD last
         if let (Some(assets), Some(cm), Some(ws)) = (&self.world_assets, &self.camera, self.world_state.as_mut()) {
             world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[7, 8, 9]);
             world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[11]);
         }
+        #[cfg(not(target_arch = "wasm32"))] lap("world 7/8/9/11", &mut tick);
         order_draws(&mut ctx.draws, self.opts.legacy_order, &mut ctx.stats.order);
+        #[cfg(not(target_arch = "wasm32"))] lap("order", &mut tick);
+        #[cfg(not(target_arch = "wasm32"))]
+        if prof { PROF.with(|c| { let m = c.borrow(); let n = m.values().map(|e| e.1).max().unwrap_or(0); if n > 0 && n % 60 == 0 { let mut v: Vec<_> = m.iter().collect(); v.sort_by(|a, b| b.1.0.partial_cmp(&a.1.0).unwrap()); eprintln!("[prof] {} rows: {}", n, v.iter().map(|(k, e)| format!("{} {:.2} ms", k, e.0 / e.1 as f64)).collect::<Vec<_>>().join(" | ")); } }); }
         world::fold_world_stats(&mut ctx);
         ctx.stats.drawn_total += ctx.draws.len() as u64;
         let fr = Frame { frame: fr_clock, verts: ctx.verts, idxs: ctx.idxs, draws: ctx.draws };
@@ -383,9 +400,9 @@ fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &Map<String, Value>,
 pub fn order_draws(draws: &mut Vec<Draw>, legacy: bool, stats: &mut BTreeMap<String, u64>) {
     if legacy { for d in draws.iter_mut() { d.inherit_cull = false; } return; }
     let all = std::mem::take(draws);
-    let mut phase1: Vec<Draw> = all.iter().filter(|d| d.cat == 0 || d.cat == 1).cloned().collect();
+    // (2026-09-03 perf) partition by MOVE: the old filter+cloned deep-copied every cat 0/1 draw (state map + strings)
+    let (mut phase1, mut phase3): (Vec<Draw>, Vec<Draw>) = all.into_iter().partition(|d| d.cat == 0 || d.cat == 1);
     phase1.sort_by(|a, b| (a.cat, a.sub).cmp(&(b.cat, b.sub)));
-    let mut phase3: Vec<Draw> = all.into_iter().filter(|d| !(d.cat == 0 || d.cat == 1)).collect();
     phase3.sort_by(|a, b| a.sub.cmp(&b.sub));
     let mut last = 0.0f64;
     for d in phase3.iter_mut() {
