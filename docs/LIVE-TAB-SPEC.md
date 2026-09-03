@@ -51,7 +51,7 @@ Vocabulary (DESIGN-SYSTEM.md + `rr-arcade-terminology`): "the arcade" (never mar
 3. **Section order = Tris's sentence:** LIVE MONEY (self-hides when nothing is locked, exactly like today's rail board `match/+page.svelte:287`) → NOW PLAYING → LIVE RESULTS. Money leads because its clock is the shortest (bets close at match start).
 4. **Live Results rows stay MatchBanners** (commandment 5, `docs/DESIGN-SYSTEM.md:50`). A row gains a replay affordance in its meta rail; tapping the row **expands it in place** (no route change, no modal) into the **ReplayEmbed**. THE TAPE (SessionModal/receipt) remains one tap away inside the expanded panel — commandment 5's "links to its receipt" is satisfied through the panel, not the row itself (amendment §13).
 5. **One embed, three sources.** `ReplayEmbed` renders the game's own pixels via WebGPU from (a) a tape + pack in a Web Worker (desktop, the proven path), (b) a server-emitted keyed-frame stream (phones, per M-interim), (c) nothing — the availability states. The card chrome and the transport are identical across sources.
-6. **The picture is sacred.** Nothing overlays the 640×480 picture while it plays; chrome lives above/below (inline) or in the pillarbox bands / a fade-out HUD (fullscreen). Only the game's real textures/geometry are drawn (`feedback-render-only-game-assets`).
+6. **The picture is sacred — and overlaid.** SUPERSEDED 2026-09-03 by `REPLAY-OVERLAY-SPEC.md` rev 2 §8.1 (Tris: "all metadata is inside the match replay"): the replay's chrome is a DOM layer in picture coordinates (640×480 units, scaled with the picture) drawn ON the canvas — plates, credits, record stamp, watermark — full for the first/last 3 s and on pause/hover, minimal (plates + watermark) while playing. The canvas pixels stay exact (the layer is a sibling, never composited; every gate reads the scene target). The transport still lives below the picture inline and as the fading HUD in fullscreen; pillars/bands are plain `#000`. Only the game's real textures/geometry are drawn (`feedback-render-only-game-assets`) — the layer draws text, never art.
 7. **No invented numbers on money cards.** Pot, riding, matched and pot-feed are read straight from `rail.rs` fields; if a field is absent the line is omitted, never zero-filled.
 8. **Retention UX follows the product decision, not the code.** UI states for tape uploaded / not yet / gone (older than the last-100 window) / saved (paid) are designed now; the server window itself is a lane-1 contract (§11).
 
@@ -431,8 +431,11 @@ MatchBanner, unchanged (rows stay 48 px sprites, sprite ladder DESIGN-SYSTEM.md:
   accessor to the store — implementation choice, no new fetch. Each player's OWN loadout paints THEIR side;
   absent = stock. The sprites in chrome-top use the same loadout (CharSprite `palette`), so the plates and the
   picture agree.
-- Rule restated: chrome above/below inline; in fullscreen, pillar bands + a fading HUD — the 640×480 picture is
-  never covered while playing (`REPLAY-META-SKINS-SPEC.md` §2).
+- Rule restated (rev 2026-09-03): identity, record and credit render in the `.ovl` layer ON the picture
+  (`REPLAY-OVERLAY-SPEC.md` §2.2-2.5 — placement in 640×480 units, full/minimal timing); the canvas is never
+  composited with it, so `readback()` and the skins gate (`REPLAY-META-SKINS-SPEC.md` §3.3) are unchanged by
+  construction. The inline chrome-top is one 28 px record row; the plates no longer carry team sprites there
+  (the credited skins show as 16 px sprite icons on each credit line, wearing the loadout).
 
 ### 7.11 Availability states (the `none` source)
 

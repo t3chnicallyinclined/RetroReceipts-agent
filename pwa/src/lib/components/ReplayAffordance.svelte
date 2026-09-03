@@ -96,7 +96,9 @@
 	{#if as === 'span' || shown === 'none' || shown === 'expired'}
 		<span class="ra {shown} {size}" title={TITLE[shown]} aria-hidden={shown === 'none' || shown === 'expired' ? 'true' : undefined}>{LABEL[shown]}</span>
 	{:else}
-		<button type="button" class="ra {shown} {size}" class:busy title={note || TITLE[shown]} aria-label={LABEL[shown].replace(/^\S+\s/, '')} onclick={click} disabled={busy}>{busy ? '…' : LABEL[shown]}</button>
+		<button type="button" class="ra {shown} {size}" class:busy title={note || TITLE[shown]} aria-label={LABEL[shown].replace(/^\S+\s/, '')} onclick={click} disabled={busy}>
+			{#if busy}…{:else if shown === 'signin'}🔒 SIGN IN<span class="xw"> TO WATCH</span>{:else}{LABEL[shown]}{/if}
+		</button>
 	{/if}
 {/if}
 
@@ -160,6 +162,12 @@
 	.ra.signin {
 		color: var(--dim);
 		border-style: dashed;
+	}
+	/* §5e: on the phone fold the meta column is 76 px (LIVE-TAB-SPEC §8) → `🔒 SIGN IN`; the full copy stays on title/aria-label */
+	@media (max-width: 720px) {
+		.ra.signin .xw {
+			display: none;
+		}
 	}
 	button.ra.signin:hover {
 		color: var(--ink);

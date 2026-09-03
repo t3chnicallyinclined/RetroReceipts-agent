@@ -18,13 +18,22 @@
 		type GpuDeviceLike
 	} from '$lib/replay/engine';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
+	import SkinCredit, { type Credit } from './SkinCredit.svelte';
 
-	// ▶ REPLAYEMBED (LIVE-TAB-SPEC §7) — a rendered media element: the game's OWN pixels, re-rendered from
-	// the match tape by the proven tape engine (Web Worker + wasm emitter + WebGPU), with transport chrome.
+	// ▶ REPLAYEMBED (LIVE-TAB-SPEC §7 + REPLAY-OVERLAY-SPEC) — a rendered media element: the game's OWN pixels,
+	// re-rendered from the match tape by the proven tape engine (Web Worker + wasm emitter + WebGPU), with an
+	// OBS-style OVERLAY drawn ON the picture (Tris 2026-09-03: "all metadata is inside the match replay") and
+	// transport chrome below it (inline) / as a fading HUD over its bottom edge (fullscreen).
 	// Suffix Embed (design-system amendment §13.1): never a Card, never carries actions beyond transport.
-	// The picture is sacred: nothing overlays the 640×480 canvas while it plays — chrome lives above/below
-	// inline, and in fullscreen in the pillar/letterbox bands + a HUD that fades after 2.5 s idle.
-	// Only the game's real textures/geometry are drawn (feedback-render-only-game-assets).
+	// THE OVERLAY IS DOM, NEVER CANVAS (REPLAY-OVERLAY-SPEC rev 2 §2.3, supersedes LIVE-TAB-SPEC §1.6's "nothing
+	// overlays the picture" per §8.1): `.ovl` is a 640×480 sibling of the canvas, CSS-scaled with the picture
+	// (transform: scale(k), k = rendered width / 640) so it is pixel-identical inline, in fullscreen and on phones —
+	// and the scene target underneath stays the game's exact pixels (the smoke test asserts `readback()` is
+	// unchanged with the layer on/off). Placement = the spec's §2.2 table in picture pixels (`--ov-*`). Timing
+	// (§2.5): full for the first 3 s of play, on pause/seek/end, on hover (+3 s) and the last 3 s; minimal (plates +
+	// watermark) while playing after the same 2.5 s idle timer as the HUD; below k 0.75 minimal-only while playing;
+	// `o` cycles auto → full → minimal → off. Only the game's real textures/geometry are drawn
+	// (feedback-render-only-game-assets); the layer draws identity, record and credit — text, never art.
 
 	export interface ReplaySide {
 		steamid: string;
@@ -53,22 +62,32 @@
 		/** the SteamID in each PHYSICAL seat, when known (skins: P1's own loadout paints slots 0/2/4, P2's 1/3/5) */
 		p1?: string;
 		p2?: string;
+		/** paid-saved tape (LIVE-TAB-SPEC §7.11 `saved`) → the gold SAVED pill; nothing sets it today (POST /rr/tape/save pending) */
+		saved?: boolean;
 	}
 	export type Progress = { phase: 'pack' | 'tape' | 'open' | 'prime' | 'stream'; got: number; total: number };
-	type State = 'checking' | 'unsupported' | 'unavailable' | 'nopack' | 'loading' | 'error' | 'ready' | 'playing' | 'paused' | 'seeking' | 'ended';
+	export type State = 'closed' | 'checking' | 'unsupported' | 'unavailable' | 'nopack' | 'loading' | 'error' | 'ready' | 'playing' | 'paused' | 'seeking' | 'ended';
+	export type OverlayMode = 'full' | 'minimal' | 'off';
+	/** skin credits per WEARER (steamid → one entry per credited character). EMPTY today: the public loadout
+	 *  is `{cid, colors}` (REPLAY-OVERLAY-SPEC §0, C13) — the slot renders nothing until provenance ships. */
+	export type SeatCredits = Record<string, Credit[]>;
 
 	let {
 		source,
 		poster = '',
 		meta,
 		skins = null,
+		credits = null,
 		autoplay = 'auto',
+		autoload = true,
 		quality = 'high',
+		hookName = 'rrEmbed',
 		onready = null,
 		onerror = null,
 		onended = null,
 		onprogress = null,
-		onfullscreenchange = null
+		onfullscreenchange = null,
+		onstate = null
 	}: {
 		source: ReplaySource;
 		/** a still for the closed/loading states — the OG fight card (interim, §7.5); '' = the --board ground */
@@ -77,8 +96,15 @@
 		meta: ReplayMeta;
 		/** raw-int loadouts PER SEAT for the emitter ({p1:[{cid,colors}], p2:[…]}); null = build from loadouts + meta.p1/p2 */
 		skins?: { p1?: { cid: number; colors: number[] }[]; p2?: { cid: number; colors: number[] }[] } | null;
+		/** creator credit lines under each plate (REPLAY-OVERLAY-SPEC §3); null = none known (today: always) */
+		credits?: SeatCredits | null;
 		/** 'auto' = play when ready unless reduced-motion / Save-Data (Tris Q4: on) */
 		autoplay?: 'auto' | 'never';
+		/** false = sit `closed` on the poster until a tap (phones: a 20 MB pack + tape never auto-downloads on mobile data) */
+		autoload?: boolean;
+		/** the window global the test hook registers under (`window.__<hookName>`); the LIVE hero uses 'rrHero' so the
+		 *  smoke test can drive it and an expanded row (default 'rrEmbed') at the same time */
+		hookName?: string;
 		/** high = internal res 4× + box filter into the 640×480 canvas; base = res 2× nearest (low-end / after a GPU error) */
 		quality?: 'high' | 'base';
 		onready?: ((e: { frames: number; openMs: number; ttffMs: number }) => void) | null;
@@ -86,10 +112,16 @@
 		onended?: (() => void) | null;
 		onprogress?: ((p: Progress) => void) | null;
 		onfullscreenchange?: ((e: { fullscreen: boolean }) => void) | null;
+		/** every state change (the LIVE hero uses it to keep a picture that is being watched) */
+		onstate?: ((s: State) => void) | null;
 	} = $props();
 
 	// ── state ──
-	let st = $state<State>('checking');
+	// svelte-ignore state_referenced_locally
+	let st = $state<State>(autoload ? 'checking' : 'closed');
+	$effect(() => {
+		onstate?.(st);
+	});
 	let reason = $state<'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'signin'>('none');
 	let requesting = $state(false);
 	let requestNote = $state('');
@@ -112,9 +144,16 @@
 	let fs = $state(false); // real Fullscreen API
 	let pseudo = $state(false); // iPhone-style overlay fullscreen
 	let hud = $state(true);
+	let hover = $state(false); // pointer inside the wrapper (inline: the overlay stays full while hovered)
+	let intro = $state(false); // the first 3 s after play() — the overlay stays full
+	let ovMode = $state<'auto' | OverlayMode>('auto'); // the viewer's `o` choice; auto = the timer decides
+	let ovToast = $state(''); // "overlay · minimal" for 1.2 s after `o`
+	let k = $state(1); // overlay scale = rendered picture width / 640 (ResizeObserver on .pic)
 	let turnHint = $state(false);
 	let portrait = $state(false);
 	let fsScale = $state(1);
+	let fsBy = $state(0); // fullscreen landscape: the letterbox band under the picture, px (the HUD anchors to the picture)
+	let loadAsked = false; // `closed` → a tap asked for the load
 	let liveText = $state('');
 	let ttff = $state(0);
 	let openMs = $state(0);
@@ -135,6 +174,8 @@
 	let showSeq = 0;
 	let disposed = false;
 	let hudTimer: ReturnType<typeof setTimeout> | null = null;
+	let introTimer: ReturnType<typeof setTimeout> | null = null;
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 	let liveAt = 0;
 	let lastServed = -1;
 	let pushedState = false;
@@ -160,6 +201,64 @@
 		return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 	});
 	const ariaPic = $derived(`Match replay, frame ${frame + 1} of ${count}`);
+	// the `o` toast / the seek pill / the half-speed note share one slot
+	const noteText = $derived(ovToast ? ovToast : st === 'seeking' ? 'skipping ahead…' : halfAuto && playing ? 'playing at half speed' : '');
+
+	// ── sides (REPLAY-OVERLAY-SPEC §1.1-1.2): the game's sides when seats are known — P1's plate LEFT, P2's RIGHT,
+	// the same sides as the health bars in the picture; unknown seats = the row's order (a left, b right), unlabelled,
+	// the picture plays stock and the record line says `stock colors` (§5a). Sides never re-sort; gold marks the winner.
+	const seatsKnown = $derived(!!(meta.p1 || meta.p2));
+	const leftIsB = $derived(
+		seatsKnown &&
+			((!!meta.p1 && meta.p1 === meta.b.steamid && meta.p1 !== meta.a.steamid) ||
+				(!!meta.p2 && meta.p2 === meta.a.steamid && meta.p2 !== meta.b.steamid))
+	);
+	const left = $derived(leftIsB ? meta.b : meta.a);
+	const right = $derived(leftIsB ? meta.a : meta.b);
+	const leftWon = $derived(meta.winner === (leftIsB ? 'b' : 'a'));
+	const scoreL = $derived(meta.score ? (leftIsB ? meta.score.b : meta.score.a) : null);
+	const scoreR = $derived(meta.score ? (leftIsB ? meta.score.a : meta.score.b) : null);
+	const groupLabel = (side: ReplaySide, seat: 1 | 2) =>
+		`${seatsKnown ? `Player ${seat}: ` : ''}${side.name || (side.steamid ? `…${side.steamid.slice(-5)}` : 'Player')}`;
+
+	// ── the overlay mode (REPLAY-OVERLAY-SPEC, Tris 2026-09-03): full for the first 3 s of play, on pause/seek/end,
+	// and while hovered inline; minimal (names + watermark) once the same 2.5 s idle timer as the HUD fires during play.
+	const showOverlay = $derived.by((): OverlayMode => {
+		if (ovMode !== 'auto') return ovMode;
+		if (st !== 'playing') return 'full';
+		// below k 0.75 (phone portrait: 8 px names) the timing tightens — minimal while playing, full on pause (mockup rev 2 §4)
+		if (k < 0.75) return 'minimal';
+		if (intro || hud || (hover && !fullscreen) || (count > 0 && frame >= count - 180)) return 'full';
+		return 'minimal';
+	});
+	const palL = $derived(left.steamid ? loadouts.peek(left.steamid) : null);
+	const palR = $derived(right.steamid ? loadouts.peek(right.steamid) : null);
+
+	/**
+	 * Credit lines for one wearer: the `credits` prop (steamid → Credit[]) — EMPTY today (the loadout carries no
+	 * provenance, C13). DEV ONLY: `?devcredit=1` fakes three credited skins on the left side and one on the right
+	 * (spec §3.3's sample) so the rendering can be seen before the server sends provenance.
+	 */
+	function creditsFor(side: ReplaySide, isLeft: boolean): Credit[] {
+		const real = side.steamid && credits ? credits[side.steamid] : undefined;
+		if (real?.length) return real.slice(0, 3);
+		if (import.meta.env.DEV && appPage.url.searchParams.get('devcredit') === '1' && side.team?.length) {
+			const t = side.team;
+			return isLeft
+				? [
+						{ cid: t[0], name: 'NIGHTFALL', author_steamid: '76561197960287930', author_name: 'Ruby' },
+						...(t[1] != null ? [{ cid: t[1], name: 'GOLDEN AGE', author_name: 'Ruby' }] : []),
+						...(t[2] != null ? [{ cid: t[2], name: 'BLACKOUT', own: true }] : [])
+					]
+				: [{ cid: t[0], name: 'DUSK', author_steamid: '76561197960287930', author_name: 'Ruby' }];
+		}
+		return [];
+	}
+	const creditsL = $derived(creditsFor(left, true));
+	const creditsR = $derived(creditsFor(right, false));
+
+	// §5f: the readout during a forward seek is `served → target` — the served fraction IS the progress
+	const roServed = $derived(st === 'seeking' ? mmss(Math.max(seekServed, 0)) : mmss(scrubPreview ?? frame));
 	const percent = $derived(count > 1 ? (100 * (scrubPreview ?? frame)) / (count - 1) : 0);
 	const seekPct = $derived(seekTarget >= 0 && count > 1 ? (100 * Math.max(seekServed, 0)) / (count - 1) : 0);
 
@@ -232,6 +331,10 @@
 
 	async function start() {
 		if (disposed) return;
+		if (!autoload && !loadAsked) {
+			st = 'closed'; // the poster + a play button; nothing is fetched until asked (phones / Save-Data)
+			return;
+		}
 		err = null;
 		if (source.kind === 'none') {
 			reason = source.reason;
@@ -328,6 +431,14 @@
 		}
 	}
 
+	/** `closed` → load now (a tap on the poster/play button, or the test hook). */
+	export function load() {
+		if (st !== 'closed') return;
+		loadAsked = true;
+		st = 'checking';
+		void start();
+	}
+
 	async function requestPull() {
 		if (requesting) return;
 		requesting = true;
@@ -364,6 +475,10 @@
 		}
 		playing = true;
 		st = 'playing';
+		intro = true; // the overlay stays full for the first 3 s of play
+		if (introTimer) clearTimeout(introTimer);
+		introTimer = setTimeout(() => (intro = false), 3000);
+		poke();
 		let last = performance.now();
 		let acc = 0;
 		// ⚠ PACE OFF THE WALL CLOCK, NOT OFF requestAnimationFrame's COUNT (player.html:194-227): the capture is
@@ -443,7 +558,8 @@
 		}
 		if (tapeBlobUrl) URL.revokeObjectURL(tapeBlobUrl);
 		if (fullscreen) void exitFullscreen();
-		if ((window as { __rrEmbed?: unknown }).__rrEmbed === hook) delete (window as { __rrEmbed?: unknown }).__rrEmbed;
+		const w = window as unknown as Record<string, unknown>;
+		if (w[`__${hookName}`] === hook) delete w[`__${hookName}`];
 	}
 
 	// worker health: if the rolling average record time exceeds 16 ms for ~2 s, drop to half speed (§7.9)
@@ -513,6 +629,11 @@
 				e.preventDefault();
 				void toggleFullscreen();
 				break;
+			case 'o':
+			case 'O':
+				e.preventDefault();
+				cycleOverlay();
+				break;
 			case 'Escape':
 				if (fullscreen) {
 					e.preventDefault();
@@ -521,6 +642,19 @@
 				break;
 		}
 		poke();
+	}
+
+	/** `o`: auto (the timer) → full → minimal → off → auto. A 1.2 s toast names the mode. */
+	function cycleOverlay() {
+		const order: ('auto' | OverlayMode)[] = ['auto', 'full', 'minimal', 'off'];
+		ovMode = order[(order.indexOf(ovMode) + 1) % order.length];
+		ovToast = `overlay · ${ovMode}`;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (ovToast = ''), 1200);
+	}
+	/** Set the overlay mode outright (the test hook; 'auto' hands it back to the timer). */
+	export function setOverlay(m: 'auto' | OverlayMode) {
+		ovMode = m;
 	}
 
 	// ── fullscreen (§7.7): the wrapper (canvas + HUD), never the canvas alone ──
@@ -606,20 +740,23 @@
 		const W = window.innerWidth,
 			H = window.innerHeight;
 		portrait = H > W;
-		const bandH = portrait ? 96 : 0; // portrait: plates + transport in the letterbox bands
+		const bandH = portrait ? 56 : 0; // portrait: the transport sits in the band under the picture (never fades)
 		const fit = Math.min(W / 640, (H - bandH) / 480);
 		let s = Math.floor(fit);
 		if (s < 1 || (480 * s) / (H - bandH) < 0.75) s = fit;
 		fsScale = s;
+		// landscape: the picture is centred, so the letterbox under it is half the leftover — the HUD anchors there
+		fsBy = portrait ? 0 : Math.max(0, Math.floor((H - 480 * s) / 2));
 	}
-	/** HUD reveal + 2.5 s idle fade in fullscreen (§7.7). */
+	/** HUD reveal + the 2.5 s idle timer: fades the transport in fullscreen, drops the overlay to minimal anywhere (§7.7). */
 	function poke() {
 		hud = true;
 		if (hudTimer) clearTimeout(hudTimer);
-		if (fullscreen) hudTimer = setTimeout(() => (hud = false), 2500);
+		hudTimer = setTimeout(() => (hud = false), 2500);
 	}
 	let lastTap = 0;
 	function onPicTap() {
+		if (st === 'closed') return load();
 		if (!isPlayable) return;
 		const now = performance.now();
 		if (now - lastTap < 320) {
@@ -632,14 +769,39 @@
 
 	/** The wrapper's key + pointer surface (an action, so the group role keeps its semantics for AT). */
 	function surface(node: HTMLElement) {
+		let leaveTimer: ReturnType<typeof setTimeout> | null = null;
+		const enter = () => {
+			if (leaveTimer) clearTimeout(leaveTimer);
+			hover = true;
+			poke();
+		};
+		// §2.5: full while hovered, and for 3 s after the pointer leaves
+		const leave = () => {
+			if (leaveTimer) clearTimeout(leaveTimer);
+			leaveTimer = setTimeout(() => (hover = false), 3000);
+		};
 		node.addEventListener('keydown', onKey);
 		node.addEventListener('pointermove', poke);
+		node.addEventListener('pointerenter', enter);
+		node.addEventListener('pointerleave', leave);
 		return {
 			destroy() {
+				if (leaveTimer) clearTimeout(leaveTimer);
 				node.removeEventListener('keydown', onKey);
 				node.removeEventListener('pointermove', poke);
+				node.removeEventListener('pointerenter', enter);
+				node.removeEventListener('pointerleave', leave);
 			}
 		};
+	}
+
+	/** The overlay's scale: the picture's rendered width over 640 — identical geometry inline, fullscreen, phones. */
+	function fitOverlay(node: HTMLElement) {
+		const measure = () => (k = node.clientWidth / 640 || 1);
+		const ro = new ResizeObserver(measure);
+		ro.observe(node);
+		measure();
+		return { destroy: () => ro.disconnect() };
 	}
 
 	// ── test hook (headless smoke test reads window.__rrEmbed) ──
@@ -659,9 +821,34 @@
 		get ttffMs() {
 			return ttff;
 		},
+		/** the tape handle this embed shows (meta.key) */
+		get key() {
+			return meta.key;
+		},
+		/** the EFFECTIVE overlay mode (what is on screen) */
+		get overlay() {
+			return showOverlay;
+		},
+		/** the viewer's choice ('auto' = the timer) */
+		get overlayMode() {
+			return ovMode;
+		},
+		get hud() {
+			return hud;
+		},
+		get fullscreen() {
+			return fullscreen;
+		},
+		get scale() {
+			return k;
+		},
+		setOverlay: (m: 'auto' | OverlayMode) => setOverlay(m),
+		load: () => load(),
 		play: () => play(),
 		pause: () => pause(),
 		seek: (i: number) => seek(i),
+		enterFullscreen: () => enterFullscreen(),
+		exitFullscreen: () => exitFullscreen(),
 		readback: async () => {
 			if (!player) throw new Error('no player');
 			const px = await player.readback();
@@ -669,11 +856,14 @@
 			return { sha: [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join(''), bytes: px.byteLength };
 		}
 	};
+	/** `window.__<hookName>` — registered at mount (so `closed` is observable) and again at ready (the LAST ready
+	 *  embed wins the default name, as before). */
 	function exposeTestHook() {
-		(window as { __rrEmbed?: unknown }).__rrEmbed = hook;
+		(window as unknown as Record<string, unknown>)[`__${hookName}`] = hook;
 	}
 
 	onMount(() => {
+		exposeTestHook();
 		document.addEventListener('fullscreenchange', onFsChange);
 		window.addEventListener('popstate', onPop);
 		window.addEventListener('resize', layoutFs);
@@ -689,6 +879,8 @@
 			document.removeEventListener('visibilitychange', onVis);
 			if (watchIv) clearInterval(watchIv);
 			if (hudTimer) clearTimeout(hudTimer);
+			if (introTimer) clearTimeout(introTimer);
+			if (toastTimer) clearTimeout(toastTimer);
 			dispose();
 		};
 	});
@@ -702,22 +894,20 @@
 		cc={side.cc}
 		rating={side.rating ?? null}
 		games={side.games ?? null}
-		team={side.team ?? null}
-		density="plate"
+		density="tag"
 		align={right ? 'right' : 'left'}
 		{won}
 		rankHref="{base}/ranks"
 	/>
 {/snippet}
 
-{#snippet mrail()}
-	<span class="mrail">
-		{#if modeLabel}<span class="mode" class:money={meta.mode === 'money'}>{meta.mode === 'money' ? '🪙 ' : ''}{modeLabel}</span>{/if}
-		{#if meta.ft || meta.gameNo}<span>{meta.ft ? `FT${meta.ft}` : ''}{meta.ft && meta.gameNo ? ' · ' : ''}{meta.gameNo ? `GAME ${meta.gameNo}` : ''}</span>{/if}
-		{#if dateText}<span>{dateText}</span>{/if}
-		{#if meta.stageId != null}<span>Stage {meta.stageId}</span>{/if}
-		{#if durText}<span>{durText}</span>{/if}
-	</span>
+{#snippet record()}
+	{#if modeLabel}<span class="mode" class:money={meta.mode === 'money'}>{meta.mode === 'money' ? '🪙 ' : ''}{modeLabel}</span>{/if}
+	{#if meta.ft || meta.gameNo}<span>{meta.ft ? `FT${meta.ft}` : ''}{meta.ft && meta.gameNo ? ' · ' : ''}{meta.gameNo ? `GAME ${meta.gameNo}` : ''}</span>{/if}
+	{#if dateText}<span>{dateText}</span>{/if}
+	{#if meta.stageId != null}<span>Stage {meta.stageId}</span>{/if}
+	{#if durText}<span>{durText}</span>{/if}
+	{#if !seatsKnown}<span class="stock" title="Seats unknown for this tape — colors are the game's own">stock colors</span>{/if}
 {/snippet}
 
 {#snippet transport(big: boolean)}
@@ -742,17 +932,23 @@
 			{#if scrubPreview != null}<span class="tip" style="left:{percent}%">{mmss(scrubPreview)}</span>{/if}
 		</div>
 		<button type="button" class="btn sm" disabled={!isPlayable} title="+5 s" aria-label="Forward 5 seconds" onclick={() => step(300)}>5»</button>
-		<span class="ro"><b>{mmss(scrubPreview ?? frame)}</b> / {mmss(count)}</span>
+		<!-- §5f: while seeking the readout is `served → target`; the served fraction is the progress, no estimate -->
+		{#if st === 'seeking'}
+			<span class="ro" aria-live="polite"><b>{roServed}</b> → {mmss(seekTarget)}</span>
+		{:else}
+			<span class="ro"><b>{roServed}</b> / {mmss(count)}</span>
+		{/if}
 		<select class="spd" bind:value={speed} disabled={!isPlayable} title="speed" aria-label="Playback speed" onchange={() => { halfAuto = false; userSpeed = true; }}>
 			<option value={60}>1×</option>
 			<option value={30}>½×</option>
 			<option value={15}>¼×</option>
 		</select>
+		<button type="button" class="btn" title="Overlay (O): {ovMode}" aria-label="Overlay: {ovMode}" onclick={cycleOverlay}>◱</button>
 		<button type="button" class="btn" title={fullscreen ? 'Exit full screen (Esc)' : 'Full screen (F)'} aria-label={fullscreen ? 'Exit full screen' : 'Full screen'} onclick={() => void toggleFullscreen()}>{fullscreen ? '✕' : '⛶'}</button>
 	</div>
 {/snippet}
 
-<!-- the wrapper is the keyboard surface (space/arrows/Home/End/F/Esc, §6.5) and the fullscreen element -->
+<!-- the wrapper is the keyboard surface (space/arrows/Home/End/F/O/Esc, §6.5) and the fullscreen element -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	class="emb"
@@ -762,37 +958,33 @@
 	class:pseudo
 	class:portrait
 	class:hudoff={fullscreen && !hud}
+	class:seeking={st === 'seeking'}
 	bind:this={wrap}
 	tabindex="-1"
 	use:surface
-	style="--fsw:{Math.round(640 * fsScale)}px"
+	data-hook={hookName}
+	style="--fsw:{Math.round(640 * fsScale)}px;--fsby:{fsBy}px"
 >
-	<!-- chrome-top: the tale of the tape. Inline: above the picture. Fullscreen: in the pillar/letterbox bands. -->
-	<div class="ctop">
-		<div class="cplate">{@render plate(meta.a, meta.winner === 'a', false)}</div>
-		<div class="mid">
-			{#if meta.score}
-				<div class="gs"><span class:w={meta.winner === 'a'}>{meta.score.a}</span><span class="d">–</span><span class:w={meta.winner === 'b'}>{meta.score.b}</span></div>
-			{:else}
-				<div class="gs small"><span class:w={meta.winner === 'a'}>{meta.winner === 'a' ? 'W' : 'L'}</span><span class="d">–</span><span class:w={meta.winner === 'b'}>{meta.winner === 'b' ? 'W' : 'L'}</span></div>
-			{/if}
-			{@render mrail()}
-		</div>
-		<div class="cplate r">{@render plate(meta.b, meta.winner === 'b', true)}</div>
-	</div>
+	<!-- inline chrome-top = ONE 28 px record row (mockup rev 2 §1); the plates live on the picture now. Hidden in fullscreen. -->
+	<div class="metarow" aria-label="Match record">{@render record()}</div>
 
-	<!-- the picture: 4:3, the game's own pixels; nothing overlays it while it plays. Tap = play/pause,
-	     double-tap = fullscreen (§6.5); the keyboard equivalents live on the wrapper + the transport buttons. -->
+	<!-- the picture: 4:3, the game's own pixels + THE OVERLAY (DOM, 640×480 space, scaled with the picture).
+	     Tap = play/pause, double-tap = fullscreen (§6.5); keyboard equivalents live on the wrapper + the transport. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-	<div class="pic" role="presentation" class:dim={st === 'loading' || st === 'unavailable' || st === 'nopack' || st === 'unsupported' || st === 'error'} onclick={onPicTap}>
+	<div class="pic" role="presentation" use:fitOverlay class:dim={st === 'loading' || st === 'unavailable' || st === 'nopack' || st === 'unsupported' || st === 'error'} onclick={onPicTap}>
 		{#if poster && posterOk && !isPlayable}
 			<img class="poster" src={poster} alt="" onerror={() => (posterOk = false)} />
 		{:else if !isPlayable}
-			<span class="ground"><span class="mode big">{meta.mode === 'money' ? '🪙 ' : ''}{modeLabel}</span></span>
+			<span class="ground">{#if st !== 'closed'}<span class="mode big">{meta.mode === 'money' ? '🪙 ' : ''}{modeLabel}</span>{/if}</span>
 		{/if}
 		<canvas bind:this={canvas} width="640" height="480" class:hidden={!isPlayable} aria-label={ariaPic}></canvas>
 
-		{#if st === 'loading'}
+		{#if st === 'closed'}
+			<div class="ov closed">
+				<button type="button" class="again" onclick={(e) => { e.stopPropagation(); load(); }}>▶ Watch the tape</button>
+				<span class="s">Loads the tape and its art on tap — nothing downloads until you ask.</span>
+			</div>
+		{:else if st === 'loading'}
 			<div class="ov">
 				<span class="rail lbl">{prog.phase === 'open' ? 'Opening' : prog.phase === 'prime' ? `Priming ${prog.prime[0]} / ${prog.prime[1]}` : 'Loading the tape'}</span>
 				<div class="lbar" class:indet={prog.phase === 'open' || prog.phase === 'prime'}>
@@ -811,42 +1003,84 @@
 					<span class="big">⏳</span><span class="h">Tape not in yet.</span><span class="s">The agent uploads it after the set — check back in a minute.</span>
 				{:else if reason === 'archived'}
 					<span class="big">📼</span><span class="h">In the archives.</span><span class="s">This tape is in cold storage — request it and it's pulled back within a minute.</span>
-					<button type="button" class="signin" onclick={requestPull} disabled={requesting}>{requesting ? '…' : '📼 Request replay'}</button>
+					<button type="button" class="signin" onclick={(e) => { e.stopPropagation(); void requestPull(); }} disabled={requesting}>{requesting ? '…' : '📼 Request replay'}</button>
 					{#if requestNote}<span class="s">{requestNote}</span>{/if}
 				{:else if reason === 'requested'}
-					<span class="big">⏳</span><span class="h">Tape incoming.</span><span class="s">Pulled from the archives — check back in a minute.</span>
+					<span class="big">⏳</span><span class="h">Tape incoming.</span><span class="s">Pulled from the archives — usually under a minute.</span>
 				{:else if reason === 'expired'}
 					<span class="h">Tape gone.</span><span class="s">Only the last 100 live results keep a replay.</span>
 				{:else if reason === 'unsupported'}
 					<span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span>
 				{:else if reason === 'signin'}
 					<span class="h">Sign in to watch the tape.</span><span class="s">Replays are for players with an account.</span>
-					<button class="signin" onclick={() => auth.login()}>Sign in through Steam</button>
+					<button class="signin" onclick={(e) => { e.stopPropagation(); auth.login(); }}>Sign in through Steam</button>
 				{:else}
 					<span class="h">No tape for this one.</span><span class="s">Neither player's agent recorded it.</span>
 				{/if}
 			</div>
 		{:else if st === 'nopack'}
-			<div class="ov"><span class="big">📦</span><span class="h">Asset pack not on this device yet.</span><span class="s">The tape is in — the sprites and stage it needs haven't been packed for this browser.</span></div>
+			<!-- §5c: the tape exists, this device has no ROM-derived pack. No agent action until C12 exists. -->
+			<div class="ov"><span class="big">📦</span><span class="h">Tape's in. Art isn't.</span><span class="s">Replays draw with the game's own art, packed from a copy of MvC2. This browser has no pack for this one.</span><span class="s">Watch on a PC with MvC2 and Retro Receipts</span></div>
 		{:else if st === 'unsupported'}
 			<div class="ov"><span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span></div>
 		{:else if st === 'error'}
 			<div class="ov"><span class="h">The tape didn't play.</span><span class="s mono">{err?.code}: {err?.message}</span></div>
 		{:else if st === 'ended'}
-			<div class="ov end"><button type="button" class="again" onclick={play}>▶ Watch again</button></div>
+			<div class="ov end"><button type="button" class="again" onclick={(e) => { e.stopPropagation(); play(); }}>▶ Watch again</button></div>
+		{/if}
+
+		<!-- ═══ THE OVERLAY (REPLAY-OVERLAY-SPEC rev 2, on-picture): a 640×480 box scaled with the picture. DOM only —
+		     the game's pixels underneath are untouched (readback sha unchanged). pointer-events: none except links.
+		     Placement = the designer's 640-space table (docs/mockups/replay-overlay.html §1), measured on the game's HUD:
+		       plates    — lower thirds, bottom y 430 (4 px above the LEVEL pods), P1 LEFT x 8 / P2 RIGHT edge x 632,
+		                   2 px --p1/--p2 side bar when seats are known; credits stacked ABOVE, 17 px per line
+		       stamp     — the dead gap under the timer (x 269–374, y 56–98): mode·FT·G / date / stage (+ stock colors)
+		       watermark — bottom-centre y 437–449, between the LEVEL pods, above the hyper bars
+		     minimal = plates + watermark; the credits and the stamp go. -->
+		{#if isPlayable}
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div class="ovl {showOverlay}" class:seats={seatsKnown} style="transform:scale({k})" aria-hidden={showOverlay === 'off'} data-mode={showOverlay} onclick={(e) => e.stopPropagation()}>
+			<div class="plate p1" role="group" aria-label={groupLabel(left, 1)}>
+				{#if creditsL.length}
+					<div class="cr">
+						{#each creditsL as c (c.cid)}<SkinCredit credit={c} form="icon" palette={palL?.[c.cid] ?? null} />{/each}
+					</div>
+				{/if}
+				<div class="id">
+					{@render plate(left, leftWon, false)}
+					{#if scoreL != null}<span class="sc" class:w={leftWon}>{scoreL}</span>{/if}
+				</div>
+			</div>
+			<div class="plate p2" role="group" aria-label={groupLabel(right, 2)}>
+				{#if creditsR.length}
+					<div class="cr">
+						{#each creditsR as c (c.cid)}<SkinCredit credit={c} form="icon" align="right" palette={palR?.[c.cid] ?? null} />{/each}
+					</div>
+				{/if}
+				<div class="id">
+					{@render plate(right, !leftWon, true)}
+					{#if scoreR != null}<span class="sc" class:w={!leftWon}>{scoreR}</span>{/if}
+				</div>
+			</div>
+			<div class="stamp" aria-label="Match record">
+				{#if modeLabel || meta.ft || meta.gameNo}
+					<span class:money={meta.mode === 'money'}>{meta.mode === 'money' ? '🪙 ' : ''}{[modeLabel, meta.ft ? `FT${meta.ft}` : '', meta.gameNo ? `G${meta.gameNo}` : ''].filter(Boolean).join(' · ')}</span>
+				{/if}
+				{#if dateText}<span>{dateText}</span>{/if}
+				{#if meta.stageId != null}<span>STAGE {meta.stageId}</span>{/if}
+				{#if !seatsKnown}<span class="stock" title="Seats unknown for this tape — colors are the game's own">stock colors</span>{/if}
+			</div>
+			{#if meta.saved}<span class="saved" title="Saved — this tape never leaves the archive">SAVED</span>{/if}
+			<div class="wm"><span aria-hidden="true">RETRO RECEIPTS</span><span class="sep" aria-hidden="true">·</span><a href="{base}/ranks" title="The Marvel ladder">nobd.net/app/ranks</a></div>
+		</div>
 		{/if}
 		{#if turnHint}<div class="hint">📱↻ Turn your phone</div>{/if}
 	</div>
 
-	<!-- transport: inline below the picture; fullscreen = the fade-out HUD (landscape) / bottom band (portrait) -->
+	<!-- transport: inline below the picture; fullscreen = the fade-out HUD over the picture's bottom edge (landscape)
+	     / the band under it (portrait, never fades). The only chrome that ever sits on the picture besides the overlay. -->
 	{@render transport(fullscreen)}
-	{#if st === 'seeking'}
-		<div class="note">skipping ahead…</div>
-	{:else if halfAuto && playing}
-		<div class="note">playing at half speed</div>
-	{/if}
-	<!-- watermark: the chrome band under the picture (inline) / the pillar band (fullscreen) — NEVER over the picture -->
-	<div class="wm"><span>RETRO RECEIPTS</span><span class="sep">·</span><a href="{base}/ranks" title="The Marvel ladder">nobd.net/app/ranks</a>{#if dateText}<span class="sep">·</span><span>{dateText}</span>{/if}</div>
+	{#if noteText}<div class="note" class:toast={!!ovToast}>{noteText}</div>{/if}
 	<span class="sr" aria-live="polite">{liveText}</span>
 </div>
 
@@ -858,62 +1092,13 @@
 		overflow: hidden;
 		background: var(--board);
 		outline: none;
+		/* inline: the card IS the picture + its transport — COMPACT (Tris 2026-09-03): capped at 1× (640 px) and centred,
+		   so an expanded result row stays a card, not a screen; fullscreen is where it gets big */
+		max-width: calc(640px + 2px); /* the picture is exactly 640 inside the 1 px border → k = 1 inline */
+		margin: 0 auto;
 	}
 	.emb:focus-visible {
 		box-shadow: 0 0 0 2px var(--gold);
-	}
-	/* chrome-top */
-	.ctop {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-		align-items: center;
-		gap: 12px;
-		padding: 8px 12px;
-		background: var(--panel);
-		border-bottom: 1px solid var(--line-soft);
-		min-height: 56px;
-	}
-	.cplate {
-		display: flex;
-		align-items: center;
-		min-width: 0;
-	}
-	.cplate.r {
-		justify-content: flex-end;
-	}
-	.mid {
-		text-align: center;
-	}
-	.gs {
-		font-style: italic;
-		font-weight: 900;
-		font-size: 26px;
-		line-height: 1;
-		letter-spacing: 0.02em;
-		color: var(--ink);
-		font-variant-numeric: tabular-nums;
-	}
-	.gs.small {
-		font-size: 18px;
-	}
-	.gs .w {
-		color: var(--gold);
-	}
-	.gs .d {
-		opacity: 0.45;
-		margin: 0 4px;
-	}
-	.mrail {
-		display: flex;
-		gap: 8px;
-		justify-content: center;
-		align-items: center;
-		flex-wrap: wrap;
-		font-family: ui-monospace, monospace;
-		font-size: 9px;
-		letter-spacing: 0.1em;
-		color: var(--faint);
-		margin-top: 3px;
 	}
 	.mode {
 		font-size: 8.5px;
@@ -931,8 +1116,7 @@
 		font-size: 11px;
 		padding: 4px 10px;
 	}
-	/* the picture — 640×480 CSS-scaled, pixelated; COMPACT inline (Tris 2026-09-03): capped at 1× (640 px) and
-	   centered, so an expanded result row stays a card, not a screen; fullscreen is where it gets big */
+	/* the picture — 640×480 CSS-scaled, pixelated */
 	.pic {
 		position: relative;
 		width: 100%;
@@ -985,7 +1169,8 @@
 		padding: 14px;
 		color: var(--ink);
 	}
-	.ov.end {
+	.ov.end,
+	.ov.closed {
 		background: rgba(0, 0, 0, 0.35);
 	}
 	.ov .lbl {
@@ -1000,6 +1185,10 @@
 		font-size: 11.5px;
 		color: var(--dim);
 		max-width: 30ch;
+	}
+	.ov.closed .s {
+		color: #cfd3e0;
+		text-shadow: 0 1px 2px #000;
 	}
 	.ov .s.mono {
 		font-family: ui-monospace, monospace;
@@ -1076,6 +1265,225 @@
 		padding: 8px 14px;
 		border-radius: 10px;
 	}
+
+	/* the inline record row (28 px, mono) — chrome-top after rev 2; fullscreen hides it (pillars and bands are plain #000) */
+	.metarow {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-wrap: wrap;
+		gap: 10px;
+		min-height: 28px;
+		padding: 2px 12px;
+		background: var(--panel);
+		border-bottom: 1px solid var(--line-soft);
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-size: 9px;
+		letter-spacing: 0.1em;
+		color: var(--faint);
+	}
+	.metarow .stock,
+	.stamp .stock {
+		color: var(--faint);
+		cursor: help;
+		pointer-events: auto;
+	}
+	.metarow .stock {
+		border: 1px dashed var(--line);
+		padding: 0 5px;
+		border-radius: 4px;
+	}
+
+	/* ═══ THE OVERLAY — 640×480 coordinate space, scaled with the picture (transform: scale(k), origin 0 0).
+	   Every length below is in PICTURE pixels (the designer's table, mockup rev 2 §1): at 2× fullscreen it is exactly
+	   twice as big, on a phone exactly the fit scale — pixel-identical geometry everywhere. Colors are pinned
+	   dark-on-picture (the picture is the game's, not the app theme's): the plate tokens are re-declared here. ═══ */
+	.ovl {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 640px;
+		height: 480px;
+		transform-origin: 0 0;
+		pointer-events: none;
+		z-index: 2;
+		font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+		/* 640-space placement (mockup rev 2 table #1-6) */
+		--ov-plate-bottom: 50px; /* plate bottom edge y 430 — 4 px above the LEVEL pods (y 434), clear of the hyper bars (y 453) */
+		--ov-plate-side: 8px; /* P1 x 8 · P2 right edge x 632 */
+		--ov-plate-max: 220px;
+		--ov-stamp-top: 56px; /* the dead gap under the timer: x 269–374, y 56–98 */
+		--ov-stamp-max: 104px;
+		--ov-wm-top: 437px; /* y 437–449, between the pods, above the hyper bars */
+		/* dark-on-picture tokens, theme-independent (--ovl-dim = 4.5:1 over .65 black, spec §6) */
+		--ink: #eef1f8;
+		--dim: #c9cedd;
+		--faint: #8a91a8;
+		--line: rgba(255, 255, 255, 0.18);
+		--line-soft: rgba(255, 255, 255, 0.1);
+		--panel: rgba(0, 0, 0, 0.65);
+		--panel-2: rgba(0, 0, 0, 0.65);
+		color: var(--ink);
+	}
+	.ovl.off {
+		display: none;
+	}
+	.ovl a {
+		pointer-events: auto;
+	}
+	/* #1/#3 the plates: lower thirds, one box = credits (above) + the id row; 2 px side bar in the seat colour when seats are known */
+	.plate {
+		position: absolute;
+		bottom: var(--ov-plate-bottom);
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		max-width: var(--ov-plate-max);
+		min-width: 0;
+		padding: 3px;
+		border-radius: 3px;
+		background: rgba(0, 0, 0, 0.65);
+	}
+	.plate.p1 {
+		left: var(--ov-plate-side);
+	}
+	.plate.p2 {
+		right: var(--ov-plate-side);
+		align-items: flex-end;
+	}
+	.ovl.seats .plate.p1 {
+		border-left: 2px solid var(--p1);
+	}
+	.ovl.seats .plate.p2 {
+		border-right: 2px solid var(--p2);
+	}
+	.plate .id {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		height: 20px;
+		white-space: nowrap;
+		max-width: 100%;
+	}
+	.plate.p2 .id {
+		flex-direction: row-reverse;
+	}
+	/* the set score rides in the plate (a scorebug puts it next to the name) — condensed italic, gold for the winner */
+	.plate .sc {
+		font-style: italic;
+		font-weight: 900;
+		font-size: 18px;
+		line-height: 1;
+		margin: 0 2px 0 4px;
+		font-variant-numeric: tabular-nums;
+	}
+	.plate.p2 .sc {
+		margin: 0 4px 0 2px;
+	}
+	.plate .sc.w {
+		color: var(--gold);
+	}
+	/* #2/#4 the credits: stacked above the id row, 17 px per line, slot order top → bottom */
+	.plate .cr {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		max-width: 100%; /* 17 px per line: 3 lines → the box top sits at y 353 (430 − 26 − 51) */
+	}
+	.plate.p2 .cr {
+		align-items: flex-end;
+	}
+	/* #5 the record stamp: three mono lines in the dead gap under the timer */
+	.stamp {
+		position: absolute;
+		left: 50%;
+		top: var(--ov-stamp-top);
+		transform: translateX(-50%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		max-width: var(--ov-stamp-max);
+		padding: 0 4px; /* h = 3 × 14 = 42 → y 56–98, inside the dead gap (y 55–101) */
+		border-radius: 3px;
+		background: rgba(0, 0, 0, 0.65);
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-size: 12px;
+		line-height: 14px;
+		color: var(--dim);
+		white-space: nowrap;
+	}
+	.stamp .money {
+		color: var(--gold);
+	}
+	/* §5a: seats unknown → the picture is stock; a truthful status, not a design choice */
+	.stamp .stock {
+		border-top: 1px dotted var(--faint);
+	}
+	/* #6 the watermark: bottom-centre, decorative except the link */
+	.wm {
+		position: absolute;
+		left: 50%;
+		top: var(--ov-wm-top);
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		height: 12px;
+		padding: 0 6px;
+		border-radius: 2px;
+		background: rgba(0, 0, 0, 0.5);
+		white-space: nowrap;
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-size: 11px;
+		line-height: 12px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.7);
+	}
+	.wm a {
+		color: inherit;
+		text-decoration: none;
+	}
+	.wm a:hover,
+	.wm a:focus-visible {
+		color: #fff;
+		text-decoration: underline dotted;
+		outline: none;
+	}
+	.wm .sep {
+		opacity: 0.5;
+		margin: 0 3px;
+	}
+	/* #7 the SAVED pill (paid save): gold = trust seal per the charter */
+	.saved {
+		position: absolute;
+		left: 378px;
+		top: 58px;
+		height: 12px;
+		padding: 0 5px;
+		border-radius: 3px;
+		background: var(--gold);
+		color: var(--gold-ink);
+		font-family: 'JetBrains Mono', ui-monospace, monospace;
+		font-size: 9px;
+		line-height: 12px;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+	}
+	/* minimal = plates + watermark: the credits, the stamp and the pill go — a 300 ms fade OUT then out of flow (so the
+	   plate box collapses to its 26 px id row: `display` transitions with allow-discrete); back to full is instant —
+	   credits never animate in (§6). Reduced motion = cut. */
+	.ovl .cr,
+	.ovl .stamp,
+	.ovl .saved {
+		transition: opacity 0.3s, display 0.3s allow-discrete;
+	}
+	.ovl.minimal .cr,
+	.ovl.minimal .stamp,
+	.ovl.minimal .saved {
+		opacity: 0;
+		display: none;
+	}
+
 	/* transport */
 	.tr {
 		display: flex;
@@ -1210,31 +1618,6 @@
 		padding: 0 12px 6px;
 		background: var(--panel);
 	}
-	.wm {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		padding: 4px 12px 6px;
-		background: var(--panel);
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		font-size: 9px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--faint);
-		white-space: nowrap;
-	}
-	.wm a {
-		color: var(--faint);
-		text-decoration: none;
-	}
-	.wm a:hover {
-		color: var(--dim);
-		text-decoration: underline dotted;
-	}
-	.wm .sep {
-		opacity: 0.5;
-	}
 	.sr {
 		position: absolute;
 		width: 1px;
@@ -1244,18 +1627,20 @@
 		white-space: nowrap;
 	}
 
-	/* ── FULLSCREEN (§7.6-7.7): #000 ground; landscape = plates in the pillar bands, transport = a fading HUD
-	   over the bottom 56 px on a 60% scrim; portrait = chrome in the letterbox bands above/below. ── */
+	/* ── FULLSCREEN (§7.6-7.7): #000 ground, the picture centred at an integer scale (or fit); the overlay scales with
+	   it; landscape = the transport is a fading HUD over the picture's bottom 56 px (anchored to the picture's edge,
+	   --fsby = the letterbox under it); portrait = the transport in the band under the picture, never fades. ── */
 	.emb.fs {
 		border: 0;
 		border-radius: 0;
 		background: #000;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-		grid-template-areas: 'a pic b';
-		align-items: center;
+		place-items: center;
+		align-content: center;
 		width: 100%;
+		max-width: none;
 		height: 100%;
+		margin: 0;
 	}
 	.emb.fs.pseudo {
 		position: fixed;
@@ -1263,27 +1648,13 @@
 		height: 100dvh;
 		z-index: 100;
 	}
-	.emb.fs .ctop {
-		display: contents;
-	}
-	.emb.fs .cplate {
-		grid-area: a;
-		justify-content: center;
-		padding: 0 10px;
-		min-width: 0;
-	}
-	.emb.fs .cplate.r {
-		grid-area: b;
-	}
-	.emb.fs .mid {
+	.emb.fs .metarow {
 		display: none;
 	}
 	.emb.fs .pic {
-		grid-area: pic;
 		width: var(--fsw);
 		max-width: 100vw;
 		margin: 0;
-		align-self: center;
 		cursor: none;
 	}
 	.emb.fs:not(.hudoff) .pic {
@@ -1292,7 +1663,7 @@
 	.emb.fs .tr {
 		position: absolute;
 		left: 50%;
-		bottom: 0;
+		bottom: var(--fsby);
 		transform: translateX(-50%);
 		width: var(--fsw);
 		max-width: 100vw;
@@ -1309,46 +1680,22 @@
 	.emb.fs .note {
 		position: absolute;
 		left: 50%;
-		bottom: 60px;
+		bottom: calc(var(--fsby) + 60px);
 		transform: translateX(-50%);
 		background: rgba(0, 0, 0, 0.6);
 		color: #fff;
 		border-radius: 6px;
 		padding: 3px 8px;
 	}
-	/* fullscreen: the watermark sits at the bottom of the right pillar band, never over the picture */
-	.emb.fs .wm {
-		grid-area: b;
-		align-self: end;
-		justify-self: center;
-		background: transparent;
-		padding-bottom: 12px;
-		color: color-mix(in srgb, #fff 45%, transparent);
-	}
-	.emb.fs .wm a {
-		color: inherit;
-	}
+	/* §5f: the `skipping ahead…` pill is the only sign of progress — it never fades while seeking */
 	.emb.fs.hudoff .tr,
-	.emb.fs.hudoff .note {
+	.emb.fs.hudoff:not(.seeking) .note:not(.toast) {
 		opacity: 0;
 		pointer-events: none;
 	}
-	/* portrait fullscreen: rows — band (plates) / picture / band (transport); nothing over the picture */
+	/* portrait fullscreen: picture / transport band — nothing over the picture but the overlay */
 	.emb.fs.portrait {
-		grid-template-columns: 1fr;
-		grid-template-rows: auto 1fr auto;
-		grid-template-areas: 'a' 'pic' 'b';
-		align-content: center;
-	}
-	.emb.fs.portrait .cplate,
-	.emb.fs.portrait .cplate.r {
-		grid-area: a;
-		padding: 8px 12px;
-		justify-content: flex-start;
-	}
-	.emb.fs.portrait .cplate.r {
-		justify-content: flex-end;
-		padding-top: 0;
+		grid-template-rows: auto auto;
 	}
 	.emb.fs.portrait .pic {
 		width: 100%;
@@ -1359,27 +1706,17 @@
 		transform: none;
 		width: 100%;
 		background: transparent;
-		grid-area: b;
 	}
 	.emb.fs.portrait.hudoff .tr {
 		opacity: 1;
 		pointer-events: auto;
 	}
-	.emb.fs.portrait .wm {
-		grid-area: b;
-		align-self: end;
-		padding-top: 44px;
+	.emb.fs.portrait .note {
+		position: static;
+		transform: none;
 	}
 
 	@media (max-width: 720px) {
-		.ctop {
-			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-			gap: 8px;
-			padding: 8px 10px;
-		}
-		.gs {
-			font-size: 20px;
-		}
 		.tr {
 			min-height: 48px;
 			gap: 6px;
@@ -1404,7 +1741,10 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.lbar div i,
-		.emb.fs .tr {
+		.emb.fs .tr,
+		.ovl .cr,
+		.ovl .stamp,
+		.ovl .saved {
 			transition: none;
 		}
 	}

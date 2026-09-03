@@ -46,7 +46,7 @@
 		/** winner emphasis — the name takes gold (charter: gold marks the winner) */
 		won?: boolean;
 		align?: 'left' | 'right';
-		/** wrap the rank badge in a link (ReplayEmbed chrome-top → the ladder at /ranks); '' = plain badge */
+		/** wrap the rank badge in a link (ReplayEmbed overlay plate → the ladder at /ranks); '' = plain badge (tag density: no badge) */
 		rankHref?: string;
 	} = $props();
 
@@ -64,6 +64,8 @@
 		{#if cc}<Flag {cc} w={12} />{/if}
 		<span class="nm tagnm" class:won>{shown}</span>
 		{#if rating != null}<span class="rt">{rating}</span>{/if}
+		<!-- the replay overlay's plate (REPLAY-OVERLAY-SPEC §2.2 #1): rank badge 12 → /ranks after the rating -->
+		{#if rating != null && rankHref}<a class="rkl" href={rankHref} title="Marvel ladder"><RankBadge {rating} games={games ?? 999} size={12} /></a>{/if}
 	{:else}
 		<span class="col" class:r={align === 'right'}>
 			<span class="nm" class:won class:big={density === 'hero'}>{shown}</span>

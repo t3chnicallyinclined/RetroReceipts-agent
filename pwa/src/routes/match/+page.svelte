@@ -18,7 +18,7 @@
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
-	import ReplayEmbed, { type ReplayMeta } from '$lib/components/ReplayEmbed.svelte';
+	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
 	import { shortSetLink } from '$lib/share';
 	import {
 		availability,
@@ -287,6 +287,75 @@
 			p2: t.p2 || undefined
 		};
 	}
+
+	// ── ▶ LATEST TAPE — the hero (Tris 2026-09-03: "NOW PLAYING becomes a render canvas showing our Retro Receipts
+	// overlay of the LAST MATCH PLAYED; put it higher up — it is the first thing they see; autostarts on load").
+	// The newest replayable result (resolver: newest row whose tape is `ready`; on the dev server the newest local
+	// test tape), rendered inline with the full overlay, autoplay on load (desktop, non-reduced-motion, no
+	// Save-Data). Phones sit `closed` on the poster with a tap-to-watch — a 20 MB pack + tape never auto-downloads
+	// on mobile data. No loop: plays once, ends on the KO frame with ▶ Watch again. When nothing is replayable
+	// (prod today: no tape read yet) the hero shows the newest match's poster + meta with the pending/none copy —
+	// never an empty box. When live-match spectating exists (mvc-live-match-spectate) the hero switches to the live
+	// game; NOW PLAYING (games in progress) stays its own section below.
+	interface Hero {
+		key: string;
+		meta: ReplayMeta;
+		sessionId?: string;
+		source: ReplaySource | null; // null while the resolver runs
+		poster: string;
+		playable: boolean; // a `ready` tape (or a local test tape) — else the state copy
+	}
+	let hero = $state<Hero | null>(null);
+	let heroEmbed = $state<ReplayEmbed | null>(null);
+	let heroSt = $state<EmbedState | ''>('');
+	let heroAutoload = $state(true);
+	let heroSeq = 0;
+	// phones / Save-Data: never auto-download a tape + pack (decided once, at mount)
+	onMount(() => {
+		const ua = navigator.userAgent;
+		const phone = /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || (matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 720);
+		const saveData = !!(navigator as { connection?: { saveData?: boolean } }).connection?.saveData;
+		heroAutoload = !phone && !saveData;
+	});
+	const heroWatching = () => heroSt === 'playing' || heroSt === 'paused' || heroSt === 'seeking';
+	function setHero(key: string, meta: ReplayMeta, sessionId: string | undefined, resolve: () => Promise<ReplaySource>, playable: boolean) {
+		if (hero?.key === key) return; // same tape — never remount a picture
+		const seq = ++heroSeq;
+		hero = { key, meta, sessionId, source: null, poster: posterFor(sessionId), playable };
+		void resolve().then((src) => {
+			if (seq === heroSeq && hero?.key === key) hero = { ...hero, source: src };
+		});
+	}
+	async function pickHero(rows: MatchResult[], tapes: [string, LocalTape][], isDev: boolean) {
+		// never yank a picture that is being watched; a newer tape takes over when this one is idle/ended/unplayable
+		if (hero && heroWatching()) return;
+		for (const r of rows) {
+			const a = await availability(r);
+			if (a === 'ready' || a === 'saved') {
+				if (hero && heroWatching()) return;
+				setHero(r.match_key ?? r.key, metaOf(r), r.session_id, () => resolveSource(r), true);
+				return;
+			}
+		}
+		if (isDev && tapes.length) {
+			const [id, t] = [...tapes].sort((x, y) => y[1].ts - x[1].ts)[0];
+			setHero(id, metaOfLocal(id, t), t.sessionId, async () => sourceOfLocal(t), true);
+			return;
+		}
+		const r = rows[0];
+		if (r) setHero(r.match_key ?? r.key, metaOf(r), r.session_id, () => resolveSource(r), false);
+	}
+	$effect(() => {
+		const rows = results;
+		const tapes = testTapes;
+		const isDev = dev;
+		if (matchfeed.loading && rows.length === 0) return;
+		void pickHero(rows, tapes, isDev);
+	});
+	// one picture at a time: an expanded row pauses the hero
+	$effect(() => {
+		if (open) heroEmbed?.pause();
+	});
 </script>
 
 <svelte:head><title>Live · Retro Receipts</title></svelte:head>
@@ -361,6 +430,36 @@
 
 <!-- ▬ YOUR MATCH strip — the small VS (§3). Renders only signed-in; host nodes render nothing. -->
 <MyMatch onTape={openSet} />
+
+<!-- ▶ LATEST TAPE — the hero: the last match played, rendered from its tape with the overlay (autoplays on desktop).
+     First thing on the tab after your own match. Switches to the live game once spectating exists. -->
+<section class="sec hero" data-test="hero" aria-label="Latest tape">
+	<div class="sechd">
+		<h2 class="shead"><span class="ic tape" aria-hidden="true">▶</span> Latest Tape <span class="devnote">the last match played, off its tape</span></h2>
+		{#if hero}
+			<div class="hacts">
+				{#if hero.sessionId}
+					<button type="button" class="a" onclick={() => openSet(hero?.sessionId ?? '')} title="THE TAPE — the set receipt"><span class="ico">🧾</span><span class="txt">THE TAPE ›</span></button>
+					<button type="button" class="a" onclick={() => copyLink(hero?.sessionId ?? '')} title="Copy link"><span class="ico">⧉</span><span class="txt">{copied === hero.sessionId ? 'Copied' : 'Copy link'}</span></button>
+				{/if}
+				{#if hero.playable}
+					<button type="button" class="a" onclick={() => void heroEmbed?.enterFullscreen()} title="Full screen (F)"><span class="ico">⛶</span><span class="txt">Full screen</span></button>
+				{/if}
+			</div>
+		{/if}
+	</div>
+	{#if hero}
+		{#if hero.source}
+			<ReplayEmbed bind:this={heroEmbed} source={hero.source} poster={hero.poster} meta={hero.meta} autoload={heroAutoload} hookName="rrHero" onstate={(s) => (heroSt = s)} />
+		{:else}
+			<div class="resolving"><span class="rail">Finding the tape</span></div>
+		{/if}
+	{:else if coldLoad}
+		<div class="resolving"><span class="rail">Finding the last match</span></div>
+	{:else}
+		<div class="empty">No tapes yet — the next finished set lands here.</div>
+	{/if}
+</section>
 
 <!-- 🪙 LIVE MONEY (§5): your wager first (WagerRail self-manages: state rail or the quarter-up CTA), then one
      MoneyCard per locked wager on the rail board (RailPanel verbatim inside), then the arcade's open
@@ -937,9 +1036,47 @@
 		from { grid-template-rows: 0fr; }
 		to { grid-template-rows: 1fr; }
 	}
+	/* ▶ LATEST TAPE hero: the embed is its own card (640 px, centred); the actions ride the section header */
+	.hero .ic.tape {
+		display: inline-grid;
+		place-items: center;
+		width: 16px;
+		height: 16px;
+		border-radius: 4px;
+		font-size: 9px;
+		color: #fff;
+		background: color-mix(in srgb, var(--stream) 78%, #000);
+	}
+	.hacts {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.hacts .a {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font: inherit;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: var(--dim);
+		padding: 4px 10px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--panel-2);
+		cursor: pointer;
+	}
+	.hacts .a:hover {
+		color: var(--ink);
+		border-color: color-mix(in srgb, var(--gold) 35%, var(--line));
+	}
+	.hacts .ico {
+		display: none;
+	}
 	.resolving {
 		aspect-ratio: 4 / 3;
-		max-width: 1280px;
+		max-width: 640px;
 		margin: 0 auto;
 		display: grid;
 		place-items: center;
