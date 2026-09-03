@@ -31,9 +31,32 @@ impl WebFeed {
             no_preamble: o.get("no_preamble").and_then(|x| x.as_bool()).unwrap_or(false),
             pal_lag: o.get("pal_lag").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
             bank: o.get("bank").and_then(|x| x.as_i64()),
+            skins: [None; 6],   // resolved below once the tape's teams are known
             ..Default::default()
         };
-        let inner = FrameFeed::open(tape, &pack, opts).map_err(|e| JsValue::from_str(&e))?;
+        // opts.skins = {"p1": [{cid, colors:[16 x 0xRRGGBB]}], "p2": [...]} -- each player's OWN loadout on their side.
+        // Slots 0/2/4 are P1's team in order, 1/3/5 P2's; a skin applies only where the slot's character id matches.
+        let skins_json = o.get("skins").cloned();
+        let mut inner = FrameFeed::open(tape, &pack, opts).map_err(|e| JsValue::from_str(&e))?;
+        if let Some(sj) = skins_json {
+            let t = inner.tape();
+            let (p1, p2) = (t.p1_team.clone(), t.p2_team.clone());
+            let mut skins: [Option<[u32; 16]>; 6] = [None; 6];
+            for (side, team) in [("p1", &p1), ("p2", &p2)] {
+                if let Some(list) = sj.get(side).and_then(|x| x.as_array()) {
+                    for e in list {
+                        let cid = e.get("cid").and_then(|x| x.as_u64()).unwrap_or(999) as u8;
+                        let cols: Vec<u32> = e.get("colors").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|c| c.as_u64().map(|v| v as u32)).collect()).unwrap_or_default();
+                        if cols.len() != 16 { continue; }
+                        let mut arr = [0u32; 16]; arr.copy_from_slice(&cols);
+                        for (k, c) in team.iter().enumerate() {
+                            if *c == cid && k < 3 { let slot = if side == "p1" { k * 2 } else { k * 2 + 1 }; skins[slot] = Some(arr); }
+                        }
+                    }
+                }
+            }
+            inner.set_skins(skins);
+        }
         Ok(WebFeed { inner })
     }
 

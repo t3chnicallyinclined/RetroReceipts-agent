@@ -34,6 +34,11 @@ pub struct EmitOpts {
     pub flip_facing: bool, pub swap_teams: bool, pub forward_records: bool, pub no_vflip: bool, pub legacy_order: bool,
     /// `--no-world`, `--no-preamble`
     pub no_world: bool, pub no_preamble: bool,
+    /// CLOUD SKINS (2026-09-03, docs/REPLAY-META-SKINS-SPEC.md s3): per fighter slot, 16 colours (0xRRGGBB) that replace
+    /// the BASE costume row (row 0) of that slot's palette before the LUT is built. Rows the game modifies at runtime
+    /// (hit flash, glow, super darken) stay the game's own, so effects remain exact. Resolved per slot by the caller
+    /// (web.rs: each player's own loadout on their side, matched by character id). None = stock.
+    pub skins: [Option<[u32; 16]>; 6],
 }
 
 /// A texture page as the seq carries it: fmt 61 = R8 index tile (w x h bytes), fmt 28 = RGBA.
@@ -293,6 +298,11 @@ fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &Map<String, Value>,
                 (bp, blk)
             } else {
                 (at.palette(opts.bank, it.cos), None)
+            };
+            // cloud skin: replace the 16 base colours of this slot's row 0 (alpha kept: index 0 stays transparent)
+            let base_pal: Pal256 = match (0..6).contains(&it.pslot).then(|| opts.skins[it.pslot as usize]).flatten() {
+                Some(sk) => { let mut p = base_pal; for i in 0..16 { let c = sk[i]; p[i] = [((c >> 16) & 255) as u8, ((c >> 8) & 255) as u8, (c & 255) as u8, p[i][3]]; } p }
+                None => base_pal,
             };
             let mut pal_cache: HashMap<u8, Pal256> = HashMap::new();
             let pal_for_row = |row: u8, pal_cache: &mut HashMap<u8, Pal256>| -> Pal256 {

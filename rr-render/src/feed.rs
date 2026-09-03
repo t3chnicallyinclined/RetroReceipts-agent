@@ -59,6 +59,8 @@ impl FrameFeed {
 
     pub fn frame_count(&self) -> usize { self.em.tape.frames.len() }
     pub fn tape(&self) -> &Tape { &self.em.tape }
+    /// Cloud skins per fighter slot (see EmitOpts.skins). Set before the first frame is requested.
+    pub fn set_skins(&mut self, skins: [Option<[u32; 16]>; 6]) { self.em.opts.skins = skins; }
 
     /// One-time session info for the player: what `loadSequence`'s meta + the first head carried.
     pub fn info_json(&self) -> String {
