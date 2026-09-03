@@ -16,8 +16,9 @@
 //   --overlay   THE OVERLAY gate (REPLAY-OVERLAY-SPEC rev 2 §10 Phase A) on the LATEST TAPE hero with ?devcredit=1:
 //               (1) readback sha identical with the layer full / off (the canvas is untouched — DOM, never canvas);
 //               (2) the layer's client rect equals the canvas's rect at 1280 wide, 1920×1080 fullscreen, 844×390
-//               and 390×844, and each element's rect ÷ k matches the §2.2 table within 1 px; (3) no element enters a
-//               §2.1 no-go zone; (4) minimal within 3.3 s of play, full on pause / hover; (5) the fullscreen HUD fades
+//               and 390×844, and each element's rect ÷ k matches the §2.2 table (rev 3: identity rows in the top strip
+//               y 0–24, stamp in the dead gap, watermark above the hyper bars) within 1 px; (3) no element enters a
+//               §2.1 no-go zone (rows clear of the health bars at y 25); (4) minimal within 3.3 s of play, full on pause / hover; (5) the fullscreen HUD fades
 //               ≤ 2.5 s and is anchored to the picture's bottom edge. Screenshots of every frame go to --out.
 //   --hero      the LATEST TAPE hero reaches `playing` on load with no click (desktop), sits `closed` with NO tape or
 //               pack request under a mobile user-agent, and stops at `ready` under prefers-reduced-motion.
@@ -238,17 +239,20 @@ try {
 						k,
 						canvas: { w: c.width, h: c.height, left: c.left, top: c.top, bottom: c.bottom },
 						layer: ov ? { dl: ov.left - c.left, dt: ov.top - c.top, dw: ov.width - c.width, dh: ov.height - c.height } : null,
-						p1: r('.ovl .plate.p1'),
-						p2: r('.ovl .plate.p2'),
-						id1: r('.ovl .plate.p1 .id'),
-						cr1: r('.ovl .plate.p1 .cr'),
-						nCr1: document.querySelectorAll(`${s} .ovl .plate.p1 .cr .credit`).length,
-						nCr2: document.querySelectorAll(`${s} .ovl .plate.p2 .cr .credit`).length,
+						p1: r('.ovl .pid.p1'),
+						p2: r('.ovl .pid.p2'),
+						r1: r('.ovl .pid.p1 .r1'),
+						r2: r('.ovl .pid.p1 .r2'),
+						by1: (document.querySelector(`${s} .ovl .pid.p1 .r2`)?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+						by2: (document.querySelector(`${s} .ovl .pid.p2 .r2`)?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+						nmFont: (() => { const cs = getComputedStyle(document.querySelector(`${s} .ovl .pid.p1 .nm`)); return `${cs.fontStyle} ${cs.fontWeight}`; })(),
+						stampShown: (() => { const e = document.querySelector(`${s} .ovl .stamp`); return !!e && getComputedStyle(e).display !== 'none'; })(),
 						stamp: r('.ovl .stamp'),
 						wm: r('.ovl .wm'),
 						tr: (() => { const e = document.querySelector(`${s} .tr`); if (!e) return null; const b = e.getBoundingClientRect(); return { bottom: b.bottom, opacity: getComputedStyle(e).opacity }; })(),
 						mode: window[h].overlay,
-						links: [...document.querySelectorAll(`${s} .ovl .cr a`)].map((a) => a.getAttribute('href'))
+						links: [...document.querySelectorAll(`${s} .ovl .pid .r2 a`)].map((a) => a.getAttribute('href')),
+						p2order: (() => { const l = document.querySelector(`${s} .ovl .pid.p2 .r2 .lb`)?.getBoundingClientRect(); const n = document.querySelector(`${s} .ovl .pid.p2 .r2 .by`)?.getBoundingClientRect(); return !!l && !!n && l.right <= n.left; })()
 					};
 				},
 				sel,
@@ -259,20 +263,24 @@ try {
 		// §2.2 placement in picture units + §2.1 no-go zones
 		const placement = (g, label) => {
 			check(layerOk(g), `${label}: layer rect == canvas rect (k ${g.k.toFixed(4)}, Δ ${g.layer ? [g.layer.dl, g.layer.dt, g.layer.dw, g.layer.dh].map((v) => v.toFixed(1)).join('/') : 'none'})`);
-			check(g.p1 && near(g.p1.x, 8) && near(g.p1.b, 430), `${label}: P1 plate x 8, bottom y 430 (got ${g.p1?.x.toFixed(1)}, ${g.p1?.b.toFixed(1)})`);
-			check(g.p2 && near(g.p2.r, 632) && near(g.p2.b, 430), `${label}: P2 plate right edge x 632, bottom y 430 (got ${g.p2?.r.toFixed(1)}, ${g.p2?.b.toFixed(1)})`);
-			check(g.p1 && g.p1.w <= 221 && g.p2.w <= 221, `${label}: plates ≤ 220 wide (${g.p1?.w.toFixed(1)}, ${g.p2?.w.toFixed(1)})`);
-			check(g.id1 && near(g.id1.h, 20), `${label}: plate id row 20 px (got ${g.id1?.h.toFixed(1)})`);
+			// rev 3: identity in the top strip (y 0–24), clear of the health bars (y 25); always on
+			check(g.p1 && near(g.p1.x, 8) && g.p1.y >= 0 && g.p1.b <= 24.5, `${label}: P1 rows x 8 inside y 0–24 (got x ${g.p1?.x.toFixed(1)}, y ${g.p1?.y.toFixed(1)}–${g.p1?.b.toFixed(1)})`);
+			check(g.p2 && near(g.p2.r, 632) && g.p2.y >= 0 && g.p2.b <= 24.5, `${label}: P2 rows right edge x 632 inside y 0–24 (got r ${g.p2?.r.toFixed(1)}, y ${g.p2?.y.toFixed(1)}–${g.p2?.b.toFixed(1)})`);
+			check(g.r1 && near(g.r1.y, 1) && near(g.r1.h, 11) && g.r2 && near(g.r2.y, 13) && near(g.r2.h, 11), `${label}: row 1 y 1–12, row 2 y 13–24 (got r1 ${g.r1?.y.toFixed(1)}+${g.r1?.h.toFixed(1)}, r2 ${g.r2?.y.toFixed(1)}+${g.r2?.h.toFixed(1)})`);
+			check(g.p1 && g.p1.b < 25 && g.p2.b < 25, `${label}: rows clear of the health bars (y 25)`);
+			check(/italic (900|bold)/.test(g.nmFont), `${label}: name in the display face (italic 900; got ${g.nmFont})`);
+			check(g.by1 === 'Skin by: Ruby' && g.by2 === 'Skin by: Ruby', `${label}: Skin by: rows read the unique creators (got "${g.by1}" / "${g.by2}")`);
+			check(g.links.length === 2 && g.links.every((l) => /\/u\/\d{17}$/.test(l)), `${label}: linked creators → /u/<steamid> (${g.links.length} links)`);
+			check(g.p2order, `${label}: P2 row 2 reads left-to-right (label before the name), right-justified`);
 			if (g.mode === 'full') {
-				check(g.nCr1 === 3 && g.nCr2 === 1, `${label}: devcredit renders 3 credit lines left, 1 right (got ${g.nCr1}/${g.nCr2})`);
-				check(g.cr1 && near(g.cr1.h, 17 * g.nCr1 + 1, 1.5) && near(g.p1.y, 430 - 26 - 17 * g.nCr1, 1.5), `${label}: credits 17 px per line, box top y ${430 - 26 - 17 * g.nCr1} (got top ${g.p1?.y.toFixed(1)}, cr h ${g.cr1?.h.toFixed(1)})`);
+				check(g.stampShown, `${label}: record stamp shown in full`);
 				check(g.stamp && near(g.stamp.y, 56) && near(g.stamp.x + g.stamp.w / 2, 320) && g.stamp.w <= 105 && g.stamp.h <= 44, `${label}: record stamp top y 56, centred x 320, ≤ 104 wide (got y ${g.stamp?.y.toFixed(1)}, cx ${g.stamp ? (g.stamp.x + g.stamp.w / 2).toFixed(1) : '-'}, w ${g.stamp?.w.toFixed(1)}, h ${g.stamp?.h.toFixed(1)})`);
 				check(g.stamp && g.stamp.x >= 268 && g.stamp.r <= 375 && g.stamp.y >= 55 && g.stamp.b <= 101, `${label}: stamp inside the dead gap (x 269–374, y 55–101) — clear of the timer and assist stacks`);
-				check(g.links.length === 2 && g.links.every((l) => /\/u\/\d{17}$/.test(l)), `${label}: linked authors → /u/<steamid> (${g.links.length} links)`);
+			} else {
+				check(!g.stampShown, `${label}: record stamp hidden in minimal`);
 			}
 			check(g.wm && near(g.wm.y, 437) && near(g.wm.h, 12) && near(g.wm.x + g.wm.w / 2, 320), `${label}: watermark y 437, h 12, centred x 320 (got y ${g.wm?.y.toFixed(1)}, h ${g.wm?.h.toFixed(1)}, cx ${g.wm ? (g.wm.x + g.wm.w / 2).toFixed(1) : '-'})`);
 			check(g.wm && g.wm.b <= 453 && g.wm.x >= 66 && g.wm.r <= 574, `${label}: watermark above the hyper bars (y 453) and between the LEVEL pods (x 66–574)`);
-			check(g.p1 && g.p1.b <= 434 && g.p2.b <= 434, `${label}: plates clear of the LEVEL pods (y 434)`);
 		};
 
 		// (1) the canvas is untouched: readback sha identical with the layer full and off (and == the stock baseline for the same tape)
@@ -304,9 +312,8 @@ try {
 		await sleep(3000);
 		check((await p6.evaluate((h) => window[h].overlay, H)) === 'minimal', 'overlay: minimal within 3.3 s of play (no pokes)');
 		g = await geom(SEL);
-		check(g.nCr1 === 3 && (await p6.evaluate((s) => getComputedStyle(document.querySelector(`${s} .ovl .plate.p1 .cr`)).display === 'none', SEL)), 'overlay: minimal hides the credits (plates + watermark stay)');
-		check(await p6.evaluate((s) => getComputedStyle(document.querySelector(`${s} .ovl .stamp`)).display === 'none', SEL), 'overlay: minimal hides the record stamp');
-		check(g.p1 && near(g.p1.h, 26) && g.p2 && near(g.p2.h, 26), `overlay: minimal plates collapse to the 26 px id row (got ${g.p1?.h.toFixed(1)}, ${g.p2?.h.toFixed(1)})`);
+		check(!g.stampShown, 'overlay: minimal hides the record stamp');
+		check(g.p1 && g.p2 && g.by1 === 'Skin by: Ruby', 'overlay: minimal keeps the identity rows (always on) + watermark');
 		placement(g, 'inline minimal');
 		const shotMin = path.join(OUT, 'overlay-inline-minimal.png');
 		await (await p6.$(SEL)).screenshot({ path: shotMin });

@@ -1,5 +1,11 @@
 # REPLAY OVERLAY + CREATOR CREDIT — spec (2026-09-03, rev 2: ON-PICTURE)
 
+> **rev 3 — Tris 2026-09-04: identity to the top strip.** The plates leave the lower thirds; the player identity moves to
+> the empty strip ABOVE the health bars (y 0–24) as two 11 px text rows per side (name · rank · rating / `Skin by: <creators>`),
+> no box, the house display face with a 1 px dark outline; the space above the LEVEL pods is the game's again. The record
+> stamp (dead gap under the timer) and the watermark (bottom-centre) are unchanged. The top rows are ALWAYS on; the stamp
+> stays full-only. §2.2, §2.5 and the mockup are updated below; BUILT in `ReplayEmbed.svelte` (see `REPLAY-OVERLAY-PLAN-PWA.md`).
+
 The replay gets a broadcast overlay **drawn on the rendered screen, the way OBS draws an overlay**: P1's plate
 bottom-left, P2's bottom-right (the game's own HUD sides), the match record under the timer, RETRO RECEIPTS
 bottom-centre — and **credit for every custom skin on screen that someone else made**. One layer in 640×480
@@ -92,34 +98,38 @@ floor at 1× so type survives 640 px and reads at 2×/4×); mobile + desktop; ac
 
 ### 2.2 Placement table — the overlay layer
 
-All values in picture pixels; the layer scales uniformly with the picture. Type: names Inter 700 13 px
-(x-height 9), record/credit/rating JetBrains Mono 12 px (x-height ≈ 9), score Barlow Condensed 900 italic 18 px,
-watermark JetBrains Mono 11 px caps (decorative; the one line under the floor, §6). Plates use
-`rgba(0,0,0,.65)` — not the suggested `.55`, because `--ink` on `.55` black over a white game pixel is 3.3:1
-and on `.65` it is 5.3:1 (§6). Corner radius 3 px, padding 3 px.
+All values in picture pixels; the layer scales uniformly with the picture. **rev 3 type:** names in the house
+display face (Barlow Condensed 900 italic — the "mark" font; falls back to the Inter/Segoe italic 900 stack until the
+face is bundled) 12 px on an 11 px row, gold for the winner, `--ink` otherwise, with a 1 px dark outline
+(`text-shadow` in four directions + a 2 px glow) so it reads over any game pixel; `Skin by:` JetBrains Mono 9 px,
+label `--ovl-dim` (#c9cedd), creator names `--stream` (dotted-underlined when linked); rating JetBrains Mono 9 px;
+record stamp JetBrains Mono 12 px on `rgba(0,0,0,.65)`; watermark JetBrains Mono 11 px caps (decorative; the one line
+under the floor, §6). **No plate box at the top** — the outline carries the text; a 40 % black strip is the fallback
+only if a contrast check fails on a real frame (none did on the test tapes). The name row is an explicit
+overlay-only exception to commandment 7 ("never player names in the mark face") at Tris's call.
 
 | # | Element | Anchor | x | y | w | h | Opacity / fill | Full | Minimal |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | **P1 plate** — `[2 px --p1 bar][av 20][flag][name 13 px, gold if winner][rank badge 12 → /ranks][rating 12 mono][set score 18 cond.]` | bottom-left, bottom edge y 430 | 8 | 404–430 | auto ≤ 220 | 26 | plate `rgba(0,0,0,.65)`, text `--ink`/`--dim`, side bar `--p1` | ● | ● |
-| 2 | **P1 credits** — up to 3 lines `[spr 16] "NIGHTFALL" by Ruby`, stacked ABOVE the plate, newest slot at the bottom (slot order top→bottom = point, second, anchor) | bottom-left, grows upward from y 404 | 8 | 353–404 (3 lines) / 370–404 (2) / 387–404 (1) | same as the plate | 17 per line | same plate fill (one box with the plate: h 26 + 17 n) | ● | — |
-| 3 | **P2 plate** — mirror of #1, right-aligned, side bar `--p2` on the right edge | bottom-right, right edge x 632 | 632 − w | 404–430 | auto ≤ 220 | 26 | as #1 | ● | ● |
-| 4 | **P2 credits** — mirror of #2 | bottom-right, grows upward | 632 − w | as #2 | as #3 | 17 per line | as #2 | ● | — |
+| 1 | **P1 identity row** — `[name 12 px display italic 900, gold if winner → /u/<sid>][rank badge 10 → /ranks][rating 9 mono][set score 12, when the set carries one]` | top-left, in the strip above the health bars | 8 | 1–12 | auto ≤ 250 | 11 | no box; 1 px dark outline | ● | ● |
+| 2 | **P1 `Skin by:` row** — `Skin by: Ruby, Bob` = the UNIQUE creators of that side's credited skins in slot order, comma-joined; own design and stock contribute nothing; no credited skin → the row is empty (the strip stays clear) | top-left, under #1 | 8 | 13–24 | auto ≤ 250 | 11 | no box; 1 px dark outline; label `--ovl-dim`, names `--stream` | ● | ● |
+| 3 | **P2 identity row** — mirror of #1, right-aligned | top-right, right edge x 632 | 632 − w | 1–12 | auto ≤ 250 | 11 | as #1 | ● | ● |
+| 4 | **P2 `Skin by:` row** — mirror of #2 | top-right, under #3 | 632 − w | 13–24 | auto ≤ 250 | 11 | as #2 | ● | ● |
 | 5 | **Record stamp** — 3 mono lines centred: `RANKED · FT3 · G3` / `2026-09-02 21:14` / `CLOCK TOWER` (`stock colors` appended as a 4th line only in the seats-unknown state) | top-centre, under `TIME` | 269–374 (centred on x 320, auto width ≤ 104) | 56–98 | ≤ 104 | 42 (3 × 14) | `rgba(0,0,0,.65)`, text `--dim`; mode chip text `--gold` when money | ● | — |
 | 6 | **Watermark** — `RETRO RECEIPTS · nobd.net/app/ranks` (link) | bottom-centre, on the hairline above the hyper bars | 204–436 (centred, auto ≈ 232) | 437–449 | ≈ 232 | 12 | `rgba(0,0,0,.5)`, text `rgba(255,255,255,.7)` | ● | ● |
 | 7 | **`SAVED` pill** (paid save, LIVE-TAB-SPEC §7.11) | right of the record stamp | 378–420 | 58–70 | ≈ 42 | 12 | gold fill, `--gold-ink` text | ● | — |
-| 8 | **Transport HUD** (fullscreen only, unchanged) | bottom edge of the picture, over #1/#3/#6 while shown | 0 | 424–480 | 640 | 56 | `rgba(0,0,0,.6)`; fades 2.5 s (`ReplayEmbed.svelte:615-620, 1292-1304`) | on poke | on poke |
+| 8 | **Transport HUD** (fullscreen only, unchanged) | bottom edge of the picture, over #6 while shown | 0 | 424–480 | 640 | 56 | `rgba(0,0,0,.6)`; fades 2.5 s | on poke | on poke |
 
-Collision checks against §2.1: #1/#3 end at y 430, the LEVEL pods start at y 434 (4 px clear); #1 starts at
-x 8 and the P1 pod occupies x 0–66 **below** y 434 only; #5 sits inside the 105 × 46 dead gap with 1 px to
-spare each side; #6 sits at y 437–449 between the pods (x 66–574 is free at that height) and above the bars
-(y 453). The full-mode credit stack tops out at y 353 — the lower 16 % of the corner, where a cornered
-character's legs can pass under it; that is the one accepted overlap, and it is why credits are not persistent (§2.5).
+Collision checks against §2.1 (rev 3): #1–#4 live in y 0–24 — the strip the game leaves empty above the health
+bars (bars from y 25, portraits from y 25 at x 0–42 / 598–640) — so they never touch a bar, a portrait or the
+fight; the lower thirds above the LEVEL pods are the game's again. #5 sits inside the 105 × 46 dead gap with 1 px
+to spare each side; #6 sits at y 437–449 between the pods (x 66–574 is free at that height) and above the bars
+(y 453). Nothing in the layer overlaps the play area any more, which is why the identity rows can be always-on.
 
 Why the watermark is not *between* the hyper bars: the gap is 41 px (§2.1) and the shortest honest watermark
 at 11 px mono is ≈ 232 px. Splitting it into two 5 px lines would break the type floor, so it sits 4 px above
 the bars, centred between the pods — still bottom-centre, still clear of every bar.
 
-Why the score is in the plates, not the stamp: `2 – 1 · RANKED · FT3 · G3` at 12 px mono is 166 px and the
+Why the score rides the identity row, not the stamp: `2 – 1 · RANKED · FT3 · G3` at 12 px mono is 166 px and the
 gap is 105; a scorebug puts the digit next to the name anyway.
 
 ### 2.3 Implementation shape (so the layer is identical everywhere)
@@ -130,7 +140,7 @@ gap is 105; a scorebug puts the digit next to the name anyway.
   .ovl  { position:absolute; left:0; top:0; width:640px; height:480px;
           transform: scale(var(--k)); transform-origin: 0 0; pointer-events: none }
         --k = picture CSS width / 640  (inline 1×, fullscreen fsScale, phone landscape 0.81, portrait 0.61)
-    .plate.p1  .plate.p2  .stamp  .wm  (links: pointer-events: auto)
+    .pid.p1  .pid.p2  .stamp  .wm  (links: pointer-events: auto)   ← rev 3: .pid = the two top rows per side
 ```
 
 - Same DOM, same coordinates in every frame; fullscreen just changes `--k` (today's `--fsw`, `768`).
@@ -158,16 +168,16 @@ stays the OG fight card. Video export (later) = the same composite per frame.
 
 | State | Layer |
 |---|---|
-| `ready` (poster shown), first 3 s of `playing` | **full**: plates + credits + stamp + watermark (+ SAVED) |
-| `playing` after 3 s | **minimal**: plates (no credits) + watermark. Crossfade 300 ms; reduced motion = cut |
+| any playable state | **always on** (rev 3): the identity rows (#1–#4) and the watermark — small, out of the play area |
+| `ready` (poster shown), first 3 s of `playing` | **full**: + the record stamp (+ SAVED) |
+| `playing` after 3 s | **minimal**: the stamp (and SAVED) fade out, 300 ms; reduced motion = cut |
 | `paused`, `seeking`, `ended`, hover (pointer over `.pic`), tap/poke in fullscreen | **full** while it lasts (+ 3 s after the pointer leaves) |
 | last 3 s before `ended` | **full** (end credits) |
 | `unavailable`/`nopack`/`error`/`loading` | no layer — the `.ov` state panels stand alone (`808-837`) |
 
-Why not always-on: the full form covers up to 220 × 77 px in each lower corner (≈ 5.5 % of the picture each) —
-exactly where a cornered character, a super freeze and the LEVEL pod's flash live. Minimal keeps the OBS feel
-(names + watermark are 26 px and 12 px tall, in the HUD's own dead rows) and any screenshot still carries the
-watermark. Credit still reaches every viewer: at the start, at the end, and on any pause. Q9.
+Why the rows are always-on (rev 3): they sit in the 24 px strip the game never draws in, so there is nothing to
+give back to the play area — and a creator's name is then on every frame and every screenshot. The stamp stays
+full-only because the dead gap under the timer is inside the play area's silhouette (a jumping character crosses it).
 
 ### 2.6 Inline vs fullscreen vs phone (what changes)
 

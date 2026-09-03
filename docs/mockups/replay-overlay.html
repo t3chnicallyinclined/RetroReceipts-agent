@@ -55,29 +55,20 @@ table.pt td b{color:var(--ink);font-weight:600}
 /* ── THE OVERLAY LAYER — 640×480 units, scaled with the picture (spec §2.2/§2.3) ── */
 .ovl{position:absolute;left:0;top:0;width:640px;height:480px;pointer-events:none;color:var(--ink)}
 .ovl a{pointer-events:auto}
-.plate{position:absolute;bottom:50px;display:flex;flex-direction:column;background:rgba(0,0,0,.65);border-radius:3px;padding:3px;max-width:220px}
-.plate.p1{left:8px;border-left:2px solid var(--p1)}
-.plate.p2{right:8px;border-right:2px solid var(--p2);align-items:flex-end}
-.plate.noseat{border-left:0;border-right:0}
-.plate .id{display:flex;align-items:center;gap:4px;height:20px;white-space:nowrap}
-.plate.p2 .id{flex-direction:row-reverse}
-.plate .id .nm{font:700 13px/1 Inter,sans-serif;color:var(--ink)}
-.plate .id .nm.won{color:var(--gold)}
-.plate .id .flag{width:11px;height:8px;border-radius:1px;background:linear-gradient(180deg,#b22 0 33%,#fff 33% 66%,#22b 66%);display:inline-block}
-.plate .id .rk{width:12px;height:12px;display:inline-grid;place-items:center;border-radius:2px;background:linear-gradient(135deg,#9cf,#357);font-size:7px;font-weight:900;color:#08131f}
-.plate .id .rk.vib{background:linear-gradient(135deg,#c9b5ff,#5b3fbf)}
-.plate .id .rt{font:12px/1 'JetBrains Mono',monospace;color:var(--ovl-dim)}
-.plate .id .sc{font:italic 900 18px/1 'Barlow Condensed',sans-serif;color:var(--ink);margin:0 2px 0 4px}
-.plate.p2 .id .sc{margin:0 4px 0 2px}
-.plate .id .sc.w{color:var(--gold)}
-.plate .cr{display:flex;flex-direction:column;order:-1;margin-bottom:1px}
-.plate.p2 .cr{align-items:flex-end}
-.plate .cr span{display:flex;align-items:center;gap:4px;height:17px;font:12px/1 'JetBrains Mono',monospace;color:var(--ink);white-space:nowrap}
-.plate.p2 .cr span{flex-direction:row-reverse}
-.plate .cr .spr{width:16px;height:16px;border-radius:2px;font-size:6px}
-.plate .cr b{font-weight:700}
-.plate .cr .by{color:var(--stream)}
-.plate .cr a.by{text-decoration:underline dotted;text-underline-offset:2px}
+/* rev 3: identity rows in the top strip (y 0–24), no box, 1 px outline */
+.pid{position:absolute;top:0;display:flex;flex-direction:column;align-items:flex-start;max-width:250px;white-space:nowrap}
+.pid.p1{left:8px}.pid.p2{right:8px;align-items:flex-end}
+.pid .r1,.pid .r2{display:flex;align-items:center;gap:4px;height:11px;margin-top:1px}
+.pid.p2 .r1{flex-direction:row-reverse}.pid.p2 .r2{justify-content:flex-end}
+.pid .nm{font:italic 900 12px/11px 'Barlow Condensed',Inter,sans-serif;color:var(--ink);text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0 0 2px #000}
+.pid .nm.won{color:var(--gold)}
+.pid .rk{width:10px;height:10px;display:inline-grid;place-items:center;border-radius:2px;background:linear-gradient(135deg,#9cf,#357);font-size:6px;font-weight:900;color:#08131f;filter:drop-shadow(0 0 1px #000)}
+.pid .rk.vib{background:linear-gradient(135deg,#c9b5ff,#5b3fbf)}
+.pid .rt,.pid .r2{font:9px/11px 'JetBrains Mono',monospace;color:var(--ovl-dim);text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0 0 2px #000}
+.pid .sc{font:italic 900 12px/11px 'Barlow Condensed',Inter,sans-serif;color:var(--ink);text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0 0 2px #000}
+.pid .sc.w{color:var(--gold)}
+.pid .r2 .by{color:var(--stream)}
+.pid .r2 a.by{text-decoration:underline dotted;text-underline-offset:2px}
 .stamp{position:absolute;left:50%;top:56px;transform:translateX(-50%);background:rgba(0,0,0,.65);border-radius:3px;padding:2px 4px;display:flex;flex-direction:column;align-items:center;max-width:104px}
 .stamp span{font:12px/14px 'JetBrains Mono',monospace;color:var(--ovl-dim);white-space:nowrap;letter-spacing:0}
 .stamp span.money{color:var(--gold)}
@@ -86,7 +77,7 @@ table.pt td b{color:var(--ink);font-weight:600}
 .wm{position:absolute;left:50%;top:437px;transform:translateX(-50%);height:12px;padding:0 6px;border-radius:2px;background:rgba(0,0,0,.5);color:rgba(255,255,255,.7);font:11px/12px 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
 .wm .sep{opacity:.5;margin:0 3px}
 /* minimal state: no credits, no stamp */
-.stage.min .plate .cr,.stage.min .stamp,.stage.min .saved{display:none}
+.stage.min .stamp,.stage.min .saved{display:none}
 /* transport HUD (fullscreen only) */
 .thud{position:absolute;left:0;right:0;bottom:0;height:56px;background:rgba(0,0,0,.6);display:flex;align-items:center;gap:10px;padding:0 12px;color:#fff;font-family:Inter,sans-serif}
 .btn{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);font-size:12px;color:var(--ink);flex:none}
@@ -162,11 +153,11 @@ table.pt td b{color:var(--ink);font-weight:600}
 </style>
 </head>
 <body>
-<div class="note"><b>MOCKUP · REPLAY-OVERLAY-SPEC.md rev 2 (ON-PICTURE)</b> <span>the overlay is a 640×480 layer drawn ON the picture, scaled with it — identical in every frame</span> <span>dashed boxes = the game's OWN HUD measured on frame_60_res4_box.png (red = no-go, green = dead gap)</span> <span>the game's pixels underneath stay exact; gates read the scene target</span></div>
+<div class="note"><b>MOCKUP · REPLAY-OVERLAY-SPEC.md rev 3 (ON-PICTURE · identity in the top strip)</b> <span>the overlay is a 640×480 layer drawn ON the picture, scaled with it — identical in every frame</span> <span>dashed boxes = the game's OWN HUD measured on frame_60_res4_box.png (red = no-go, green = dead gap)</span> <span>the game's pixels underneath stay exact; gates read the scene target</span></div>
 <div class="wrap">
 <h1 style="font-size:22px;font-weight:900;margin-top:18px">Replay overlay · on the picture · creator credit</h1>
 <p style="color:var(--dim);font-size:13px;max-width:86ch;margin-top:4px">Sample data: <b>Tris</b> (P1, won 2–1, wearing three custom skins — two by Ruby, one his own) vs <b>LurKMan</b> (P2, one skin by Ruby). Ranked · FT3 · game 3 · Clock Tower. Toggle FULL / MINIMAL to see the two states (spec §2.5).</p>
-<div class="toggle" id="tg"><button class="on" data-m="full">FULL (first 3 s · pause · hover · last 3 s)</button><button data-m="min">MINIMAL (while playing)</button></div>
+<div class="toggle" id="tg"><button class="on" data-m="full">FULL (first 3 s · pause · hover · last 3 s)</button><button data-m="min">MINIMAL (while playing — rev 3: only the stamp goes)</button></div>
 
 <!-- the stamp template: picture + HUD zones + overlay layer -->
 <template id="stampT">
@@ -186,17 +177,14 @@ table.pt td b{color:var(--ink);font-weight:600}
   <div class="hud nogo" style="left:574px;top:434px;width:66px;height:42px">LEVEL<br>pod</div>
   <!-- ── THE OVERLAY LAYER ── -->
   <div class="ovl">
-    <div class="plate p1" role="group" aria-label="Player 1: Tris">
-      <div class="cr">
-        <span><span class="ph spr">St</span><b>"NIGHTFALL"</b> by <a class="by" href="#">Ruby</a></span>
-        <span><span class="ph spr">Se</span><b>"GOLDEN AGE"</b> by <a class="by" href="#">Ruby</a></span>
-        <span><span class="ph spr">Mg</span><b>"BLACKOUT"</b></span>
-      </div>
-      <div class="id"><span class="ph av" style="width:20px;height:20px">av</span><i class="flag"></i><span class="nm won">Tris</span><a class="rk vib" href="#" title="Marvel ladder">◆</a><span class="rt">1147</span><span class="sc w">2</span></div>
+    <div class="hud gap" style="left:0;top:0;width:640px;height:24px">the empty strip above the health bars · y 0–24 (rev 3: identity lives here)</div>
+    <div class="pid p1" role="group" aria-label="Player 1: Tris">
+      <div class="r1"><span class="nm won">Tris</span><a class="rk vib" href="#" title="Marvel ladder">◆</a><span class="rt">1147</span><span class="sc w">2</span></div>
+      <div class="r2"><span>Skin by:</span><a class="by" href="#">Ruby</a></div>
     </div>
-    <div class="plate p2" role="group" aria-label="Player 2: LurKMan">
-      <div class="cr"><span><span class="ph spr">Cb</span><b>"DUSK"</b> by <a class="by" href="#">Ruby</a></span></div>
-      <div class="id"><span class="ph av" style="width:20px;height:20px">av</span><i class="flag"></i><span class="nm">LurKMan</span><a class="rk" href="#" title="Marvel ladder">◆</a><span class="rt">1180</span><span class="sc">1</span></div>
+    <div class="pid p2" role="group" aria-label="Player 2: LurKMan">
+      <div class="r1"><span class="nm">LurKMan</span><a class="rk" href="#" title="Marvel ladder">◆</a><span class="rt">1180</span><span class="sc">1</span></div>
+      <div class="r2"><span>Skin by:</span><a class="by" href="#">Ruby</a></div>
     </div>
     <div class="stamp"><span>RANKED · FT3 · G3</span><span>2026-09-02 21:14</span><span>CLOCK TOWER</span></div>
     <div class="wm"><span>RETRO RECEIPTS</span><span class="sep">·</span><a href="#">nobd.net/app/ranks</a></div>
@@ -214,17 +202,17 @@ table.pt td b{color:var(--ink);font-weight:600}
   </div>
   <table class="pt">
     <tr><th>#</th><th>element</th><th>anchor</th><th>x</th><th>y</th><th>w</th><th>h</th><th>fill / opacity</th><th>full</th><th>min</th></tr>
-    <tr><td>1</td><td><b>P1 plate</b> · 2 px --p1 bar · av 20 · flag · name 13 (gold = winner) · rank badge 12 → /ranks · rating 12 mono · set score 18 cond.</td><td>bottom-left, bottom y 430</td><td>8</td><td>404–430</td><td>auto ≤ 220</td><td>26</td><td>rgba(0,0,0,.65)</td><td>●</td><td>●</td></tr>
-    <tr><td>2</td><td><b>P1 credits</b> · ≤ 3 × [spr 16] "NAME" by Author · stacked above the plate, slot order top→bottom</td><td>bottom-left, grows up from y 404</td><td>8</td><td>353–404 (3) / 370 (2) / 387 (1)</td><td>= plate</td><td>17 / line</td><td>same box as the plate</td><td>●</td><td>—</td></tr>
-    <tr><td>3</td><td><b>P2 plate</b> · mirror, right-aligned, --p2 bar on the right</td><td>bottom-right, right edge x 632</td><td>632 − w</td><td>404–430</td><td>auto ≤ 220</td><td>26</td><td>rgba(0,0,0,.65)</td><td>●</td><td>●</td></tr>
-    <tr><td>4</td><td><b>P2 credits</b> · mirror</td><td>bottom-right, grows up</td><td>632 − w</td><td>as #2</td><td>= plate</td><td>17 / line</td><td>as #2</td><td>●</td><td>—</td></tr>
+    <tr><td>1</td><td><b>P1 identity row</b> · name 12 display italic 900 (gold = winner, → profile) · rank badge 10 → /ranks · rating 9 mono · set score 12</td><td>top-left, the strip above the health bars</td><td>8</td><td>1–12</td><td>auto ≤ 250</td><td>11</td><td>no box · 1 px dark outline</td><td>●</td><td>●</td></tr>
+    <tr><td>2</td><td><b>P1 Skin by:</b> · the unique creators of that side's credited skins, comma-joined (own design / stock = nothing; none → empty row)</td><td>top-left, under #1</td><td>8</td><td>13–24</td><td>auto ≤ 250</td><td>11</td><td>no box · label --ovl-dim · names --stream</td><td>●</td><td>●</td></tr>
+    <tr><td>3</td><td><b>P2 identity row</b> · mirror, right-aligned</td><td>top-right, right edge x 632</td><td>632 − w</td><td>1–12</td><td>auto ≤ 250</td><td>11</td><td>as #1</td><td>●</td><td>●</td></tr>
+    <tr><td>4</td><td><b>P2 Skin by:</b> · mirror</td><td>top-right, under #3</td><td>632 − w</td><td>13–24</td><td>auto ≤ 250</td><td>11</td><td>as #2</td><td>●</td><td>●</td></tr>
     <tr><td>5</td><td><b>Record stamp</b> · RANKED · FT3 · G3 / date time / stage (+ "stock colors" when seats unknown)</td><td>top-centre under TIME, in the 105 × 46 dead gap</td><td>269–374 (centred x 320)</td><td>56–98</td><td>≤ 104</td><td>42</td><td>rgba(0,0,0,.65) · text #c9cedd</td><td>●</td><td>—</td></tr>
     <tr><td>6</td><td><b>Watermark</b> · RETRO RECEIPTS · nobd.net/app/ranks</td><td>bottom-centre, 4 px above the hyper bars, between the pods</td><td>204–436 (centred)</td><td>437–449</td><td>≈ 232</td><td>12</td><td>rgba(0,0,0,.5) · text 70 % white</td><td>●</td><td>●</td></tr>
     <tr><td>7</td><td><b>SAVED</b> pill (paid save)</td><td>right of the stamp</td><td>378–420</td><td>58–70</td><td>≈ 42</td><td>12</td><td>--gold / --gold-ink</td><td>●</td><td>—</td></tr>
     <tr><td>8</td><td><b>Transport HUD</b> (fullscreen only, unchanged)</td><td>bottom edge of the picture</td><td>0</td><td>424–480</td><td>640</td><td>56</td><td>rgba(0,0,0,.6) · fades 2.5 s</td><td>poke</td><td>poke</td></tr>
   </table>
-  <p class="cap"><b>Why these spots:</b> the plates sit in the lower thirds, ending at y 430 — 4 px above the LEVEL pods (y 434) and clear of the hyper bars (y 453). The record stamp fills the one dead gap the game's HUD leaves under the timer (x 269–374, y 55–101, between the two assist stacks). The watermark is bottom-centre <i>above</i> the bars because the gap between them is only 41 px and the shortest honest watermark at 11 px is ≈ 232 px. The score digit rides in each plate (a scorebug puts it next to the name; "2 – 1 · RANKED · FT3 · G3" would not fit the 105 px gap). Magneto's "BLACKOUT" is Tris's own design → name only, no by-line. Doom/Cyclops are stock → nothing.</p>
-  <div class="annot">seats unknown (§5a): no --p1/--p2 side bars, credits empty, the stamp gains a 4th line <span style="color:var(--faint)">stock colors</span>; the picture plays stock</div>
+  <p class="cap"><b>Why these spots (rev 3):</b> the identity rows sit in the 24 px strip the game never draws in, above the health bars (y 25) — always on, never in the play area; the lower thirds above the LEVEL pods are the game's again. The record stamp fills the one dead gap the game's HUD leaves under the timer (x 269–374, y 55–101, between the two assist stacks). The watermark is bottom-centre <i>above</i> the bars because the gap between them is only 41 px and the shortest honest watermark at 11 px is ≈ 232 px. The score digit rides in each plate (a scorebug puts it next to the name; "2 – 1 · RANKED · FT3 · G3" would not fit the 105 px gap). Magneto's "BLACKOUT" is Tris's own design → name only, no by-line. Doom/Cyclops are stock → nothing.</p>
+  <div class="annot">seats unknown (§5a): rows in row order (unlabelled), Skin by: empty, the stamp gains a 4th line <span style="color:var(--faint)">stock colors</span>; the picture plays stock</div>
 </section>
 
 <!-- ═══════════════ 2. FULLSCREEN 16:9 ═══════════════ -->
