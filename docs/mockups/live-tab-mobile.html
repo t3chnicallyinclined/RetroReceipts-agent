@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIVE tab — mobile mockup · Retro Receipts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Barlow+Condensed:ital,wght@1,800;1,900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── THE ARENA tokens (pwa/src/app.css:6-34, dark) ── */
+:root{
+  --bg:#0a0c12;--panel:#12151f;--panel-2:#191d2b;--card:#161a28;--line:#272d3e;--line-soft:#1d2231;
+  --ink:#eef1f8;--dim:#8a91a8;--faint:#5a6178;--gold:#ffb020;--gold-ink:#241700;--gold-soft:rgba(255,176,32,.13);
+  --p1:#ff6a3d;--p1-soft:rgba(255,106,61,.13);--p2:#3fb1ff;--p2-soft:rgba(63,177,255,.12);
+  --good:#35d07f;--live:#ff3d68;--molten:#ff5c2c;--stream:#8b6dff;--board:#0d1017;color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#05060a;color:var(--ink);font:14px/1.45 Inter,'Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+h1,h2,h3,p{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:var(--ink);cursor:pointer}
+.mark{font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.rail{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;border:1px solid var(--line)}
+.pill.live{color:var(--live);background:color-mix(in srgb,var(--live) 12%,transparent);border-color:color-mix(in srgb,var(--live) 34%,var(--line))}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--live);flex:none}
+@media (prefers-reduced-motion:no-preference){.dot{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.ph{background:repeating-linear-gradient(135deg,var(--panel-2) 0 6px,#1e2333 6px 12px);border:1px dashed color-mix(in srgb,var(--faint) 55%,transparent);border-radius:8px;color:var(--faint);font:9px/1.25 'JetBrains Mono',monospace;display:grid;place-items:center;text-align:center;padding:2px;overflow:hidden}
+.ph.av{border-radius:50%;padding:0}
+
+/* mockup scaffolding */
+.note{position:sticky;top:0;z-index:50;background:#1b1500;color:#ffd77a;border-bottom:1px solid #4a3a00;font:12px/1.4 'JetBrains Mono',monospace;padding:6px 14px;display:flex;gap:18px;flex-wrap:wrap}
+.note b{color:#ffb020}
+.annot{color:#ffd77a;font:11px/1.35 'JetBrains Mono',monospace;background:#1b1500;border:1px dashed #6a5200;border-radius:6px;padding:4px 8px;margin:8px 0 0;max-width:390px}
+.frames{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;padding:24px 18px 60px;justify-content:center}
+.frame{flex:none}
+.frame .cap{font:11px/1.3 'JetBrains Mono',monospace;color:#8a91a8;letter-spacing:.06em;margin-bottom:8px}
+.phone{width:390px;height:844px;border-radius:38px;border:8px solid #1c1f29;background:var(--bg);overflow:hidden;position:relative;box-shadow:0 30px 80px -30px rgba(0,0,0,.9)}
+.phone.land{width:844px;height:390px}
+.screen{position:absolute;inset:0;overflow:hidden;background:radial-gradient(120% 60% at 50% -10%,color-mix(in srgb,var(--gold) 8%,transparent),transparent 55%),var(--bg)}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#05060a;border-radius:0 0 16px 16px;z-index:5}
+.wrap{padding:36px 12px 84px}
+
+/* mobile top bar: brand + atoms; nav lives in the TabBar (TopBar.svelte:12-13) */
+.bar{display:flex;align-items:center;gap:10px;padding:8px 2px 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:900;font-size:14px}
+.cab{width:20px;height:20px;background:linear-gradient(135deg,#ffb020,#ff5c2c);clip-path:polygon(6% 0,94% 0,100% 100%,0 100%);border-radius:3px}
+.authslot{margin-left:auto;display:flex;gap:8px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:4px 8px;background:var(--panel)}
+.chip .g{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.chip.coin{color:var(--gold)}
+
+/* TabBar (TabBar.svelte:297-313) */
+.tabbar{position:absolute;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:6px 6px 22px;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:var(--faint);font-size:10px;font-weight:700}
+.tab i{width:22px;height:22px;border:2px solid currentColor;border-radius:6px;display:block;opacity:.8}
+.tab.on{color:var(--gold)}
+
+/* masthead */
+.mast{position:relative;overflow:hidden;padding:12px 2px 8px;margin-bottom:6px}
+.ghost{position:absolute;right:0;top:-4px;font-size:52px;letter-spacing:-.03em;color:var(--ink);opacity:.045;text-transform:uppercase}
+.mrow{display:flex;align-items:center;gap:10px}
+.mtitle{font-size:22px;text-transform:uppercase}
+.seam{height:2px;width:110px;margin:6px 0 8px;background:linear-gradient(90deg,var(--live),transparent)}
+.mdesc{color:var(--dim);font-size:12.5px}
+
+/* section heads */
+.sec{margin-top:14px}
+.sechd{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.shead{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800}
+.shead .ic{width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center}
+.shead .ic.on{background:color-mix(in srgb,var(--good) 20%,transparent)}
+.shead .ic.on i{width:8px;height:8px;border-radius:50%;background:var(--good);display:block}
+.shead .ic.res{width:8px;height:8px;background:var(--live)}
+.cnt{font-size:11px;font-weight:800;color:var(--faint);background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.scopes{display:flex;width:100%;justify-content:space-between;gap:2px;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.scope{border:0;background:transparent;color:var(--dim);border-radius:999px;padding:6px 8px;font-size:11.5px;font-weight:700;display:inline-flex;gap:4px;align-items:center;flex:1;justify-content:center}
+.scope.on{background:linear-gradient(180deg,#ffe084,#c98f0e);color:var(--gold-ink);font-style:italic}
+
+/* identity bits */
+.nm{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nm.won{color:var(--gold)}
+.sub{display:flex;align-items:center;gap:5px;margin-top:1px}
+.tiern{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;color:var(--dim)}
+.rt{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim)}
+.flag{width:12px;height:9px;border-radius:2px;background:linear-gradient(180deg,#b22 0 33%,#fff 33% 66%,#22b 66%);display:inline-block}
+.badge{width:13px;height:13px;display:inline-block;background:conic-gradient(from 210deg,#b98cff,#6428cf,#b98cff);clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+.badge.ada{background:conic-gradient(from 210deg,#9fd4ef,#48789e,#9fd4ef)}
+.badge.gold{background:conic-gradient(from 210deg,#f2c74a,#c98f0e,#f2c74a)}
+.badge.silver{background:conic-gradient(from 210deg,#cdd7e4,#93a1b6,#cdd7e4)}
+
+/* YOUR MATCH strip — phone: 64 px, score stacks between the plates */
+.ym{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.2fr);align-items:center;gap:8px;height:64px;padding:0 10px;margin-top:8px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(90deg,var(--p1-soft),transparent 30%,transparent 70%,var(--p2-soft)),var(--panel);position:relative}
+.ym .lab{position:absolute;top:-7px;left:10px;background:var(--panel);padding:0 5px;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.ym .you{display:flex;align-items:center;gap:7px;min-width:0}
+.ym .score{display:flex;flex-direction:column;align-items:center;line-height:1}
+.ym .score b{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:22px;color:var(--gold)}
+.ym .score b .them{color:var(--ink)}
+.ym .score small{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.14em;color:var(--dim);margin-top:2px}
+.opp{display:flex;align-items:center;gap:7px;justify-content:flex-end;min-width:0}
+.opp .col{text-align:right;min-width:0}
+.opp .l1{display:flex;align-items:baseline;gap:6px;justify-content:flex-end;white-space:nowrap}
+.opp .aka{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--faint)}
+.opp .l2{display:flex;align-items:center;gap:5px;justify-content:flex-end;font-size:10.5px;color:var(--dim);white-space:nowrap}
+.opp .l2 .w{color:var(--good)}.opp .l2 b{color:var(--ink)}
+.opp .wr{font-weight:800;color:#4ade80}
+.ym .st{position:absolute;right:10px;bottom:-9px;background:var(--panel);padding:0 4px}
+
+/* MoneyCard */
+.mc{border:1px solid color-mix(in srgb,var(--gold) 26%,var(--line));border-radius:12px;background:linear-gradient(120deg,var(--gold-soft),transparent 75%),var(--panel);padding:10px 11px;margin-bottom:8px}
+.mc.on{border-left:3px solid var(--live)}
+.mchd{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mchd .lab{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;color:var(--faint)}
+.mchd .pot{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;color:var(--gold);font-weight:700}
+.mcvs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin:8px 0 4px}
+.mcvs .sc{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:20px;color:var(--live)}
+.mcvs .sc.open{font-family:'JetBrains Mono',monospace;font-style:normal;font-weight:600;font-size:9.5px;letter-spacing:.14em;color:var(--good)}
+.vsm{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:13px;transform:skewX(-8deg);background:linear-gradient(175deg,#fff3c0 20%,var(--gold) 45%,#a3670a 80%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pp{display:flex;align-items:center;gap:6px;min-width:0}
+.pp.ra{flex-direction:row-reverse;text-align:right}
+.railp{border-top:1px dashed var(--line);margin-top:6px;padding-top:8px}
+.rhd{display:flex;justify-content:space-between;align-items:baseline;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--faint);margin-bottom:6px;gap:8px}
+.rhd .ract{color:var(--gold);text-align:right}
+.rnote{font-size:12px;color:var(--dim)}
+.pickrow{display:flex;gap:6px}
+.pick{flex:1;font-size:12px;font-weight:800;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 6px;text-align:center;min-height:44px}
+.pick span{display:block;font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.08em;color:var(--faint);font-weight:400;margin-top:2px}
+.arcade{display:flex;align-items:center;justify-content:space-between;padding:10px 11px;border:1px dashed var(--line);border-radius:10px;color:var(--dim);font-size:12px;font-weight:600;min-height:44px}
+.arcade b{color:var(--gold)}
+
+/* VersusCard (phone: 38 px chips, VersusCard.svelte:247-259) */
+.vc{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;background:var(--panel);padding:24px 12px 10px;border-bottom:1px solid var(--line)}
+.vc.mine{box-shadow:0 0 0 1.5px var(--gold) inset}
+.metarail{position:absolute;top:7px;right:10px;display:flex;gap:6px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--faint)}
+.mode{font-size:8px;letter-spacing:.12em;padding:1px 5px;border-radius:5px;border:1px solid var(--line);color:var(--dim)}
+.livew{color:var(--live);letter-spacing:.12em}
+.plate{display:flex;flex-direction:column;gap:6px;min-width:0}
+.plate.r{align-items:flex-end}
+.team{display:flex;gap:3px;align-items:flex-end}
+.team.r{flex-direction:row-reverse}
+.chipbox{width:38px;height:38px}
+.center{text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
+.setscore{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:22px;color:var(--gold);line-height:1}
+.vsm26{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:14px;transform:skewX(-8deg);background:linear-gradient(175deg,#fff3c0 20%,var(--gold) 45%,#a3670a 80%);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.state{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.18em;color:var(--dim)}
+
+/* MatchBanner phone fold (MatchBanner.svelte:258-296): 20px | 1fr | 76px; areas ca sa meta / cb sb meta; avatar hidden; chips 34 px */
+.mb{display:grid;grid-template-columns:20px minmax(0,1fr) 76px;grid-template-areas:'ca sa meta' 'cb sb meta';row-gap:6px;column-gap:8px;width:100%;background:var(--panel);border:0;border-bottom:1px solid var(--line-soft);border-left:3px solid var(--line);padding:9px 10px;text-align:left}
+.mb.won{border-left-color:var(--good);background:linear-gradient(90deg,color-mix(in srgb,var(--good) 8%,transparent),transparent 45%),var(--panel)}
+.mb.open{border-left-color:var(--stream);background:linear-gradient(90deg,color-mix(in srgb,var(--stream) 9%,transparent),transparent 45%),var(--panel);border-bottom:0}
+.wl{display:grid;place-items:center;width:18px;height:18px;border-radius:5px;font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:11px;border:1.5px solid var(--line);color:var(--dim)}
+.wl.w{background:var(--good);border-color:var(--good);color:#06281a}
+.ca{grid-area:ca}.cb{grid-area:cb}.sa{grid-area:sa}.sb{grid-area:sb}.meta{grid-area:meta}
+.side{display:flex;align-items:center;gap:8px;min-width:0}
+.chip34{width:34px;height:34px}
+.meta{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:3px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--faint)}
+.meta .r1,.meta .r2{display:flex;gap:5px;align-items:center}
+.fl{font-size:7.5px;letter-spacing:.1em;padding:1px 5px;border-radius:4px;border:1px solid color-mix(in srgb,var(--molten) 45%,var(--line));color:var(--molten)}
+.seal{color:var(--gold)}
+.delta{color:var(--good);font-weight:600}
+.tapechip{font-size:8px;letter-spacing:.1em;padding:1px 5px;border-radius:5px;border:1px solid color-mix(in srgb,var(--stream) 45%,var(--line));color:var(--stream);font-weight:600}
+.tapechip.pend{color:var(--faint);border-color:var(--line)}
+
+/* ReplayEmbed — phone inline: picture 366×275 (wrap width) */
+.xp{background:var(--panel);border-bottom:1px solid var(--line);padding:0 8px 10px 10px}
+.emb{border:1px solid color-mix(in srgb,var(--stream) 30%,var(--line));border-radius:12px;overflow:hidden;background:var(--board)}
+.ctop{padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--line-soft)}
+.ctop .row1{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px}
+.ctop .gs{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:24px;line-height:1}
+.ctop .gs .w{color:var(--gold)}.ctop .gs .d{opacity:.45;margin:0 3px}
+.ctop .mrail{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.08em;color:var(--faint);margin-top:6px}
+.pic{position:relative;width:100%;aspect-ratio:4/3;background:#000;display:grid;place-items:center}
+.pic .ph{width:100%;height:100%;border-radius:0;border:0;font-size:10px;line-height:1.5;color:#6b7390;background:repeating-linear-gradient(135deg,#0b0e16 0 10px,#0f131d 10px 20px)}
+.pic .ph b{color:#8b93ad;font-size:11px}
+.tr{display:flex;align-items:center;gap:8px;padding:0 8px;height:48px;background:var(--panel);border-top:1px solid var(--line-soft)}
+.tr .btn{width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);font-size:12px;flex:none}
+.tr .btn.play{background:linear-gradient(180deg,#ffe084,#c98f0e);color:var(--gold-ink);border-color:transparent;font-weight:900}
+.scrub{flex:1;height:6px;border-radius:99px;background:var(--panel-2);position:relative}
+.scrub::before{content:"";position:absolute;left:0;right:0;top:-21px;bottom:-21px}/* 48 px hit area */
+.scrub i{position:absolute;left:0;top:0;bottom:0;width:36%;background:var(--stream);border-radius:99px}
+.scrub b{position:absolute;left:36%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 2px var(--stream)}
+.tr .ro{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--dim);white-space:nowrap}
+.tr .ro b{color:var(--ink);font-weight:600}
+.acts{display:flex;align-items:center;gap:8px;margin-top:8px}
+.acts .a{font-size:11px;font-weight:700;color:var(--dim);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);min-height:36px;display:inline-flex;align-items:center}
+.acts .a.gold{color:var(--gold);border-color:color-mix(in srgb,var(--gold) 40%,var(--line))}
+.acts .fine{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--faint);text-align:right;line-height:1.3}
+
+/* landscape fullscreen (844×390 logical): picture fitted to height → 520×390; pillars 162 each */
+.fs{position:absolute;inset:0;background:#000;display:grid;grid-template-columns:1fr auto 1fr}
+.fs .pil{display:flex;align-items:center;justify-content:center;padding:10px}
+.fs .cplate{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.fs .picfs{height:100%;aspect-ratio:4/3;position:relative;background:#050608}
+.fs .picfs .ph{width:100%;height:100%;border-radius:0;border:0;color:#6b7390;font-size:10px;line-height:1.5;background:repeating-linear-gradient(135deg,#0b0e16 0 10px,#0f131d 10px 20px)}
+.hud{position:absolute;left:0;right:0;bottom:0;height:52px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.72));display:flex;align-items:center;gap:8px;padding:0 10px;opacity:.9}
+.hud .btn{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;background:rgba(255,255,255,.14);color:#fff;font-size:11px;flex:none}
+.hud .scrub{background:rgba(255,255,255,.2)}
+.hud .ro{color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px}
+.fs .x{position:absolute;top:8px;right:10px;color:#fff;font-size:12px;background:rgba(0,0,0,.5);border-radius:8px;padding:4px 8px;z-index:3}
+.fs .gsbig{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:30px;line-height:1}
+
+/* portrait pseudo-fullscreen (iPhone) with the turn hint */
+.pfs{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.pfs .picp{width:100%;aspect-ratio:4/3;position:relative;background:#050608}
+.pfs .picp .ph{width:100%;height:100%;border-radius:0;border:0;color:#6b7390;font-size:10px;line-height:1.5;background:repeating-linear-gradient(135deg,#0b0e16 0 10px,#0f131d 10px 20px)}
+.pfs .band{width:100%;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;color:#fff}
+.hint{position:absolute;left:50%;top:22%;transform:translateX(-50%);background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:12px;padding:10px 16px;font-weight:700;font-size:13px;display:flex;gap:10px;align-items:center;z-index:3}
+</style>
+</head>
+<body>
+
+<div class="note">
+  <span><b>MOCKUP</b> · LIVE tab · mobile (390×844 portrait · 844×390 landscape)</span>
+  <span>spec: docs/LIVE-TAB-SPEC.md §8</span>
+  <span>game art = <b>dashed placeholder boxes</b> labelled with what goes there</span>
+</div>
+
+<div class="frames">
+
+  <!-- ═══ FRAME A — top of LIVE ═══ -->
+  <div class="frame">
+    <div class="cap">A · LIVE tab, top — your match strip + live money</div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="wrap">
+        <header class="bar">
+          <span class="brand"><span class="cab"></span>Retro Receipts</span>
+          <div class="authslot"><span class="chip"><span class="g"></span>14</span><span class="chip coin">🪙 240</span><span class="chip">🔔</span><span class="ph av" style="width:24px;height:24px"></span></div>
+        </header>
+
+        <section class="mast">
+          <div class="ghost mark">ON AIR</div>
+          <div class="mrow"><h1 class="mtitle mark">LIVE</h1><span class="pill live"><span class="dot"></span>LIVE</span></div>
+          <div class="seam"></div>
+          <p class="mdesc">Money on the line, games in progress, results as they land — and the tape of every one.</p>
+        </section>
+
+        <!-- YOUR MATCH strip: 64 px on phones, score stacked between the plates -->
+        <section class="ym">
+          <span class="lab">Your match</span>
+          <div class="you"><span class="ph av" style="width:24px;height:24px"></span><span><div class="nm">Tris</div><div class="sub"><span class="rt">1147</span><span class="badge"></span></div></span></div>
+          <div class="score"><b>2<span style="opacity:.5;font-size:16px">–</span><span class="them">1</span></b><small>GAME 4</small></div>
+          <div class="opp">
+            <div class="col">
+              <div class="l1"><span class="flag"></span><span class="nm">LurKMan</span></div>
+              <div class="aka">a.k.a. Lurk · lurk_mvc</div>
+              <div class="l2"><span class="badge"></span><span class="rt">1180</span><span>YOU <b class="w">3</b>–<b>1</b></span><span class="wr">75%</span></div>
+            </div>
+            <span class="ph av" style="width:24px;height:24px"></span>
+          </div>
+          <span class="st pill live"><span class="dot"></span>In match</span>
+        </section>
+
+        <section class="sec">
+          <h2 class="shead"><span class="ic" style="font-size:13px">🪙</span> Live Money <span class="cnt">2</span></h2>
+          <div class="mc on">
+            <div class="mchd"><span class="lab">🪙 MONEY MATCH · FT3</span><span class="pot">POT 🪙 110</span></div>
+            <div class="mcvs">
+              <span class="pp"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">Duc</span><span class="badge ada"></span></span>
+              <span style="display:flex;align-items:center;gap:6px"><span class="vsm">VS</span><span class="sc">1 – 0</span></span>
+              <span class="pp ra"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">JFRESH</span><span class="badge ada"></span></span>
+            </div>
+            <div class="railp"><div class="rhd"><span>THE RAIL · 2 MATCHED</span><span class="ract">🪙 100 riding · +10 to the pot</span></div><p class="rnote">🔒 Betting closed — the match is on.</p></div>
+          </div>
+          <div class="mc">
+            <div class="mchd"><span class="lab">🪙 MONEY MATCH · FT3</span><span class="pot">POT 🪙 50</span></div>
+            <div class="mcvs">
+              <span class="pp"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">Maddrooo</span><span class="badge gold"></span></span>
+              <span class="sc open">BETS OPEN</span>
+              <span class="pp ra"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">OMEN</span><span class="badge silver"></span></span>
+            </div>
+            <div class="railp">
+              <div class="rhd"><span>THE RAIL · 1 MATCHED</span><span class="ract">🪙 20 riding · +2</span></div>
+              <div class="pickrow"><button class="pick">🎟 Maddrooo<span>🪙 25 waiting</span></button><button class="pick">🎟 OMEN<span></span></button></div>
+            </div>
+          </div>
+          <div class="arcade"><span>🪙 <b>3 quarters</b> up in the arcade</span><span>▸</span></div>
+        </section>
+
+        <section class="sec">
+          <h2 class="shead"><span class="ic on"><i></i></span> Now Playing <span class="cnt">2</span></h2>
+          <div class="panel">
+            <div class="vc mine">
+              <span class="metarail"><span class="mode">RANKED</span><span class="dot"></span><span class="livew">LIVE</span></span>
+              <span class="plate"><span class="pp"><span class="ph av" style="width:24px;height:24px"></span><span><div class="nm">Tris</div><div class="sub"><span class="rt">1147</span><span class="badge"></span></div></span></span><span class="team"><span class="ph chipbox">PL2C</span><span class="ph chipbox">PL2A</span><span class="ph chipbox">PL34</span></span></span>
+              <span class="center"><span class="setscore">2 – 1</span><span class="vsm26">VS</span><span class="state">GAME 4</span></span>
+              <span class="plate r"><span class="pp ra"><span class="ph av" style="width:24px;height:24px"></span><span style="text-align:right"><div class="nm">LurKMan</div><div class="sub" style="justify-content:flex-end"><span class="rt">1180</span><span class="badge"></span></div></span></span><span class="team r"><span class="ph chipbox">PL17</span><span class="ph chipbox">PL34</span><span class="ph chipbox">PL06</span></span></span>
+            </div>
+          </div>
+        </section>
+      </div>
+      <nav class="tabbar"><a class="tab on"><i></i>Live</a><a class="tab"><i></i>Ranks</a><a class="tab"><i></i>Tournament</a><a class="tab"><i></i>Skins</a></nav>
+    </div></div>
+    <div class="annot">Strip = 64 px: you (tag) · stacked score · OpponentPlate (alias, a.k.a., badge+rating, H2H + win-rate). State pill hangs off the bottom edge. No VS, no team chips.</div>
+  </div>
+
+  <!-- ═══ FRAME B — LIVE RESULTS with an expanded row (inline replay) ═══ -->
+  <div class="frame">
+    <div class="cap">B · Live Results — row expanded inline, no route change</div>
+    <div class="phone"><div class="screen"><div class="notch"></div>
+      <div class="wrap" style="padding-top:40px">
+        <section class="sec" style="margin-top:0">
+          <div class="sechd">
+            <h2 class="shead"><span class="ic res"></span> Live Results <span class="cnt">20</span></h2>
+            <div class="scopes"><button class="scope on">⚔ Ranked</button><button class="scope">🎮 Lobby</button><button class="scope">🏆 Tourney</button><button class="scope">🪙 Money</button></div>
+          </div>
+          <div class="panel">
+            <!-- collapsed, ready -->
+            <button class="mb won" aria-expanded="false">
+              <span class="wl w ca">W</span>
+              <span class="side sa"><span class="team"><span class="ph chip34">PL08</span><span class="ph chip34">PL2A</span><span class="ph chip34">PL34</span></span><span><div class="nm won">Psy_Lock</div><div class="sub"><span class="flag"></span><span class="tiern">GOLD</span><span class="rt">1102</span><span class="badge gold"></span></div></span></span>
+              <span class="wl cb">L</span>
+              <span class="side sb"><span class="team"><span class="ph chip34">PL2C</span><span class="ph chip34">PL17</span><span class="ph chip34">PL15</span></span><span><div class="nm">Doomsday</div><div class="sub"><span class="tiern">SILVER</span><span class="rt">1031</span><span class="badge silver"></span></div></span></span>
+              <span class="meta"><span class="r1"><span class="mode">RANKED</span><span class="seal">✓✓</span></span><span class="r2"><span class="delta">+14</span><span>3m</span></span><span class="r2"><span class="tapechip">▶ TAPE</span></span></span>
+            </button>
+
+            <!-- EXPANDED -->
+            <button class="mb open" aria-expanded="true" aria-controls="replay-m2">
+              <span class="wl w ca">W</span>
+              <span class="side sa"><span class="team"><span class="ph chip34">PL2C</span><span class="ph chip34">PL2A</span><span class="ph chip34">PL34</span></span><span><div class="nm won">Tris</div><div class="sub"><span class="flag"></span><span class="tiern">VIBRANIUM</span><span class="rt">1147</span><span class="badge"></span></div></span></span>
+              <span class="wl cb">L</span>
+              <span class="side sb"><span class="team"><span class="ph chip34">PL17</span><span class="ph chip34">PL34</span><span class="ph chip34">PL06</span></span><span><div class="nm">LurKMan</div><div class="sub"><span class="tiern">VIBRANIUM</span><span class="rt">1180</span><span class="badge"></span></div></span></span>
+              <span class="meta"><span class="r1"><span class="mode">RANKED</span><span class="fl">COMEBACK</span></span><span class="r2"><span class="delta">+11</span><span>7m</span></span><span class="r2"><span class="tapechip">▶ TAPE</span></span></span>
+            </button>
+            <section class="xp" id="replay-m2" role="region" aria-label="Replay: Tris vs LurKMan, game 3">
+              <div class="emb">
+                <div class="ctop">
+                  <div class="row1">
+                    <span class="pp"><span class="ph av" style="width:24px;height:24px"></span><span><div class="nm" style="color:var(--gold)">Tris</div><div class="sub"><span class="tiern">VIBRANIUM</span><a href="#" title="nobd.net/ranks"><span class="badge"></span></a></div></span></span>
+                    <span class="gs"><span class="w">2</span><span class="d">–</span><span>1</span></span>
+                    <span class="pp ra"><span class="ph av" style="width:24px;height:24px"></span><span style="text-align:right"><div class="nm">LurKMan</div><div class="sub" style="justify-content:flex-end"><span class="tiern">VIBRANIUM</span><a href="#" title="nobd.net/ranks"><span class="badge"></span></a></div></span></span>
+                  </div>
+                  <div class="mrail"><span class="mode">RANKED</span><span>FT3 · GAME 3</span><span>Sep 2, 21:14</span><span>Stage 13</span><span>1:58</span></div>
+                </div>
+                <div class="pic"><div class="ph"><span><b>640×480 TAPE RENDER</b><br>366 × 275 CSS on a 390 phone<br>WebGPU canvas · the game's own pixels<br>phone source = keyed frames streamed<br>by the server (M-interim) until the<br>wasm emitter runs here</span></div></div>
+                <div class="tr">
+                  <button class="btn play" aria-label="Pause">⏸</button>
+                  <div class="scrub" role="slider" aria-label="Scrub"><i></i><b></b></div>
+                  <span class="ro"><b>0:42</b> / 1:58</span>
+                  <button class="btn" title="Full screen">⛶</button>
+                </div>
+              </div>
+              <div class="acts">
+                <a class="a" href="#" title="THE TAPE">🧾</a>
+                <a class="a" href="#" title="Copy link">⧉</a>
+                <a class="a gold" href="#" title="Save this tape">💾</a>
+                <span class="fine">TAPE 3.2 MB<br>first frame 4.1 s</span>
+              </div>
+            </section>
+
+            <!-- collapsed, pending -->
+            <button class="mb" aria-expanded="false">
+              <span class="wl w ca">W</span>
+              <span class="side sa"><span class="team"><span class="ph chip34">PL15</span><span class="ph chip34">PL1E</span><span class="ph chip34">PL34</span></span><span><div class="nm won">Maddrooo</div><div class="sub"><span class="tiern">GOLD</span><span class="rt">1094</span><span class="badge gold"></span></div></span></span>
+              <span class="wl cb">L</span>
+              <span class="side sb"><span class="team"><span class="ph chip34">PL2C</span><span class="ph chip34">PL17</span><span class="ph chip34">PL06</span></span><span><div class="nm">OMEN</div><div class="sub"><span class="tiern">SILVER</span><span class="rt">1012</span><span class="badge silver"></span></div></span></span>
+              <span class="meta"><span class="r1"><span class="mode">RANKED</span><span class="fl">OCV</span></span><span class="r2"><span class="delta">+9</span><span>just now</span></span><span class="r2"><span class="tapechip pend">⏳</span></span></span>
+            </button>
+          </div>
+        </section>
+      </div>
+      <nav class="tabbar"><a class="tab on"><i></i>Live</a><a class="tab"><i></i>Ranks</a><a class="tab"><i></i>Tournament</a><a class="tab"><i></i>Skins</a></nav>
+    </div></div>
+    <div class="annot">MatchBanner phone fold (MatchBanner.svelte:258-296) unchanged; ▶ TAPE sits in the 76 px meta column. Expanded: chrome-top (2 rows) · 366×275 picture · 48 px transport (36 px buttons, 48 px scrub hit area) · icon actions. Tap the picture = play/pause; double-tap = fullscreen.</div>
+  </div>
+
+  <!-- ═══ FRAME C — landscape fullscreen ═══ -->
+  <div class="frame">
+    <div class="cap">C · Fullscreen, landscape (Fullscreen API + orientation lock; iPhone = pseudo-fullscreen overlay)</div>
+    <div class="phone land"><div class="screen">
+      <div class="fs">
+        <div class="pil"><div class="cplate"><span class="ph av" style="width:34px;height:34px"></span><span><b style="color:var(--gold)">Tris</b><br><span class="tiern">VIBRANIUM</span> <span class="rt">1147</span></span><span class="team"><span class="ph chip34">PL2C</span><span class="ph chip34">PL2A</span><span class="ph chip34">PL34</span></span><span class="gsbig" style="color:var(--gold)">2</span></div></div>
+        <div class="picfs">
+          <div class="ph"><span><b>4:3 PICTURE fitted to height</b><br>520 × 390 on an 844×390 screen<br>pillars 162 px each carry the plates<br>picture unobstructed while playing</span></div>
+          <div class="hud"><span class="btn">⏸</span><div class="scrub"><i></i><b></b></div><span class="ro">0:42 / 1:58</span><span class="btn">⛶</span></div>
+        </div>
+        <div class="pil"><div class="cplate"><span class="ph av" style="width:34px;height:34px"></span><span><b>LurKMan</b><br><span class="tiern">VIBRANIUM</span> <span class="rt">1180</span></span><span class="team r"><span class="ph chip34">PL17</span><span class="ph chip34">PL34</span><span class="ph chip34">PL06</span></span><span class="gsbig">1</span></div></div>
+        <span class="x">✕</span>
+      </div>
+    </div></div>
+    <div class="annot" style="max-width:844px">HUD (transport) overlays the bottom 52 px on a scrim and fades after 2.5 s idle; tap reveals. Exit = ✕, back gesture (pushState), or ⛶. Never rotate/zoom the picture; integer scale where the screen allows, else fit-to-height.</div>
+  </div>
+
+  <!-- ═══ FRAME D — portrait pseudo-fullscreen with the turn hint ═══ -->
+  <div class="frame">
+    <div class="cap">D · Fullscreen entered in portrait (orientation lock unavailable) — the hint, then letterbox</div>
+    <div class="phone"><div class="screen">
+      <div class="pfs">
+        <div class="hint">📱↻ Turn your phone</div>
+        <div class="band"><span class="pp"><span class="ph av" style="width:22px;height:22px"></span><span><div class="nm" style="color:var(--gold)">Tris</div></span></span><span class="gsbig mark" style="font-size:26px"><span style="color:var(--gold)">2</span><span style="opacity:.45"> – </span>1</span><span class="pp ra"><span class="ph av" style="width:22px;height:22px"></span><span><div class="nm">LurKMan</div></span></span></div>
+        <div class="picp"><div class="ph"><span><b>4:3 PICTURE at width</b><br>374 × 280 · letterboxed top/bottom</span></div></div>
+        <div class="band"><span class="hud" style="position:static;height:auto;background:none;padding:0;width:100%;gap:8px"><span class="btn">⏸</span><span class="scrub" style="flex:1"><i></i><b></b></span><span class="ro">0:42 / 1:58</span><span class="btn">⛶</span></span></div>
+        <span class="x" style="position:absolute;top:44px;right:12px;color:#fff;background:rgba(0,0,0,.5);border-radius:8px;padding:4px 8px;font-size:12px">✕</span>
+      </div>
+    </div></div>
+    <div class="annot">Portrait: chrome in the letterbox bands above/below (no HUD over the picture). The hint shows for 2 s when landscape lock fails/unsupported (iOS). Body scroll locked; back exits.</div>
+  </div>
+
+</div>
+</body>
+</html>

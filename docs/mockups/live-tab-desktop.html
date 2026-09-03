@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIVE tab — desktop mockup · Retro Receipts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Barlow+Condensed:ital,wght@1,800;1,900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ── THE ARENA tokens (pwa/src/app.css:6-34, dark) ─────────────────────────────── */
+:root{
+  --bg:#0a0c12;--panel:#12151f;--panel-2:#191d2b;--card:#161a28;--line:#272d3e;--line-soft:#1d2231;
+  --ink:#eef1f8;--dim:#8a91a8;--faint:#5a6178;--gold:#ffb020;--gold-ink:#241700;--gold-soft:rgba(255,176,32,.13);
+  --p1:#ff6a3d;--p1-soft:rgba(255,106,61,.13);--p1-line:rgba(255,106,61,.42);
+  --p2:#3fb1ff;--p2-soft:rgba(63,177,255,.12);--p2-line:rgba(63,177,255,.42);
+  --good:#35d07f;--live:#ff3d68;--molten:#ff5c2c;--stream:#8b6dff;--board:#0d1017;--r:14px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:radial-gradient(120% 90% at 50% -10%,color-mix(in srgb,var(--gold) 8%,transparent),transparent 55%),var(--bg);
+  color:var(--ink);font:14px/1.45 Inter,'Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+}
+h1,h2,h3,p{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:var(--ink);cursor:pointer}
+.mono{font-family:'JetBrains Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.mark{font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900}
+.rail{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;border:1px solid var(--line)}
+.pill.live{color:var(--live);background:color-mix(in srgb,var(--live) 12%,transparent);border-color:color-mix(in srgb,var(--live) 34%,var(--line))}
+.pill.gold{color:var(--gold);background:var(--gold-soft);border-color:color-mix(in srgb,var(--gold) 34%,var(--line))}
+.pill.stream{color:var(--stream);background:color-mix(in srgb,var(--stream) 12%,transparent);border-color:color-mix(in srgb,var(--stream) 34%,var(--line))}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--live);flex:none}
+@media (prefers-reduced-motion:no-preference){.dot{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* mockup scaffolding */
+.note{position:sticky;top:0;z-index:50;background:#1b1500;color:#ffd77a;border-bottom:1px solid #4a3a00;font:12px/1.4 'JetBrains Mono',monospace;padding:6px 14px;display:flex;gap:18px;flex-wrap:wrap}
+.note b{color:#ffb020}
+.ph{background:repeating-linear-gradient(135deg,var(--panel-2) 0 6px,#1e2333 6px 12px);border:1px dashed color-mix(in srgb,var(--faint) 55%,transparent);border-radius:8px;color:var(--faint);font:10px/1.3 'JetBrains Mono',monospace;display:grid;place-items:center;text-align:center;padding:2px;overflow:hidden}
+.ph.av{border-radius:50%;padding:0}
+.annot{color:#ffd77a;font:11px/1.35 'JetBrains Mono',monospace;background:#1b1500;border:1px dashed #6a5200;border-radius:6px;padding:4px 8px;display:inline-block;margin:6px 0}
+.wrap{max-width:1140px;margin:0 auto;padding:8px 18px 60px}
+
+/* ── top bar (TopBar.svelte) ── */
+.bar{display:flex;align-items:center;gap:20px;padding:10px 6px;border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:900;font-size:15px;letter-spacing:-.01em}
+.cab{width:22px;height:22px;background:linear-gradient(135deg,#ffb020,#ff5c2c);clip-path:polygon(6% 0,94% 0,100% 100%,0 100%);border-radius:3px}
+.tabs{display:flex;gap:18px;margin-left:12px}
+.tabs a{font-weight:700;color:var(--dim);padding:6px 2px;position:relative}
+.tabs a.on{color:var(--ink)}
+.tabs a.on::after{content:"";position:absolute;left:0;right:0;bottom:-11px;height:2px;background:var(--gold);transform:skewX(-14deg)}
+.authslot{margin-left:auto;display:flex;align-items:center;gap:10px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:5px 10px;background:var(--panel)}
+.chip .g{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.chip.coin{color:var(--gold)}
+
+/* ── masthead (Masthead.svelte) ── */
+.mast{position:relative;overflow:hidden;padding:14px 4px 10px;margin-bottom:6px}
+.ghost{position:absolute;right:0;top:-6px;font-size:96px;letter-spacing:-.03em;color:var(--ink);opacity:.045;pointer-events:none;text-transform:uppercase}
+.mrow{display:flex;align-items:center;gap:12px}
+.mtitle{font-size:27px;text-transform:uppercase}
+.seam{height:2px;width:130px;margin:8px 0 10px;background:linear-gradient(90deg,var(--live),transparent)}
+.mdesc{max-width:66ch;color:var(--dim);font-size:13.5px}
+
+/* ── section heads (match/+page.svelte .shead) ── */
+.sec{margin-top:18px}
+.sechd{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.shead{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;letter-spacing:.02em}
+.shead .ic{width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center;flex:none}
+.shead .ic.on{background:color-mix(in srgb,var(--good) 20%,transparent)}
+.shead .ic.on i{width:8px;height:8px;border-radius:50%;background:var(--good);display:block}
+.shead .ic.res{width:8px;height:8px;background:var(--live)}
+.cnt{font-size:11px;font-weight:800;color:var(--faint);background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.scopes{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}
+.scope{border:0;background:transparent;color:var(--dim);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;display:inline-flex;gap:5px;align-items:center}
+.scope.on{background:linear-gradient(180deg,#ffe084,#c98f0e);color:var(--gold-ink);font-style:italic}
+
+/* ── PlayerPlate (tag / plate) ── */
+.pp{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.pp.ra{flex-direction:row-reverse;text-align:right}
+.pp .nm{font-weight:700;font-size:14px;white-space:nowrap}
+.pp .nm.won{color:var(--gold)}
+.pp .sub{display:flex;align-items:center;gap:6px;margin-top:1px}
+.pp.ra .sub{justify-content:flex-end}
+.tiern{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.1em;color:var(--dim)}
+.rt{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim)}
+.flag{width:12px;height:9px;border-radius:2px;background:linear-gradient(180deg,#b22 0 33%,#fff 33% 66%,#22b 66%);display:inline-block}
+.badge{width:14px;height:14px;display:inline-block;background:conic-gradient(from 210deg,#b98cff,#6428cf,#b98cff);clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+.badge.gold{background:conic-gradient(from 210deg,#f2c74a,#c98f0e,#f2c74a)}
+.badge.ada{background:conic-gradient(from 210deg,#9fd4ef,#48789e,#9fd4ef)}
+.badge.silver{background:conic-gradient(from 210deg,#cdd7e4,#93a1b6,#cdd7e4)}
+.rk-vibranium{color:#b98cff}.rk-gold{color:#f2c74a}.rk-adamantium{color:#9fd4ef}.rk-silver{color:#cdd7e4}
+
+/* ── YOUR MATCH strip + OpponentPlate ── */
+.ym{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.4fr) auto;align-items:center;gap:14px;height:44px;padding:0 14px;margin-top:10px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(90deg,var(--p1-soft),transparent 30%,transparent 70%,var(--p2-soft)),var(--panel)}
+.ym .lab{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-right:6px}
+.ym .you{display:flex;align-items:center;gap:8px;min-width:0}
+.ym .score{display:flex;align-items:baseline;gap:6px;color:var(--dim);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+.ym .score b{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:24px;letter-spacing:.02em;color:var(--gold);line-height:1}
+.ym .score b.them{color:var(--ink)}
+.ym .score .d{opacity:.5;font-size:16px}
+.opp{display:grid;grid-template-columns:1fr auto;column-gap:10px;align-items:center;min-width:0;justify-self:end}
+.opp .l1{display:flex;align-items:baseline;gap:8px;justify-content:flex-end;white-space:nowrap;min-width:0}
+.opp .l1 .nm{font-weight:700;font-size:14px}
+.opp .aka{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);overflow:hidden;text-overflow:ellipsis}
+.opp .l2{display:flex;align-items:center;gap:8px;justify-content:flex-end;font-size:11px;color:var(--dim);white-space:nowrap}
+.opp .l2 .rec b{color:var(--ink)}
+.opp .l2 .w{color:var(--good)}
+.h2hbar{width:52px;height:5px;border-radius:99px;background:var(--panel-2);overflow:hidden;display:inline-block;vertical-align:middle}
+.h2hbar i{display:block;height:100%;width:75%;background:#4ade80}
+.opp .wr{font-weight:800;color:#4ade80;font-size:11px}
+.ym .state{display:flex;align-items:center;gap:10px}
+.ym .tape{font-size:11px;font-weight:700;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:var(--panel-2)}
+
+/* ── LIVE MONEY — MoneyCard (.rmatch) + RailPanel vocabulary ── */
+.mc{border:1px solid color-mix(in srgb,var(--gold) 26%,var(--line));border-radius:12px;background:linear-gradient(120deg,var(--gold-soft),transparent 75%),var(--panel);padding:11px 13px;margin-bottom:10px}
+.mc.on{border-left:3px solid var(--live)}
+.mchd{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.mchd .lab{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.15em;color:var(--faint)}
+.mchd .pot{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;color:var(--gold);font-weight:700}
+.mcvs{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin:8px 0 6px}
+.mcvs .sc{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:22px;color:var(--live);letter-spacing:.02em}
+.mcvs .sc.open{font-family:'JetBrains Mono',monospace;font-style:normal;font-weight:600;font-size:10px;letter-spacing:.14em;color:var(--good)}
+.mcvs .vsm{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:14px;transform:skewX(-8deg);background:linear-gradient(175deg,#fff3c0 20%,var(--gold) 45%,#a3670a 80%);-webkit-background-clip:text;background-clip:text;color:transparent;margin:0 6px}
+.railp{border-top:1px dashed var(--line);margin-top:8px;padding-top:9px}
+.rhd{display:flex;justify-content:space-between;align-items:baseline;font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.15em;color:var(--faint);margin-bottom:8px}
+.rhd .ract{color:var(--gold)}
+.rnote{font-size:12px;color:var(--dim)}
+.pickrow{display:flex;gap:8px}
+.pick{flex:1;font-size:12.5px;font-weight:800;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 8px;text-align:center}
+.pick span{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);font-weight:400;margin-top:2px;min-height:11px}
+.obhd{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;color:var(--faint);margin:10px 0 6px}
+.ob{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.ob .obw{font-size:12px;color:var(--dim)}.ob .obw b{color:var(--ink)}
+.obbtn{font-size:11.5px;font-weight:800;color:var(--gold-ink);background:linear-gradient(180deg,#ffe084,#c98f0e);border:1px solid transparent;border-radius:999px;padding:6px 12px;white-space:nowrap}
+.arcade{display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border:1px dashed var(--line);border-radius:10px;color:var(--dim);font-size:12.5px;font-weight:600}
+.arcade b{color:var(--gold)}
+
+/* ── VersusCard ── */
+.vc{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;background:var(--panel);border-bottom:1px solid var(--line);padding:26px 16px 12px}
+.vc:last-child{border-bottom:0}
+.vc.mine{box-shadow:0 0 0 1.5px var(--gold) inset;background:linear-gradient(90deg,color-mix(in srgb,var(--gold) 7%,transparent),transparent 45%),var(--panel)}
+.metarail{position:absolute;top:8px;right:12px;display:flex;gap:8px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--faint)}
+.mode{font-size:8.5px;letter-spacing:.12em;padding:1px 6px;border-radius:5px;border:1px solid var(--line);color:var(--dim)}
+.mode.money{border-color:color-mix(in srgb,var(--gold) 55%,var(--line));color:var(--gold)}
+.livew{color:var(--live);letter-spacing:.12em}
+.spec{font-size:9px;letter-spacing:.1em;color:var(--stream);border:1px solid color-mix(in srgb,var(--stream) 45%,var(--line));border-radius:6px;padding:2px 8px}
+.plate{display:flex;flex-direction:column;gap:7px;min-width:0}
+.plate.r{align-items:flex-end}
+.team{display:flex;align-items:flex-end;gap:3px}
+.team.r{flex-direction:row-reverse}
+.chipbox{width:48px;height:48px}
+.center{text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
+.setscore{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:24px;letter-spacing:.02em;color:var(--gold);line-height:1}
+.vsm26{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:15px;letter-spacing:-.03em;transform:skewX(-8deg);background:linear-gradient(175deg,#fff3c0 20%,var(--gold) 45%,#a3670a 80%);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.state{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.18em;color:var(--dim);margin-top:2px}
+.sil{width:40px;height:40px;border:1.5px dashed var(--line);border-radius:8px}
+
+/* ── MatchBanner row (+ replay affordance) ── */
+.mb{display:grid;grid-template-columns:24px minmax(0,1fr) 40px minmax(0,1fr) 24px 128px;align-items:center;gap:9px;width:100%;background:var(--panel);border:0;border-bottom:1px solid var(--line-soft);border-left:3px solid var(--line);padding:9px 12px;text-align:left}
+.mb:last-child{border-bottom:0}
+.mb.won{border-left-color:var(--good);background:linear-gradient(90deg,color-mix(in srgb,var(--good) 8%,transparent),transparent 45%),var(--panel)}
+.mb.open{border-left-color:var(--stream);background:linear-gradient(90deg,color-mix(in srgb,var(--stream) 9%,transparent),transparent 45%),var(--panel);border-bottom:0}
+.wl{display:grid;place-items:center;width:22px;height:22px;border-radius:5px;font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:13px;border:1.5px solid var(--line);color:var(--dim)}
+.wl.w{background:var(--good);border-color:var(--good);color:#06281a}
+.side{display:flex;align-items:center;gap:9px;min-width:0}
+.side.r{flex-direction:row-reverse}
+.vs14{justify-self:center;font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:14px;transform:skewX(-8deg);background:linear-gradient(175deg,#fff3c0 20%,var(--gold) 45%,#a3670a 80%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--faint)}
+.meta .r1,.meta .r2{display:flex;gap:6px;align-items:center}
+.fl{font-size:8px;letter-spacing:.1em;padding:1px 6px;border-radius:4px;border:1px solid color-mix(in srgb,var(--molten) 45%,var(--line));color:var(--molten)}
+.seal{color:var(--gold)}
+.delta{color:var(--good);font-weight:600}
+.tapechip{font-size:8.5px;letter-spacing:.12em;padding:1px 6px;border-radius:5px;border:1px solid color-mix(in srgb,var(--stream) 45%,var(--line));color:var(--stream);font-weight:600}
+.tapechip.pend{color:var(--faint);border-color:var(--line)}
+
+/* ── ReplayEmbed ── */
+.xp{background:var(--panel);border-bottom:1px solid var(--line);padding:0 12px 12px 15px}
+.emb{border:1px solid color-mix(in srgb,var(--stream) 30%,var(--line));border-radius:12px;overflow:hidden;background:var(--board)}
+.ctop{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line-soft);min-height:56px}
+.ctop .cplate{display:flex;align-items:center;gap:10px;min-width:0}
+.ctop .cplate.r{flex-direction:row-reverse;text-align:right}
+.ctop .mid{text-align:center}
+.ctop .gs{font-family:'Barlow Condensed';font-style:italic;font-weight:900;font-size:26px;line-height:1;letter-spacing:.02em}
+.ctop .gs .w{color:var(--gold)}.ctop .gs .d{opacity:.45;margin:0 4px}
+.ctop .mrail{display:flex;gap:8px;justify-content:center;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--faint);margin-top:3px}
+.pic{position:relative;width:100%;aspect-ratio:4/3;background:#000;display:grid;place-items:center}
+.pic .ph{width:100%;height:100%;border-radius:0;border:0;font-size:12px;line-height:1.6;color:#6b7390;background:repeating-linear-gradient(135deg,#0b0e16 0 10px,#0f131d 10px 20px)}
+.pic .ph b{color:#8b93ad;font-size:13px}
+.pic .safe{position:absolute;inset:0;border:1px dashed rgba(139,109,255,.25);pointer-events:none}
+.tr{display:flex;align-items:center;gap:10px;padding:0 12px;height:44px;background:var(--panel);border-top:1px solid var(--line-soft)}
+.tr .btn{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);font-size:12px;color:var(--ink)}
+.tr .btn.play{background:linear-gradient(180deg,#ffe084,#c98f0e);color:var(--gold-ink);border-color:transparent;font-weight:900}
+.scrub{flex:1;height:6px;border-radius:99px;background:var(--panel-2);position:relative}
+.scrub i{position:absolute;left:0;top:0;bottom:0;width:36%;background:var(--stream);border-radius:99px}
+.scrub b{position:absolute;left:36%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 2px var(--stream)}
+.scrub .tick{position:absolute;top:-4px;width:1px;height:14px;background:color-mix(in srgb,var(--live) 70%,transparent)}
+.tr .ro{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);white-space:nowrap}
+.tr .ro b{color:var(--ink);font-weight:600}
+.tr .spd{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:4px 7px;background:var(--panel-2)}
+.acts{display:flex;align-items:center;gap:10px;margin-top:10px}
+.acts .a{font-size:11.5px;font-weight:700;letter-spacing:.04em;color:var(--dim);padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2)}
+.acts .a.gold{color:var(--gold);border-color:color-mix(in srgb,var(--gold) 40%,var(--line))}
+.acts .fine{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--faint);letter-spacing:.06em}
+
+/* pager */
+.pager{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:12px}
+.pg{font-size:12px;font-weight:700;color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 14px}
+.dots{display:flex;gap:8px}.dots i{width:8px;height:8px;border-radius:50%;background:var(--line);display:block}
+.dots i.on{background:linear-gradient(180deg,#ffe084,#c98f0e);transform:scale(1.25)}
+
+/* ── state sheet ── */
+.sheet{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px}
+.st{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--board)}
+.st .lbl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--faint);padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line-soft)}
+.st .pic{aspect-ratio:4/3}
+.st .pic .ph{opacity:.4}
+.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:14px}
+.ov .h{font-weight:800;font-size:14px}
+.ov .s{font-size:11.5px;color:var(--dim);max-width:26ch}
+.ov .big{font-size:26px;line-height:1}
+.lbar{width:80%;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.lbar div{height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden;position:relative}
+.lbar div i{position:absolute;left:0;top:0;bottom:0;background:var(--stream)}
+.lbar small{grid-column:1/3;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--dim);letter-spacing:.06em;display:flex;justify-content:space-between}
+.st .trm{display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--panel);border-top:1px solid var(--line-soft)}
+.st .trm .a{font-size:10.5px;font-weight:700;color:var(--dim);padding:4px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel-2)}
+.st .trm .a.off{opacity:.4}
+
+/* fullscreen thumbnail */
+.fsth{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;position:relative;display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch}
+.fsth .pil{display:flex;align-items:center;justify-content:center;padding:18px}
+.fsth .pil .cplate{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.fsth .pil.r .cplate{align-items:center}
+.fsth .picfs{aspect-ratio:4/3;height:100%;position:relative;background:#050608}
+.fsth .picfs .ph{width:100%;height:100%;border-radius:0;border:0;color:#6b7390;background:repeating-linear-gradient(135deg,#0b0e16 0 10px,#0f131d 10px 20px)}
+.hud{position:absolute;left:0;right:0;bottom:0;height:56px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.7));display:flex;align-items:center;gap:10px;padding:0 14px;opacity:.85}
+.hud .btn{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;background:rgba(255,255,255,.12);color:#fff;font-size:11px}
+.hud .scrub{background:rgba(255,255,255,.18)}
+.fsth .x{position:absolute;top:10px;right:12px;color:#fff;font-size:13px;background:rgba(0,0,0,.5);border-radius:8px;padding:4px 8px}
+</style>
+</head>
+<body>
+
+<div class="note">
+  <span><b>MOCKUP</b> · LIVE tab · desktop (1280 viewport, 1140 wrap)</span>
+  <span>spec: docs/LIVE-TAB-SPEC.md</span>
+  <span>game art = <b>dashed placeholder boxes</b> labelled with what goes there — never approximated</span>
+  <span>fonts: Inter · Barlow Condensed (marks) · JetBrains Mono (record voice)</span>
+</div>
+
+<div class="wrap">
+
+  <!-- ═══ TOP BAR (TopBar.svelte) — only the nav label changes: Match → Live ═══ -->
+  <header class="bar">
+    <a class="brand" href="#"><span class="cab"></span>Retro Receipts</a>
+    <nav class="tabs"><a class="on" href="#">Live</a><a href="#">Ranks</a><a href="#">Tournament</a><a href="#">Skins</a></nav>
+    <div class="authslot">
+      <span class="chip"><span class="g"></span>14 online</span>
+      <span class="chip coin">🪙 240</span>
+      <span class="chip">🔔</span>
+      <span class="ph av" style="width:26px;height:26px">av</span>
+    </div>
+  </header>
+
+  <!-- ═══ MASTHEAD ═══ -->
+  <section class="mast">
+    <div class="ghost mark" aria-hidden="true">ON AIR</div>
+    <div class="mrow">
+      <h1 class="mtitle mark">LIVE</h1>
+      <span class="pill live"><span class="dot"></span>LIVE</span>
+    </div>
+    <div class="seam"></div>
+    <p class="mdesc">Money on the line, games in progress, results as they land — and the tape of every one.</p>
+  </section>
+
+  <!-- ═══ YOUR MATCH strip — replaces MyMatch's big VS (MyMatch.svelte:147,168) ═══ -->
+  <section class="ym" aria-label="Your current match">
+    <div class="you">
+      <span class="lab">Your match</span>
+      <span class="ph av" style="width:20px;height:20px"></span>
+      <span class="pp"><span class="nm">Tris</span><span class="rt">1147</span><span class="badge"></span></span>
+    </div>
+    <div class="score"><span>set</span><b>2</b><span class="d">–</span><b class="them">1</b><span style="margin-left:6px">game 4</span></div>
+    <div class="opp">
+      <div>
+        <div class="l1"><span class="flag"></span><span class="nm">LurKMan</span><span class="aka">a.k.a. Lurk · lurk_mvc</span></div>
+        <div class="l2">
+          <span class="badge"></span><span class="tiern rk-vibranium">VIBRANIUM</span><span class="rt">1180</span>
+          <span class="rec">YOU <b class="w">3</b>–<b>1</b> THEM</span>
+          <span class="h2hbar"><i></i></span><span class="wr">75%</span>
+        </div>
+      </div>
+      <span class="ph av" style="width:28px;height:28px"></span>
+    </div>
+    <div class="state">
+      <span class="pill live"><span class="dot"></span>In match</span>
+      <a class="tape" href="#">THE TAPE ›</a>
+    </div>
+  </section>
+  <div class="annot">OpponentPlate: alias = feed name map (MyMatch.svelte:86) · a.k.a. = /rr/profile aliases (:87) · H2H = /rr/matchup h2h (:121-122) · win-rate = w/(w+l), winrateColor() · no team chips, no intel strip, no big VS</div>
+
+  <!-- ═══ LIVE MONEY ═══ -->
+  <section class="sec">
+    <h2 class="shead"><span class="ic" style="font-size:14px">🪙</span> Live Money <span class="cnt">2</span></h2>
+
+    <!-- MoneyCard: locked + in game, betting closed -->
+    <div class="mc on">
+      <div class="mchd"><span class="lab">🪙 MONEY MATCH · FT3</span><span class="pot">POT 🪙 110</span></div>
+      <div class="mcvs">
+        <span class="pp"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">Duc</span><span class="rt">1288</span><span class="badge ada"></span></span>
+        <span style="display:flex;align-items:center"><span class="vsm">VS</span><span class="sc">1 – 0</span><span class="vsm" style="visibility:hidden">VS</span></span>
+        <span class="pp ra"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">JFRESH</span><span class="rt">1201</span><span class="badge ada"></span></span>
+      </div>
+      <div class="railp">
+        <div class="rhd"><span>THE RAIL · 2 BETS MATCHED</span><span class="ract">🪙 100 riding · +10 to the pot</span></div>
+        <p class="rnote">🔒 Betting closed — the match is on.</p>
+      </div>
+    </div>
+
+    <!-- MoneyCard: locked, not fighting yet, bets open -->
+    <div class="mc">
+      <div class="mchd"><span class="lab">🪙 MONEY MATCH · FT3</span><span class="pot">POT 🪙 50</span></div>
+      <div class="mcvs">
+        <span class="pp"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">Maddrooo</span><span class="rt">1094</span><span class="badge gold"></span></span>
+        <span style="display:flex;align-items:center;gap:8px"><span class="vsm">VS</span><span class="sc open">BETS OPEN</span></span>
+        <span class="pp ra"><span class="ph av" style="width:20px;height:20px"></span><span class="nm">OMEN</span><span class="rt">1012</span><span class="badge silver"></span></span>
+      </div>
+      <div class="railp">
+        <div class="rhd"><span>THE RAIL · 1 BET MATCHED</span><span class="ract">🪙 20 riding · +2 to the pot</span></div>
+        <div class="pickrow">
+          <button class="pick">🎟 Bet on Maddrooo<span>🪙 25 waiting</span></button>
+          <button class="pick">🎟 Bet on OMEN<span></span></button>
+        </div>
+        <div class="obhd">WAITING FOR THE OTHER SIDE</div>
+        <div class="ob"><span class="obw"><b>KrispyK</b> bet 🪙 25 on <b>Maddrooo</b></span><button class="obbtn">Bet 25 on OMEN</button></div>
+      </div>
+    </div>
+
+    <div class="arcade"><span>🪙 <b>3 quarters</b> up in the arcade — open challenges for coins</span><span>▸</span></div>
+    <div class="annot">Every number on a MoneyCard is a rail.rs field (pot, cw/aw, live, betting_open, rail.matched/riding/pot_feed). Absent field = line omitted. RailPanel.svelte inside, unchanged. The arcade (Marquee) folds into the disclosure row — open question Q1.</div>
+  </section>
+
+  <!-- ═══ NOW PLAYING (VersusCard, unchanged) ═══ -->
+  <section class="sec">
+    <h2 class="shead"><span class="ic on"><i></i></span> Now Playing <span class="cnt">2</span></h2>
+    <div class="panel">
+      <div class="vc mine">
+        <span class="metarail"><span class="mode">RANKED</span><span class="dot"></span><span class="livew">LIVE</span></span>
+        <span class="plate">
+          <span class="pp"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">Tris</span><span class="sub"><span class="tiern rk-vibranium">VIBRANIUM</span><span class="rt">1147</span><span class="badge"></span></span></span></span>
+          <span class="team"><span class="ph chipbox">PL2C<br>Mag</span><span class="ph chipbox">PL2A<br>Storm</span><span class="ph chipbox">PL34<br>Sent</span></span>
+        </span>
+        <span class="center"><span class="setscore">2 – 1</span><span class="vsm26">VS</span><span class="state">GAME 4</span></span>
+        <span class="plate r">
+          <span class="pp ra"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">LurKMan</span><span class="sub"><span class="tiern rk-vibranium">VIBRANIUM</span><span class="rt">1180</span><span class="badge"></span></span></span></span>
+          <span class="team r"><span class="ph chipbox">PL17<br>Cable</span><span class="ph chipbox">PL34<br>Sent</span><span class="ph chipbox">PL06<br>Cyc</span></span>
+        </span>
+      </div>
+      <div class="vc">
+        <span class="metarail"><span class="mode money">🪙 MONEY</span><span class="dot"></span><span class="livew">LIVE</span><a class="spec" href="#">▶ SPECTATE</a></span>
+        <span class="plate">
+          <span class="pp"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">Duc</span><span class="sub"><span class="tiern rk-adamantium">ADAMANTIUM</span><span class="rt">1288</span><span class="badge ada"></span></span></span></span>
+          <span class="team"><span class="sil"></span><span class="sil"></span><span class="sil"></span></span>
+        </span>
+        <span class="center"><span class="vsm26" style="font-size:26px">VS</span><span class="state">CHARACTER SELECT</span></span>
+        <span class="plate r">
+          <span class="pp ra"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">JFRESH</span><span class="sub"><span class="tiern rk-adamantium">ADAMANTIUM</span><span class="rt">1201</span><span class="badge ada"></span></span></span></span>
+          <span class="team r"><span class="sil"></span><span class="sil"></span><span class="sil"></span></span>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ LIVE RESULTS — MatchBanner rows, one expanded into the ReplayEmbed ═══ -->
+  <section class="sec">
+    <div class="sechd">
+      <h2 class="shead"><span class="ic res"></span> Live Results <span class="cnt">20</span></h2>
+      <div class="scopes"><button class="scope on">⚔ Ranked</button><button class="scope">🎮 Lobby</button><button class="scope">🏆 Tournament</button><button class="scope">🪙 Money</button></div>
+    </div>
+    <div class="panel">
+
+      <!-- row 1: collapsed, tape ready -->
+      <button class="mb won" aria-expanded="false">
+        <span class="wl w">W</span>
+        <span class="side"><span class="team"><span class="ph chipbox">PL08</span><span class="ph chipbox">PL2A</span><span class="ph chipbox">PL34</span></span>
+          <span class="pp"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm won">Psy_Lock</span><span class="sub"><span class="flag"></span><span class="tiern">GOLD</span><span class="rt">1102</span><span class="badge gold"></span></span></span></span></span>
+        <span class="vs14">VS</span>
+        <span class="side r"><span class="team r"><span class="ph chipbox">PL2C</span><span class="ph chipbox">PL17</span><span class="ph chipbox">PL15</span></span>
+          <span class="pp ra"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">Doomsday</span><span class="sub"><span class="tiern">SILVER</span><span class="rt">1031</span><span class="badge silver"></span></span></span></span></span>
+        <span class="wl">L</span>
+        <span class="meta"><span class="r1"><span class="mode">RANKED</span><span class="seal">✓✓</span></span><span class="r2"><span class="delta">+14</span><span>2:06</span><span>3m</span><span class="tapechip">▶ TAPE</span></span></span>
+      </button>
+
+      <!-- row 2: EXPANDED → ReplayEmbed -->
+      <button class="mb open" aria-expanded="true" aria-controls="replay-2">
+        <span class="wl w">W</span>
+        <span class="side"><span class="team"><span class="ph chipbox">PL2C</span><span class="ph chipbox">PL2A</span><span class="ph chipbox">PL34</span></span>
+          <span class="pp"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm won">Tris</span><span class="sub"><span class="flag"></span><span class="tiern">VIBRANIUM</span><span class="rt">1147</span><span class="badge"></span></span></span></span></span>
+        <span class="vs14">VS</span>
+        <span class="side r"><span class="team r"><span class="ph chipbox">PL17</span><span class="ph chipbox">PL34</span><span class="ph chipbox">PL06</span></span>
+          <span class="pp ra"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">LurKMan</span><span class="sub"><span class="tiern">VIBRANIUM</span><span class="rt">1180</span><span class="badge"></span></span></span></span></span>
+        <span class="wl">L</span>
+        <span class="meta"><span class="r1"><span class="mode">RANKED</span><span class="fl">COMEBACK</span><span class="seal">✓✓</span></span><span class="r2"><span class="delta">+11</span><span>1:58</span><span>7m</span><span class="tapechip">▶ TAPE</span></span></span>
+      </button>
+      <section class="xp" id="replay-2" role="region" aria-label="Replay: Tris vs LurKMan, game 3">
+        <div class="emb">
+          <!-- chrome-top: the tale of the tape (server-resolved meta; skins = each owner's loadout) -->
+          <div class="ctop">
+            <div class="cplate">
+              <span class="ph av" style="width:28px;height:28px"></span>
+              <span><span class="nm" style="font-weight:700;color:var(--gold)">Tris</span><span class="sub"><span class="flag"></span><span class="tiern">VIBRANIUM</span><span class="rt">1147</span><a href="#" title="Marvel ladder — nobd.net/ranks"><span class="badge"></span></a></span></span>
+              <span class="team"><span class="ph chipbox">PL2C<br>own skin</span><span class="ph chipbox">PL2A<br>own skin</span><span class="ph chipbox">PL34</span></span>
+            </div>
+            <div class="mid">
+              <div class="gs"><span class="w">2</span><span class="d">–</span><span>1</span></div>
+              <div class="mrail"><span class="mode">RANKED</span><span>FT3 · GAME 3</span><span>2026-09-02 21:14</span><span>Stage 13</span><span>1:58</span></div>
+            </div>
+            <div class="cplate r">
+              <span class="ph av" style="width:28px;height:28px"></span>
+              <span style="text-align:right"><span class="nm" style="font-weight:700">LurKMan</span><span class="sub" style="justify-content:flex-end"><span class="tiern">VIBRANIUM</span><span class="rt">1180</span><a href="#" title="Marvel ladder — nobd.net/ranks"><span class="badge"></span></a></span></span>
+              <span class="team r"><span class="ph chipbox">PL17<br>own skin</span><span class="ph chipbox">PL34</span><span class="ph chipbox">PL06</span></span>
+            </div>
+          </div>
+          <!-- the picture: 4:3, the game's own pixels; nothing overlays it while playing -->
+          <div class="pic">
+            <div class="ph"><span><b>640×480 TAPE RENDER</b><br>WebGPU canvas · backing 1280×960 (the RT already renders at 2×) · image-rendering: pixelated<br>every frame re-rendered from the match tape in a Web Worker (wasm emitter) — this is not a video<br>fighters wear each owner's cloud skin (GET /rr/loadout) · stage, HUD, effects = the game's real assets<br><br>CSS box here = 1104 × 828 (wrap width, ≈1.73×) · capped at 1280 × 960 (2×)</span></div>
+            <div class="safe"></div>
+          </div>
+          <!-- transport -->
+          <div class="tr">
+            <button class="btn play" aria-label="Pause">⏸</button>
+            <button class="btn" title="−5 s">«5</button>
+            <div class="scrub" role="slider" aria-label="Scrub" aria-valuemin="0" aria-valuemax="7100" aria-valuenow="2520"><i></i><b></b><span class="tick" style="left:22%"></span><span class="tick" style="left:61%"></span></div>
+            <button class="btn" title="+5 s">5»</button>
+            <span class="ro"><b>0:42</b> / 1:58</span>
+            <span class="spd" title="speed">1×</span>
+            <button class="btn" title="Full screen (F)">⛶</button>
+          </div>
+        </div>
+        <div class="acts">
+          <a class="a" href="#">THE TAPE ›</a>
+          <a class="a" href="#">⧉ Copy link</a>
+          <a class="a gold" href="#">Save this tape</a>
+          <span class="fine">TAPE 3.2 MB · PACK 22 MB (cached 18 MB) · first frame in 3.4 s</span>
+        </div>
+      </section>
+
+      <!-- row 3: collapsed, tape pending -->
+      <button class="mb" aria-expanded="false">
+        <span class="wl w">W</span>
+        <span class="side"><span class="team"><span class="ph chipbox">PL15</span><span class="ph chipbox">PL1E</span><span class="ph chipbox">PL34</span></span>
+          <span class="pp"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm won">Maddrooo</span><span class="sub"><span class="tiern">GOLD</span><span class="rt">1094</span><span class="badge gold"></span></span></span></span></span>
+        <span class="vs14">VS</span>
+        <span class="side r"><span class="team r"><span class="ph chipbox">PL2C</span><span class="ph chipbox">PL17</span><span class="ph chipbox">PL06</span></span>
+          <span class="pp ra"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">OMEN</span><span class="sub"><span class="tiern">SILVER</span><span class="rt">1012</span><span class="badge silver"></span></span></span></span></span>
+        <span class="wl">L</span>
+        <span class="meta"><span class="r1"><span class="mode">RANKED</span><span class="fl">OCV</span><span class="seal">✓</span></span><span class="r2"><span class="delta">+9</span><span>1:21</span><span>just now</span><span class="tapechip pend">⏳</span></span></span>
+      </button>
+
+      <!-- row 4: collapsed, no tape -->
+      <button class="mb" aria-expanded="false">
+        <span class="wl w">W</span>
+        <span class="side"><span class="team"><span class="ph chipbox">PL17</span><span class="ph chipbox">PL34</span><span class="ph chipbox">PL06</span></span>
+          <span class="pp"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm won">KrispyK</span><span class="sub"><span class="tiern">GOLD</span><span class="rt">1077</span><span class="badge gold"></span></span></span></span></span>
+        <span class="vs14">VS</span>
+        <span class="side r"><span class="team r"><span class="ph chipbox">PL08</span><span class="ph chipbox">PL2A</span><span class="ph chipbox">PL15</span></span>
+          <span class="pp ra"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">Psy_Lock</span><span class="sub"><span class="tiern">GOLD</span><span class="rt">1102</span><span class="badge gold"></span></span></span></span></span>
+        <span class="wl">L</span>
+        <span class="meta"><span class="r1"><span class="mode">RANKED</span></span><span class="r2"><span class="delta">+12</span><span>2:40</span><span>18m</span><span style="color:var(--faint)">—</span></span></span>
+      </button>
+
+      <!-- row 5: collapsed, tape ready -->
+      <button class="mb" aria-expanded="false">
+        <span class="wl w">W</span>
+        <span class="side"><span class="team"><span class="ph chipbox">PL2C</span><span class="ph chipbox">PL17</span><span class="ph chipbox">PL15</span></span>
+          <span class="pp"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm won">Doomsday</span><span class="sub"><span class="tiern">SILVER</span><span class="rt">1031</span><span class="badge silver"></span></span></span></span></span>
+        <span class="vs14">VS</span>
+        <span class="side r"><span class="team r"><span class="ph chipbox">PL34</span><span class="ph chipbox">PL06</span><span class="ph chipbox">PL2A</span></span>
+          <span class="pp ra"><span class="ph av" style="width:28px;height:28px"></span><span><span class="nm">JFRESH</span><span class="sub"><span class="tiern">ADAMANTIUM</span><span class="rt">1201</span><span class="badge ada"></span></span></span></span></span>
+        <span class="wl">L</span>
+        <span class="meta"><span class="r1"><span class="mode">RANKED</span><span class="fl">PERFECT</span><span class="seal">✓✓</span></span><span class="r2"><span class="delta">+22</span><span>1:44</span><span>31m</span><span class="tapechip">▶ TAPE</span></span></span>
+      </button>
+    </div>
+
+    <nav class="pager"><span class="pg" style="opacity:.4">‹ Prev</span><div class="dots"><i class="on"></i><i></i><i></i><i></i></div><span class="pg">Next ›</span></nav>
+    <div class="annot">Row = MatchBanner unchanged (zones, W/L two-channel chips, gold winner, 48 px skinned sprites). Meta rail: ▶ TAPE (--stream) / ⏳ / — replaces the › chevron. Tap = expand in place; one row open at a time; expanded edge = --stream. Actions row carries THE TAPE › (SessionModal) so commandment 5 holds.</div>
+  </section>
+
+  <!-- ═══ STATE SHEET — the embed's other states ═══ -->
+  <section class="sec">
+    <h2 class="shead">ReplayEmbed states <span class="cnt">4 + fullscreen</span></h2>
+    <div class="sheet">
+      <div class="st">
+        <div class="lbl">LOADING (0 → ~12 s cold, ≤ 4 s warm)</div>
+        <div class="pic"><div class="ph"><span>POSTER: fight card<br>/rr/ogimg/&lt;session&gt;.png<br>letterboxed on --board<br>(interim; tape still = C7)</span></div>
+          <div class="ov"><span class="rail" style="color:var(--dim)">Loading the tape</span>
+            <div class="lbar"><div><i style="width:100%"></i></div><div><i style="width:38%"></i></div><small><span>PACK cached</span><span>TAPE 1.2 / 3.2 MB</span></small></div>
+          </div></div>
+        <div class="trm"><span class="a off">▶</span><span class="a off">⛶</span><span class="a" style="margin-left:auto">THE TAPE ›</span></div>
+      </div>
+      <div class="st">
+        <div class="lbl">PENDING</div>
+        <div class="pic"><div class="ph"><span>POSTER dimmed</span></div>
+          <div class="ov"><span class="big">⏳</span><span class="h">Tape not in yet.</span><span class="s">The agent uploads it after the set — check back in a minute.</span></div></div>
+        <div class="trm"><span class="a" style="margin-left:auto">THE TAPE ›</span></div>
+      </div>
+      <div class="st">
+        <div class="lbl">EXPIRED (outside the last 100)</div>
+        <div class="pic"><div class="ph" style="opacity:.15"><span>--board ground</span></div>
+          <div class="ov"><span class="mode">RANKED</span><span class="h">Tape gone.</span><span class="s">Only the last 100 live results keep a replay.</span></div></div>
+        <div class="trm"><span class="a">THE TAPE ›</span><span class="a off" style="margin-left:auto" title="too late for this one">Save this tape</span></div>
+      </div>
+      <div class="st">
+        <div class="lbl">UNSUPPORTED (no WebGPU)</div>
+        <div class="pic"><div class="ph"><span>POSTER</span></div>
+          <div class="ov"><span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span></div></div>
+        <div class="trm"><span class="a">THE TAPE ›</span><span class="a">⧉ Copy link</span></div>
+      </div>
+    </div>
+
+    <!-- fullscreen thumbnail (1920×1080 logical → 2× picture 1280×960, pillar bands 320 each) -->
+    <div class="fsth" aria-label="Fullscreen on a 16:9 desktop screen">
+      <div class="pil">
+        <div class="cplate"><span class="ph av" style="width:40px;height:40px"></span><span><b>Tris</b><br><span class="tiern">VIBRANIUM</span> <span class="rt">1147</span></span><span class="team"><span class="ph chipbox">PL2C</span><span class="ph chipbox">PL2A</span><span class="ph chipbox">PL34</span></span><span class="gs mark" style="font-size:28px;color:var(--gold)">2</span></div>
+      </div>
+      <div class="picfs">
+        <div class="ph"><span><b>4:3 PICTURE at integer 2× (1280×960)</b><br>centered · pillarboxed on #000 · unobstructed while playing</span></div>
+        <div class="hud"><span class="btn">⏸</span><div class="scrub"><i></i><b></b></div><span class="ro" style="color:#fff">0:42 / 1:58</span><span class="btn">⛶</span></div>
+      </div>
+      <div class="pil r">
+        <div class="cplate"><span class="ph av" style="width:40px;height:40px"></span><span><b>LurKMan</b><br><span class="tiern">VIBRANIUM</span> <span class="rt">1180</span></span><span class="team r"><span class="ph chipbox">PL17</span><span class="ph chipbox">PL34</span><span class="ph chipbox">PL06</span></span><span class="gs mark" style="font-size:28px;color:var(--ink)">1</span></div>
+      </div>
+      <span class="x">✕ Esc</span>
+    </div>
+    <div class="annot">Fullscreen: plates live in the pillar bands; the transport HUD overlays the bottom 56 px on a 60% scrim and fades after 2.5 s idle. Nothing is ever drawn into the 640×480 picture. Exit: Esc · ✕ · ⛶.</div>
+  </section>
+
+</div>
+</body>
+</html>
