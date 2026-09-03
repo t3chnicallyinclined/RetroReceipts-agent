@@ -100,6 +100,10 @@ const BLK_BACK:    usize = 0x3f24;    // array base − BLK_BACK = blk
 const CAM_EYE_OFF: usize = 0x6914;    // blk-relative: f32 eyeX, +4 = eyeY (blk+0x6918)
 const CAM_WIN:     usize = 0x88;      // one read covers eyeX..ground
 const CAM_GROUND_REL: usize = 0x6998 - 0x6914; // ground f32 (usually 433.4000244) within that window
+const CAMX_OFF:     usize = 0x6908;    // 0.3.39: camera state u32 (0 = fight camera, 1 = scripted keyframes)
+const CAMX_WIN:     usize = 0x94;      //   ..0x699C: look-at @+0x54, fov @+0x6C, y-off @+0x80, roll u16 @+0x84
+const DECK_COL_OFF: usize = 0x6CA8;    // 0.3.39: 3 f32 -- the stage deck (POL model 0) vertex-colour multiplier
+const BLACKOUT_OFF: usize = 0x3D50;    // 0.3.39: u8 (G+0x98) -- != 0 skips the deck draw (FUN_140620960)
 // REMOVED: OFF_ACTION 0x76c and OFF_COMBO_RECV 0x902. Both are >0x5CC, i.e. the NEXT character's
 // fields (0x76c → char i+1's +0x600 region; 0x902 → char i+1's combo-dealt). There is no known
 // correct Steam analogue for either; do NOT re-add one without a live proof.
@@ -1193,7 +1197,7 @@ fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
 // screen_x = 320 + (world_x − eyeX), screen_y = ground − world_y, exact to sub-pixel on drawn objects.
 // ⚠ consumers gating on that camera identity: use a ~8px threshold, NOT tight — real frames sit 0.0–0.7px
 // off, stale ones 215px+ (a 0.5px cut silently dropped 80% of a character's frames in testing).
-const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],drawn[6],sid[6],atimer[6],eyeX,eyeY,ground,seat_in[2],sx[6],sy[6],zx[6],zy[6],flash[6],glow[6],layer[6],timer,p2_meter_fill,round_no,zoom]";   // 0.3.37: +zoom (blk+0x691C, the render camera z = scene CB focal)
+const GS_SCHEMA: &str = "[frame,p1_in,p2_in,kcode,hp[6],px[6],py[6],p1_meter,p2_meter,meter_fill,combo_dealt[6],combo_recv[6],vx[6],vy[6],red_hp[6],facing[6],hitstun[6],drawn[6],sid[6],atimer[6],eyeX,eyeY,ground,seat_in[2],sx[6],sy[6],zx[6],zy[6],flash[6],glow[6],layer[6],timer,p2_meter_fill,round_no,zoom,cam_state,look[3],fov,yoff,roll,deck[3],blackout]";   // 0.3.39: +camera state/look-at/fov/y-off/roll (blk+0x6908..0x698C), deck colour (0x6CA8), blackout gate (0x3D50)   // 0.3.37: +zoom (blk+0x691C, the render camera z = scene CB focal)
 
 fn gs_now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
@@ -1300,6 +1304,12 @@ struct GsRow {
     // replay columns (0.3.23): raw sprite ids + anim countdown per slot, camera globals + ground line
     sid: [u16; 6], atimer: [u8; 6], eye_x: f32, eye_y: f32, ground: f32,
     zoom: f32,         // 0.3.37: blk+0x691C -- the render camera's z (812.357 in every capture so far; the scene CB's focal)
+    // 0.3.39 (docs/WORLD-CAMERA-GHIDRA.md + STAGE-DRAW-GHIDRA.md, all Ghidra-CONFIRMED): the world
+    // camera is a closed form of eye (0x6914..), look-at (0x695C..), fov (0x6974), y-offset (0x6988),
+    // roll u16 (0x698C); in state 0 (blk+0x6908 == 0) look-at == (eye.x, eye.y, 0), fov 43, roll 0 --
+    // shipped so a SCRIPTED camera (state 1) can be rendered exactly. Deck colour blk+0x6CA8..0x6CB0
+    // = the POL model-0 vertex-colour multiplier; blackout blk+0x3D50 != 0 skips the deck draw.
+    cam_state: u32, look: [f32; 3], fov: f32, yoff: f32, roll: u16, deck: [f32; 3], blackout: u8,
     // 0.3.24: the AUTHORITATIVE inputs — the raw pad words at G+0x218+seat*4, UPSTREAM of the 12-entry
     // translation table. This is the column a re-simulator feeds back into the real engine; p1_in/p2_in
     // are the downstream decoded values and are kept only for compatibility with existing consumers.
@@ -1376,16 +1386,20 @@ struct ObjNode { sid: u16, sx: i16, sy: i16, zx: u16, face: u8, cat: u8, owner: 
 // Per frame we ship every drawn node's matrix/colour/flags/list (96 B) and INTERN the object bytes
 // by content hash (a hail chunk's quad is the same 200 B every frame) -- see anodes_enc/aobjs_enc.
 #[derive(Clone)]
-struct ANode { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: u16 }
-const ANODES_STRIDE: usize = 96;
+struct ANode { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: u16,
+             alpha: f32 }   // 0.3.39: node+0x90 = the ALPHA MULTIPLIER Steam applies on flag-bit-5 nodes
+                            // (FUN_140849c30/be0(obj, node+0x90); < 1.0 forces normal blending via
+                            // ctx+0x1f8274 = 0x45) -- the 4/824 blend misses of the render-state gate
+const ANODES_STRIDE: usize = 100;   // 0.3.39: 96 B v5 record + f32 alpha (node+0x90), APPENDED
 const ALIST_HEADS: usize = 0x2EDE8;
 const A_NEXT: usize = 0x10; const A_COLOUR: usize = 0x94; const A_OBJ: usize = 0xA0;
+const A_ALPHA: usize = 0x90;   // 0.3.39: f32 alpha multiplier (docs/TSP-RENDER-STATE-GHIDRA.md)
 const A_MATRIX: usize = 0xA8; const A_MODEL: usize = 0xE8; const A_FLAGS: usize = 0xF0; const A_DRAWN: usize = 0x170;
 const AOBJ_MAX_BYTES: usize = 4096;      // header + records we keep per object (a quad is ~0x148)
 const AOBJ_MAX_RECS: usize = 8;
 const ANODES_CAP_PER_FRAME: usize = 96;
 
-struct ANodeRaw { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: Vec<u8> }
+struct ANodeRaw { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: Vec<u8>, alpha: f32 }
 
 /// Walk lists 5..=13 and collect every drawn node with a polygon-list object (or a model).
 unsafe fn harvest_anodes(h: &mem::Proc, blk: usize, out: &mut Vec<ANodeRaw>) {
@@ -1400,6 +1414,7 @@ unsafe fn harvest_anodes(h: &mem::Proc, blk: usize, out: &mut Vec<ANodeRaw>) {
             if nd[A_DRAWN] != 0 && (obj != 0 || model != 0) && out.len() < ANODES_CAP_PER_FRAME {
                 let mut matrix = [0u8; 64]; matrix.copy_from_slice(&nd[A_MATRIX..A_MATRIX + 64]);
                 let colour = [lef32(&nd, A_COLOUR), lef32(&nd, A_COLOUR + 4), lef32(&nd, A_COLOUR + 8)];
+                let alpha = lef32(&nd, A_ALPHA);   // 0.3.39
                 // the object's records: 0x18 header, then (0x50 header + payload) while the PCW is negative
                 let mut ob: Vec<u8> = Vec::new();
                 if obj != 0 {
@@ -1418,7 +1433,7 @@ unsafe fn harvest_anodes(h: &mem::Proc, blk: usize, out: &mut Vec<ANodeRaw>) {
                         k += 1;
                     }
                 }
-                out.push(ANodeRaw { list: l as u8, flags: le32(&nd, A_FLAGS), matrix, colour, model, obj: ob });
+                out.push(ANodeRaw { list: l as u8, flags: le32(&nd, A_FLAGS), matrix, colour, model, obj: ob, alpha });
             }
             n += 1;
             p = le64(&nd, A_NEXT) as usize;
@@ -1626,6 +1641,22 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
         Some(c) if c.len() >= CAM_WIN => (lef32(&c, 0), lef32(&c, 4), lef32(&c, CAM_GROUND_REL), lef32(&c, 8)),   // +8 = zoom (blk+0x691C)
         _ => (0.0, 0.0, 0.0, 0.0),
     };
+    // 0.3.39: camera state window blk+0x6908..0x699C (state u32 @0, look-at @0x54, fov @0x6C,
+    // y-offset @0x80, roll u16 @0x84), deck colour blk+0x6CA8 (3 f32), blackout gate blk+0x3D50 (u8)
+    let camx: (u32, [f32; 3], f32, f32, u16, [f32; 3], u8) = match base.checked_sub(BLK_BACK) {
+        Some(blk) => {
+            let w = read_at(h, blk + CAMX_OFF, CAMX_WIN);
+            let d = read_at(h, blk + DECK_COL_OFF, 12);
+            let g = unsafe { rpm_u8(h, blk + BLACKOUT_OFF) }.unwrap_or(0);
+            match (w, d) {
+                (Some(w), Some(d)) if w.len() >= CAMX_WIN && d.len() >= 12 => (
+                    le32(&w, 0), [lef32(&w, 0x54), lef32(&w, 0x58), lef32(&w, 0x5C)], lef32(&w, 0x6C), lef32(&w, 0x80),
+                    u16::from_le_bytes([w[0x84], w[0x85]]), [lef32(&d, 0), lef32(&d, 4), lef32(&d, 8)], g),
+                _ => (0, [0.0; 3], 0.0, 0.0, 0, [1.0, 1.0, 1.0], 0),
+            }
+        }
+        None => (0, [0.0; 3], 0.0, 0.0, 0, [1.0, 1.0, 1.0], 0),
+    };
     Some(GsRow {
         frame,
         p1_in: u16le(&s[0], OFF_INPUT), p2_in: u16le(&s[1], OFF_INPUT),
@@ -1654,6 +1685,7 @@ unsafe fn read_gs_row(h: &mem::Proc, base: usize, frame: u32, exe_base: usize) -
         atimer: [o[0][H_ANIM_TMR], o[1][H_ANIM_TMR], o[2][H_ANIM_TMR], o[3][H_ANIM_TMR], o[4][H_ANIM_TMR], o[5][H_ANIM_TMR]],
         eye_x: cam.0, eye_y: cam.1, ground: cam.2,
         zoom: cam.3,
+        cam_state: camx.0, look: camx.1, fov: camx.2, yoff: camx.3, roll: camx.4, deck: camx.5, blackout: camx.6,
         // 0.3.24: both seats' RAW input words in ONE read (they are adjacent u32s at G+0x218).
         seat_in: match if exe_base != 0 { read_at(h, exe_base + SEATIN_OFF, 8) } else { None } {
             Some(b) if b.len() >= 8 => [le32(&b, 0), le32(&b, 4)],
@@ -2224,7 +2256,7 @@ fn start_gamestate_capture() {
                                                     None => 0xFFFF,
                                                 }
                                             };
-                                            list.push(ANode { list: r.list, flags: r.flags, matrix: r.matrix, colour: r.colour, model: r.model, obj: oi });
+                                            list.push(ANode { list: r.list, flags: r.flags, matrix: r.matrix, colour: r.colour, model: r.model, obj: oi, alpha: r.alpha });
                                         }
                                         c.anodes.insert(frame, list);
                                     }
@@ -2350,7 +2382,8 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         r.sx, r.sy, r.zx, r.zy,
         r.flash, r.glow, r.layer, r.timer,
         r.p2_mfill, r.round_no,  // 0.3.29 — appended
-        r.zoom                   // 0.3.37 — appended
+        r.zoom,                  // 0.3.37 — appended
+        r.cam_state, r.look, r.fov, r.yoff, r.roll, r.deck, r.blackout   // 0.3.39 — appended
     ])).collect();
     // the complete artifact that lands on disk (server writes the gunzip-able bytes verbatim)
     let assist_p1 = [gs.assist[0], gs.assist[2], gs.assist[4]];
@@ -2470,6 +2503,7 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
                 b.extend_from_slice(&a.obj.to_le_bytes());
                 b.extend_from_slice(&0u16.to_le_bytes());
                 b.extend_from_slice(&a.model.to_le_bytes());
+                b.extend_from_slice(&a.alpha.to_le_bytes());   // 0.3.39 tail (4 B): stride 100
             }
         }
         b
@@ -2551,7 +2585,7 @@ fn spool_gamestate(match_key: &str, reporter: &str, side: u8, p1_team: &[u8], p2
         "tape_ver": 5,
         "anodes": anodes_b64, "anodes_frames": gs.anodes.len(), "anodes_stride": ANODES_STRIDE,
         "aobjs": aobjs_b64, "aobjs_n": gs.aobjs.len(),
-        "anodes_enc": "TAPE v5 -- gzip+base64 of per-frame [u32 frame, u16 count, count x 96 B {u8 list(5..13), u8 pad[3], u32 flags(node+0xF0), f32[16] matrix(node+0xA8, column-major 4x4; row-major 3x4 transpose == Steam CBWorld), f32[3] colour(node+0x94), u16 obj(index into aobjs; 0xFFFF = none), u16 pad, u64 model(node+0xE8 pointer, 0 = quad)}]. List order = the engine's; lists are drawn after the sprite walk.",
+        "anodes_enc": "TAPE v5 -- gzip+base64 of per-frame [u32 frame, u16 count, count x 96 B {u8 list(5..13), u8 pad[3], u32 flags(node+0xF0), f32[16] matrix(node+0xA8, column-major 4x4; row-major 3x4 transpose == Steam CBWorld), f32[3] colour(node+0x94), u16 obj(index into aobjs; 0xFFFF = none), u16 pad, u64 model(node+0xE8 pointer, 0 = quad), f32 alpha(node+0x90, 0.3.39, stride 100)}]. List order = the engine's; lists are drawn after the sprite walk.",
         "aobjs_enc": "gzip+base64 of [u16 count, count x (u32 len, bytes)] -- each object = the node's DC TA polygon list read at node+0xA0: 0x18 header, then records {0x50 header: u32 PCW, ISP, TSP, TCW(texture VRAM address = stable texture id), ..., i32 payload_size @+0x4C; payload: 2 lead dwords then 32-B vertices f32 x y z nx ny nz u v}. Interned by content hash across the tape.",
         "nodes_enc": "TAPE v4 -- gzip+base64 of per-frame [u32 frame, u16 count, count x `nodes_stride` B (44 = v3 prefix, +6 B v4 tail: u16 angle(H+0x148, 0x10000=360deg), i16 hotx(H+0x178), i16 hoty(H+0x17A)) {u8 kind(0=fighter,1=pool), u8 slot(0..5 or 0xFF), u8 cat(H+0x03), i8 sort(H+0x4D SIGNED -- the engine's intra-layer key), u8 layer(H+0x38), u8 face(H+0x154), u8 owner(slot|0xFF), u8 drawn(H+0x170), u16 sid(H+0x188 RAW, bit15=xform), u16 pal(index into `pals`; 0xFFFF=none), u16 flash(H+0x172), u8 glow(H+0x5C), u8 is_effect, u8 blend(0x11 add/0x45 alpha/0x00 opaque), u8 atimer(H+0x186), u16 zx(scaleX x4096, H+0x130), u16 zy(scaleY x4096, H+0x134), u16 effect_key, f32 fsx(H+0x124), f32 fsy(H+0x128), f32 depth(H+0x12C), u32 gfx1(H+0x1A0), u32 gfx2(H+0x1A4)}]. ORDER IS THE PAYLOAD: index = paint order, back to front, exactly as FUN_140620F10 walks it (layer 0..15 ascending, then array index 0..count-1).",
         "pals_enc": "gzip+base64 of pals_n x 32 B ARGB4444 (16 colours), first-seen order. Read from the node's live palette pointer at H+0x1B8 -- NOT reconstructed from costume, because the sub-row within a costume's 8-row block is still an open gap (node+0x12d/+0x12e).",
