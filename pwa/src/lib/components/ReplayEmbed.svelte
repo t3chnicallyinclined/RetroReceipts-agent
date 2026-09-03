@@ -3,6 +3,7 @@
 	import { base } from '$app/paths';
 	import PlayerPlate from './PlayerPlate.svelte';
 	import type { ReplaySource } from '$lib/replay/source';
+	import { auth } from '$lib/stores/auth.svelte';
 	import {
 		loadEngine,
 		gpuDevice,
@@ -84,7 +85,7 @@
 
 	// ── state ──
 	let st = $state<State>('checking');
-	let reason = $state<'pending' | 'expired' | 'none' | 'unsupported'>('none');
+	let reason = $state<'pending' | 'expired' | 'none' | 'unsupported' | 'signin'>('none');
 	let err = $state<{ code: string; message: string } | null>(null);
 	let prog = $state<{ pack: [number, number]; tape: [number, number]; phase: Progress['phase']; prime: [number, number] }>({
 		pack: [0, 0],
@@ -762,6 +763,9 @@
 					<span class="h">Tape gone.</span><span class="s">Only the last 100 live results keep a replay.</span>
 				{:else if reason === 'unsupported'}
 					<span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span>
+				{:else if reason === 'signin'}
+					<span class="h">Sign in to watch the tape.</span><span class="s">Replays are for players with an account.</span>
+					<button class="signin" onclick={() => auth.login()}>Sign in through Steam</button>
 				{:else}
 					<span class="h">No tape for this one.</span><span class="s">Neither player's agent recorded it.</span>
 				{/if}
@@ -931,6 +935,7 @@
 		font-weight: 800;
 		font-size: 14px;
 	}
+	.ov .signin { margin-top: 6px; font: inherit; font-weight: 800; font-size: 12px; color: var(--gold-ink, #241700); background: linear-gradient(180deg, #ffe084, #c98f0e); border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
 	.ov .s {
 		font-size: 11.5px;
 		color: var(--dim);

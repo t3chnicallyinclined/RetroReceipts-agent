@@ -10,11 +10,12 @@
 // Nothing here fetches game data; packs are ROM-derived and only ever served from a gitignored folder.
 import { base } from '$app/paths';
 import { api } from '$lib/config';
+import { auth } from '$lib/stores/auth.svelte';
 
 export type ReplaySource =
 	| { kind: 'tape'; tapeUrl: string; packUrl: string; start?: number; count?: number; frames?: number }
 	| { kind: 'stream'; url: string; frames: number } // phones, M-interim keyed frames — C9, not built
-	| { kind: 'none'; reason: 'pending' | 'expired' | 'none' | 'unsupported' };
+	| { kind: 'none'; reason: 'pending' | 'expired' | 'none' | 'unsupported' | 'signin' };
 
 /** Row-level replay availability — drives the MatchBanner affordance (§6.1). */
 export type ReplayAvail = 'ready' | 'pending' | 'none' | 'expired' | 'saved';
@@ -104,6 +105,9 @@ export async function availability(row: RowLike): Promise<ReplayAvail> {
 
 /** Resolve a row into an embed source: local manifest first, then the (stub) server probe. */
 export async function resolveSource(row: RowLike): Promise<ReplaySource> {
+	// Replays are for signed-in users (Tris, 2026-09-03): the affordance can invite, the picture needs an account.
+	// The dev server's local test tapes stay open so the render path can be exercised signed-out.
+	if (!auth.authed && !import.meta.env.DEV) return { kind: 'none', reason: 'signin' };
 	const loc = await localFor(row);
 	if (loc) return sourceOfLocal(loc.tape);
 	if (row.match_key) return probeServer(row.match_key);
