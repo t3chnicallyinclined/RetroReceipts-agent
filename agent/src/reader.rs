@@ -1406,8 +1406,11 @@ const ALIST_HEADS: usize = 0x2EDE8;
 const A_NEXT: usize = 0x10; const A_COLOUR: usize = 0x94; const A_OBJ: usize = 0xA0;
 const A_ALPHA: usize = 0x90;   // 0.3.39: f32 alpha multiplier (docs/TSP-RENDER-STATE-GHIDRA.md)
 const A_MATRIX: usize = 0xA8; const A_MODEL: usize = 0xE8; const A_FLAGS: usize = 0xF0; const A_DRAWN: usize = 0x170;
-const AOBJ_MAX_BYTES: usize = 4096;      // header + records we keep per object (a quad is ~0x148)
-const AOBJ_MAX_RECS: usize = 8;
+// 0.3.41: objects are interned ONCE per match, so the caps cost nothing per frame; 4 KB / 8 records cut every
+// stage prop with more than ~6 meshes (stage 16: models of 9..18 meshes shipped 5..7) = "part of the background
+// is missing". A full prop is ~20-40 KB; effects objects are far smaller.
+const AOBJ_MAX_BYTES: usize = 0x20000;   // 128 KB per object (was 4096)
+const AOBJ_MAX_RECS: usize = 128;        // (was 8)
 const ANODES_CAP_PER_FRAME: usize = 96;
 
 struct ANodeRaw { list: u8, flags: u32, matrix: [u8; 64], colour: [f32; 3], model: u64, obj: Vec<u8>, alpha: f32 }
