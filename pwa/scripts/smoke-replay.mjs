@@ -1117,6 +1117,100 @@ try {
 		await pp.close();
 	}
 
+	// ═══ 💬 ANCHORED COMMENTS (LIVE-TAB-V2-SPEC §4, P5) ══════════════════════════════════════════════════
+	// Signed out on purpose. Posting, the rate limits, the participants-only hide and auto-hide at three
+	// reporters are ENFORCED AND SMOKE-VERIFIED SERVER-SIDE, so re-asserting them here would only prove the
+	// client can duplicate a rule it must not duplicate. What is client-owned and gated here: the wall seeds
+	// from the endpoint, a signed-out visitor reads everything and is prompted in place, the C20 deltas are
+	// APPLIED (a hide the consumer ignores renders a comment the server hid), and the anchors become ticks.
+	if (has('--comments')) {
+		const pc2 = await newPage(1400, 1600);
+		await pc2.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+		await waitEmbed(pc2, '__rrHero', ['playing', 'ready', 'paused', 'closed', 'nopack']);
+		await pc2.waitForFunction(() => !!window.__rrComments, { timeout: 60000 });
+		await pc2.waitForSelector('[data-test="comments"]', { timeout: 30000 });
+		check(true, 'comments: the wall renders beside the theatre');
+
+		// (1) signed out: reads everything, prompted IN PLACE - no modal, no interstitial
+		const out = await pc2.evaluate(() => ({
+			prompt: /Sign in with Steam to comment/.test(document.querySelector('[data-test="comments"]')?.textContent ?? ''),
+			steamBtn: !!document.querySelector('[data-test="comments"] .steam'),
+			composer: !!document.querySelector('[data-test="comments"] textarea'),
+			token: !!localStorage.getItem('rr_token')
+		}));
+		log('comments: signed out', JSON.stringify(out));
+		check(!out.token, 'comments: the run is genuinely signed out');
+		check(out.prompt && out.steamBtn, 'comments: a signed-out visitor gets the in-place Steam prompt');
+		check(!out.composer, 'comments: and no composer it could not use');
+
+		// (2) the C20 deltas, driven through the REAL store method the bus calls
+		const d = await pc2.evaluate(async () => {
+			const C = window.__rrComments;
+			const key = C.key;
+			const mk = (id, frame, ts) => ({ type: 'comment', id, key, session_id: '', frame, author: 'A' + id, name: 'Tester', avatar: '', rating: 1200, games: 40, text: 'mark ' + id, ts, hidden: false, hidden_reason: '' });
+			C.applyDelta(mk('c1', 1000, 1000));
+			C.applyDelta(mk('c2', 1010, 1001));
+			C.applyDelta(mk('c3', 3000, 1002));
+			const afterAdd = { rows: C.rows.length, total: C.total };
+			C.applyDelta(mk('c1', 1000, 1000));
+			const afterDupe = C.rows.length;
+			C.applyDelta({ type: 'comment_hide', id: 'c3', key, author: 'Ac3', hidden: true, ts: 1003 });
+			const afterHide = { rows: C.rows.length, hiddenCount: C.hiddenCount, stillThere: C.rows.some((r) => r.id === 'c3') };
+			C.applyDelta({ type: 'comment_del', id: 'c2', key, author: 'Ac2', hidden: false, ts: 1004 });
+			const afterDel = { rows: C.rows.length, stillThere: C.rows.some((r) => r.id === 'c2') };
+			C.applyDelta({ ...mk('other2', 500, 1006), key: 'some-other-match' });
+			return { key, afterAdd, afterDupe, afterHide, afterDel, final: C.rows.length };
+		});
+		log('comments: deltas', JSON.stringify(d));
+		check(d.afterAdd.rows === 3 && d.afterAdd.total === 3, `comments: three new-comment deltas insert three rows (${d.afterAdd.rows})`);
+		check(d.afterDupe === 3, 'comments: a repeated id does not double up (the 500-entry window replays)');
+		check(!d.afterHide.stillThere && d.afterHide.rows === 2, 'comments: a comment_hide REMOVES the row - ignoring these renders comments the server hid');
+		check(d.afterHide.hiddenCount === 1, `comments: and it is counted for everyone (${d.afterHide.hiddenCount})`);
+		check(!d.afterDel.stillThere && d.afterDel.rows === 1, 'comments: a comment_del removes the row');
+		check(d.final === 1, `comments: a delta for another match is ignored (${d.final} rows, want 1)`);
+
+		// (3) the footer count, and the anchors as TICKS on the bar - never on the picture
+		await sleep(400);
+		const ui = await pc2.evaluate(() => {
+			const w = document.querySelector('[data-test="comments"]');
+			return {
+				foot: (w?.querySelector('.foot')?.textContent ?? '').trim(),
+				onPicture: document.querySelectorAll('[data-test="hero"] .pic .tick').length,
+				ticks: document.querySelectorAll('[data-test="hero"] .scrubw .tick').length
+			};
+		});
+		log('comments: ui', JSON.stringify(ui));
+		check(/1 comment hidden by the players/.test(ui.foot), `comments: the footer counts what was hidden ("${ui.foot}")`);
+		check(ui.onPicture === 0, 'comments: ticks live on the BAR, never on the 640x480 picture');
+
+		// clustering: two anchors a few frames apart are ~1 px apart on the track and MUST merge
+		const cl = await pc2.evaluate(async () => {
+			const C = window.__rrComments;
+			C.applyDelta({ type: 'comment', id: 'n1', key: C.key, session_id: '', frame: 1005, author: 'An1', name: 'N', avatar: '', rating: 1200, games: 40, text: 'near', ts: 1100, hidden: false, hidden_reason: '' });
+			await new Promise((r) => setTimeout(r, 400));
+			const ticks = [...document.querySelectorAll('[data-test="hero"] .scrubw .tick')];
+			return { count: ticks.length, labels: ticks.map((t) => t.getAttribute('title')), many: ticks.filter((t) => t.classList.contains('many')).map((t) => t.textContent.trim()) };
+		});
+		log('comments: clustering', JSON.stringify(cl));
+		check(cl.count === 1 && cl.many.length === 1 && cl.many[0] === '2', `comments: two anchors 5 frames apart MERGE into one tick reading 2 (${JSON.stringify(cl)})`);
+		check(/2 comments from/.test(cl.labels[0] ?? ''), `comments: and the cluster says how many (${cl.labels[0]})`);
+
+		// (4) clicking a tick seeks the picture and pauses it
+		const st0 = await pc2.evaluate(() => window.__rrHero.state);
+		if (st0 !== 'closed' && st0 !== 'nopack' && st0 !== 'unavailable' && st0 !== 'error') {
+			await pc2.evaluate(() => document.querySelector('[data-test="hero"] .scrubw .tick').click());
+			await pc2.waitForFunction(() => window.__rrHero.state === 'paused', { timeout: 30000 }).catch(() => {});
+			await sleep(1200);
+			const j = await pc2.evaluate(() => ({ frame: window.__rrHero.frame, state: window.__rrHero.state }));
+			log('comments: tick jump', JSON.stringify(j));
+			check(Math.abs(j.frame - 1000) <= 12, `comments: the tick seeks to its own frame (${j.frame}, want ~1000)`);
+			check(j.state === 'paused', `comments: and PAUSES - you clicked to look at something (${j.state})`);
+		} else {
+			log(`comments: picture is ${st0}; the tick-jump assertions need a playing tape and are skipped`);
+		}
+		await pc2.close();
+	}
+
 	// ═══ ↗ SHARE (LIVE-TAB-V2-SPEC §5, P4 gate) ══════════════════════════════════════════════════════════
 	// The OS-sheet half of P4 ("on a real Android phone and a real iPhone the sheet opens and Discord receives
 	// the link") CANNOT be asserted headlessly — there is no sheet and no Discord here. What is asserted:

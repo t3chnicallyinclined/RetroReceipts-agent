@@ -94,6 +94,8 @@
 		autoart = false,
 		quality = 'high',
 		maxPicture = 640,
+		marks = null,
+		onmark = null,
 		hookName = 'rrEmbed',
 		onready = null,
 		onerror = null,
@@ -126,6 +128,11 @@
 		 * wider box is a sharper picture, never a stretched one.
 		 */
 		maxPicture?: number;
+		/** Anchored-comment frames to mark on the scrub track (§4.3). Ticks live on the BAR, never on the
+		 *  640x480 picture — the picture is not a control surface for chrome (§6 amendment 4). */
+		marks?: number[] | null;
+		/** a tick was activated: the caller seeks and pauses, and scrolls its comment into view */
+		onmark?: ((frame: number) => void) | null;
 		/** the window global the test hook registers under (`window.__<hookName>`); the LIVE hero uses 'rrHero' so the
 		 *  smoke test can drive it and an expanded row (default 'rrEmbed') at the same time */
 		hookName?: string;
@@ -160,6 +167,8 @@
 	let frame = $state(0);
 	let count = $state(0);
 	let speed = $state(60); // game frames per second: 60 = real time
+	/** measured scrub width, so tick clustering is done in PIXELS (4 px) rather than in frames */
+	let scrubW = $state(0);
 	// the presentation cadence (lib/replay/pacer.ts). Speed stays wall-clock-driven; only the per-refresh
 	// decision of "how many source frames now" becomes deterministic.
 	const pacer = new Pacer();
@@ -749,6 +758,32 @@
 	export function step(d: number) {
 		void seek(frame + d);
 	}
+	/** The frame on screen right now. Pulled ON DEMAND (the comment composer asks when it is focused) rather
+	 *  than pushed through a callback — this changes 60 times a second and almost nobody wants every one. */
+	export function currentFrame(): number {
+		return frame;
+	}
+
+	/** Anchored comments → tick positions, merged when they would collide on the bar (§4.3). */
+	const tickGroups = $derived.by(() => {
+		const src = (marks ?? []).filter((f) => Number.isFinite(f) && f >= 0 && f < count);
+		if (!src.length || count < 2) return [];
+		const w = scrubW || 600;
+		const out: { f: number; pct: number; x: number; n: number; label: string }[] = [];
+		for (const f of [...src].sort((a, b) => a - b)) {
+			const pct = (f / (count - 1)) * 100;
+			const x = (pct / 100) * w;
+			const last = out[out.length - 1];
+			// 4 px is the merge distance; on a 366 px phone bar the same rule bites harder, and that is correct
+			if (last && x - last.x < 4) {
+				last.n += 1;
+				last.label = `${last.n} comments from ${mmss(last.f)}`;
+			} else {
+				out.push({ f, pct, x, n: 1, label: `A comment at ${mmss(f)}` });
+			}
+		}
+		return out;
+	});
 	export function dispose() {
 		disposed = true;
 		stop();
@@ -1248,7 +1283,7 @@
 	<div class="tr" class:big>
 		<button type="button" class="btn play" bind:this={playBtn} disabled={!isPlayable} aria-label={playing ? 'Pause' : st === 'ended' ? 'Watch again' : 'Play'} onclick={toggle}>{playing ? '⏸' : '▶'}</button>
 		<button type="button" class="btn sm" disabled={!isPlayable} title="−5 s" aria-label="Back 5 seconds" onclick={() => step(-300)}>«5</button>
-		<div class="scrubw" class:seeking={st === 'seeking'}>
+		<div class="scrubw" class:seeking={st === 'seeking'} class:marked={tickGroups.length > 0} bind:clientWidth={scrubW}>
 			<input
 				type="range"
 				class="scrub"
@@ -1264,6 +1299,19 @@
 				onchange={onScrubChange}
 			/>
 			{#if scrubPreview != null}<span class="tip" style="left:{percent}%">{mmss(scrubPreview)}</span>{/if}
+			<!-- comment ticks. Clustered so a busy match reads as clusters rather than confetti: at ~600 px a
+			     two-minute match is ~12 frames per pixel, so marks closer than 4 px merge and carry a count. -->
+			{#each tickGroups as g (g.f)}
+				<button
+					type="button"
+					class="tick"
+					class:many={g.n > 1}
+					style="left:{g.pct}%"
+					title={g.label}
+					aria-label="Jump to {mmss(g.f)}{g.n > 1 ? `, ${g.n} comments` : ''}"
+					onclick={(e) => { e.stopPropagation(); onmark?.(g.f); }}
+				>{g.n > 1 ? g.n : ''}</button>
+			{/each}
 		</div>
 		<button type="button" class="btn sm" disabled={!isPlayable} title="+5 s" aria-label="Forward 5 seconds" onclick={() => step(300)}>5»</button>
 		<!-- §5f: while seeking the readout is `served → target`; the served fraction is the progress, no estimate -->
@@ -1819,6 +1867,46 @@
 	}
 	.nudge .nb:hover {
 		background: var(--gold-soft);
+	}
+	/* the track grows 6 -> 10 px when the match has anchored comments, so the ticks have somewhere to live */
+	.scrubw.marked {
+		--tick-room: 4px;
+	}
+	.tick {
+		position: absolute;
+		bottom: 0;
+		width: 3px;
+		height: 9px;
+		padding: 0;
+		transform: translateX(-1.5px);
+		border: 0;
+		border-radius: 2px;
+		background: var(--stream);
+		cursor: pointer;
+		font: inherit;
+		font-size: 8px;
+		font-weight: 800;
+		line-height: 9px;
+		color: transparent;
+		z-index: 3;
+	}
+	.tick.many {
+		width: 11px;
+		height: 12px;
+		transform: translateX(-5.5px);
+		color: var(--gold-ink);
+		background: var(--gold);
+	}
+	.tick:hover {
+		filter: brightness(1.25);
+	}
+	/* a tick is a touch target before it is a decoration */
+	@media (pointer: coarse) {
+		.tick::after {
+			content: '';
+			position: absolute;
+			inset: -16px -14px;
+		}
 	}
 	.emb.fs .nudge {
 		display: none; /* fullscreen is the picture — the nudge waits for the card */

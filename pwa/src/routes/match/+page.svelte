@@ -18,6 +18,8 @@
 	import { api } from '$lib/config';
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import BrowseMatches from '$lib/components/BrowseMatches.svelte';
+	import CommentWall from '$lib/components/CommentWall.svelte';
+	import { comments } from '$lib/stores/comments.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
@@ -556,6 +558,11 @@
 		if (c) void showRow(c.row); // the same content-swap path a BROWSE row uses — no navigation, no remount
 	}
 
+	/** the anchored comments on the match in the theatre, as frames for the scrub track (§4.3) */
+	const commentMarks = $derived(
+		comments.key === theatre?.key ? comments.rows.filter((c) => c.frame != null && !c.hidden).map((c) => c.frame as number) : []
+	);
+
 	function scrollToNowPlaying() {
 		document.getElementById('now-playing')?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
 	}
@@ -670,6 +677,8 @@
 		</div>
 	{/if}
 
+	<div class="tgrid">
+	<div class="stage">
 	{#if theatre}
 		{#if theatre.source}
 			<ReplayEmbed
@@ -678,6 +687,11 @@
 				poster={theatre.poster}
 				meta={theatre.meta}
 				maxPicture={700}
+				marks={commentMarks}
+				onmark={(f) => {
+					theatreEmbed?.pause();
+					void theatreEmbed?.seek(f);
+				}}
 				{autoload}
 				autoart={autoload}
 				hookName="rrHero"
@@ -720,6 +734,26 @@
 	{:else}
 		<div class="empty">No tapes yet — the next finished set lands here.</div>
 	{/if}
+	</div>
+	<!-- 💬 the wall: the right column beside the picture at >= 1140, below it at every narrower width (§4.4).
+	     Never a sheet on a phone — a sheet covers the very thing being discussed. -->
+	{#if theatre}
+		<aside class="wallcol">
+			<CommentWall
+				matchKey={theatre.key}
+				playable={theatre.playable}
+				getFrame={() => theatreEmbed?.currentFrame() ?? 0}
+				onSeek={(f) => {
+					// pause FIRST: `seek` restores whatever was playing, and clicking a moment means you want to
+					// look at it, not watch it go by (§4.3)
+					theatreEmbed?.pause();
+					void theatreEmbed?.seek(f);
+					theatreEl?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+				}}
+			/>
+		</aside>
+	{/if}
+	</div>
 </section>
 
 {#if !inMatch}<MyMatch onTape={openSet} />{/if}
@@ -1300,6 +1334,28 @@
 	@keyframes xpgrow {
 		from { grid-template-rows: 0fr; }
 		to { grid-template-rows: 1fr; }
+	}
+	/* §4.4 — the picture and the wall side by side once there is room for both: 702 + 20 + 382 = 1104, the
+	   usable width inside the 1140 wrap. Below that the wall drops under the picture, full width, because 384
+	   is the narrowest column that holds a 20 px avatar + name + rank + a 280-character body without becoming
+	   a ransom note. */
+	.tgrid {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 16px;
+	}
+	@media (min-width: 1140px) {
+		.tgrid {
+			grid-template-columns: 702px minmax(0, 1fr);
+			gap: 20px;
+			align-items: start;
+		}
+	}
+	.stage {
+		min-width: 0;
+	}
+	.wallcol {
+		min-width: 0;
 	}
 	/* ▓▓▓ THE THEATRE (§1.1, §1.3): the embed is the page's subject, so its picture is capped at 700 rather than
 	   640 (`maxPicture`) and the chrome — marquee above, actions below — never sits ON the picture (§6 amendment 4). */
