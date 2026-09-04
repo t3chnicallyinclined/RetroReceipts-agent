@@ -1354,17 +1354,53 @@ try {
 				pickKey: st.pick?.key ?? null,
 				reasons: [...(st.pick?.reasons ?? [])], // a $state proxy serialises as an OBJECT, not an array
 				label: (document.querySelector('[data-test="hero"] .shead')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
-				theatreKey: window.__rrHero?.key ?? null
+				theatreKey: window.__rrHero?.key ?? null,
+				offerShown: !!document.querySelector('[data-test="hero"] .crown'),
+				// "the most recent replayable match" is asserted as a PROPERTY, not by matching an exact key.
+				// The theatre picks from the tab's mode-scoped rows while this store holds the un-scoped newest
+				// 100, so comparing keys directly would fail whenever the newest ready match sits in another
+				// mode — a wrong assertion, not a caught bug. Instead: find the row the theatre is showing, and
+				// check no row in ITS OWN mode is both ready and newer.
+				theatre: (() => {
+					const k = window.__rrHero?.key;
+					const row = st.rows.find((r) => (r.match_key ?? r.key) === k);
+					if (!row) return { found: false };
+					const newer = st.rows.filter((r) => (r.mode ?? 'ranked') === (row.mode ?? 'ranked') && r.replay?.state === 'ready' && r.ts > row.ts);
+					return { found: true, ready: row.replay?.state === 'ready', mode: row.mode ?? 'ranked', newerReadyInMode: newer.length };
+				})()
 			};
 		});
 		log('motd integration', JSON.stringify(I));
-		const wantLabel = I.crowned ? 'Match of the Day' : I.pickKey ? 'Today' : 'Latest Tape';
-		check(I.label.includes(wantLabel), `motd: the marquee says "${wantLabel}" for pool ${I.pool} / crowned ${I.crowned} (got "${I.label.slice(0, 90)}")`);
-		if (I.pickKey) {
-			check(I.theatreKey === I.pickKey, `motd: the crown is the DEFAULT PICK — the theatre is showing it (${I.theatreKey})`);
-			for (const why of I.reasons) check(I.label.includes(why), `motd: the shout-out names "${why}"`);
+		// ⚠ REWRITTEN 2026-09-04 (Tris): the crown is NO LONGER the default pick. This block used to assert the
+		// opposite — that the theatre opens ON the crown — so it is rewritten rather than deleted, because the
+		// behaviour it guards genuinely reversed and a deleted assertion guards nothing.
+		//
+		// (1) the theatre opens on the NEWEST replayable row, not the day's best one
+		if (I.theatre.found) {
+			check(I.theatre.ready, `motd: the theatre opened on a REPLAYABLE match (${I.theatreKey})`);
+			check(I.theatre.newerReadyInMode === 0, `motd: and it is the MOST RECENT one in its scope — ${I.theatre.newerReadyInMode} newer ready ${I.theatre.mode} matches exist (want 0)`);
 		} else {
-			log('motd: nothing replayable today — the ▶ LATEST TAPE path is the one under test');
+			check(false, `motd: could not locate the theatre's row (${I.theatreKey}) in the newest 100 — cannot verify the default pick`);
+		}
+		if (I.crowned && I.pickKey && I.pickKey !== I.newestReplayable) {
+			check(I.theatreKey !== I.pickKey, 'motd: on a crowned day the crown is deliberately NOT what plays on load');
+		}
+		// (2) the crown is reachable in ONE tap and swaps the theatre with no navigation
+		if (I.crowned) {
+			check(I.offerShown, 'motd: a crowned day offers ★ MATCH OF THE DAY in the marquee');
+			const navsBefore = await pi.evaluate(() => performance.getEntriesByType('navigation').length);
+			await pi.evaluate(() => document.querySelector('[data-test="hero"] .crown').click());
+			await pi.waitForFunction((k) => window.__rrHero?.key === k, { timeout: 60000 }, I.pickKey).catch(() => {});
+			const after = await pi.evaluate(() => ({ key: window.__rrHero?.key ?? '', label: (document.querySelector('[data-test="hero"] .shead')?.textContent ?? '').replace(/\s+/g, ' ').trim(), navs: performance.getEntriesByType('navigation').length, offer: !!document.querySelector('[data-test="hero"] .crown') }));
+			log('motd: crown tapped', JSON.stringify(after));
+			check(after.key === I.pickKey, `motd: tapping the crown swaps the theatre to it (${after.key})`);
+			check(after.navs === navsBefore, `motd: and it is a content swap, NOT a navigation (${after.navs} entries)`);
+			check(after.label.includes('Match of the Day'), `motd: the marquee then reads the earned label ("${after.label.slice(0, 70)}")`);
+			check(!after.offer, 'motd: the offer hides once the theatre is already showing it — never a control that does nothing');
+			for (const why of I.reasons) check(after.label.includes(why), `motd: the shout-out names "${why}"`);
+		} else {
+			// (3) a day that has not earned a crown shows NO affordance rather than a hollow one
+			check(!I.offerShown, `motd: an un-crowned day (pool ${I.pool}) offers no crown at all, rather than a hollow one`);
 		}
 		await pi.close();
 		await pm.close();

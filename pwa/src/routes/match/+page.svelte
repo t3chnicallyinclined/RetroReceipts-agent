@@ -22,7 +22,7 @@
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
 	import { canShare, copyText, shareLink, theatreLink, COPIED_MS } from '$lib/share';
-	import { shoutText, type Scored } from '$lib/stores/motd.svelte';
+	import { shoutText } from '$lib/stores/motd.svelte';
 	import { timeAgo } from '$lib/format';
 	import { motd } from '$lib/stores/motd.svelte';
 	import {
@@ -326,10 +326,16 @@
 	// same resolver shape, same two guards, one priority list (§1.2):
 	//
 	//   1. the URL's pick — ?m=<match_key> (a share link, a row tapped here, or a row picked in BROWSE)
-	//   2. MATCH OF THE DAY — the best replayable match of today, when the day earns a crown (§1.6)
-	//   3. the latest tape — the newest row whose availability() is ready/saved (today's rule, unchanged)
-	//   4. the newest result, unplayable — the poster + the honest state copy (never an empty box, §2.1)
-	//   5. nothing at all
+	//   2. the latest tape — the newest row whose availability() is ready/saved
+	//   3. the newest result, unplayable — the poster + the honest state copy (never an empty box, §2.1)
+	//   4. nothing at all
+	//
+	// ⚠ REVERSED 2026-09-04 (Tris): "lets make sure match of the day isn't the first one playing. automatically
+	// should be the most recent, they should be able to click to view match of the day." The crown WAS priority 2
+	// and is now not in this list at all — a LIVE tab whose opening frame is hours old reads as stale, and the
+	// crown is a DESTINATION, not a default. Everything else about it survives untouched: the scorer, the >= 6
+	// replayable / >= 60 threshold, and the earned-vs-`▶ TODAY` wording. It is now reached by tapping the
+	// marquee affordance, down the same content-swap path a BROWSE row uses.
 	//
 	// The two guards outrank all of it and are UNCHANGED: a picture being watched is never yanked, and a share
 	// link's ?m= beats the automatic pick. Live games are deliberately NOT a picture — join_link/spectate_url are
@@ -431,9 +437,7 @@
 		rows: MatchResult[],
 		tapes: [string, LocalTape][],
 		isDev: boolean,
-		pick: string,
-		crown: Scored | null,
-		crownSettled: boolean
+		pick: string
 	) {
 		// never yank a picture that is being watched; a newer tape takes over when this one is idle/ended/unplayable
 		if (theatre && watching()) return;
@@ -462,25 +466,10 @@
 				return;
 			}
 		}
-		// 2 — MATCH OF THE DAY (§1.6): the day's best replayable match. It is the DEFAULT PICK, not a badge on the
-		// latest match — "newest" was only ever a proxy for "most watchable". Falls through when the day has none.
-		//
-		// WAIT for the crown's own read before falling through. The feed store and this read race, and the feed
-		// usually wins — so without this the theatre picks "latest tape", the crown lands a moment later, and
-		// nothing re-picks. `settled` is set even when the read FAILS, so a dead endpoint costs a crown, never
-		// the picture.
-		if (!crownSettled) return;
-		if (crown) {
-			// use the crown's OWN row. Looking it up in `rows` looked tidier and was wrong: `rows` is the current
-			// scope's newest 20, while the crown is scored over the un-scoped newest 100 — so the day's best match
-			// is very often NOT in it (measured: 54 replayable today, the top-scoring one well outside the newest
-			// 20 ranked). The lookup then found nothing and fell through to "latest tape", which is precisely the
-			// crown never appearing.
-			const r = crown.row;
-			setTheatre(crown.key, metaOf(r), r.session_id, () => resolveSource(r), true, r);
-			return;
-		}
-		// 3 — the latest tape: the newest row that is actually playable.
+		// 2 — the latest tape: the newest row that is actually playable. `results` is newest-first, so the first
+		// match here IS the most recent one — which is now what opens the tab. Deliberately NOT gated on the
+		// crown's fetch any more: the theatre no longer waits on a read it does not use, so the picture appears
+		// as soon as the feed does.
 		for (const r of rows) {
 			const a = await availability(r);
 			if (a === 'ready' || a === 'saved') {
@@ -503,12 +492,8 @@
 		const tapes = testTapes;
 		const isDev = dev;
 		const pick = picked;
-		// read SYNCHRONOUSLY: `pickTheatre` is async, and anything it touches after its first `await` is invisible
-		// to this effect's dependency tracking. That is exactly how the crown got lost.
-		const crown = motd.pick;
-		const crownSettled = motd.settled;
 		if (matchfeed.loading && rows.length === 0) return;
-		void pickTheatre(rows, tapes, isDev, pick, crown, crownSettled);
+		void pickTheatre(rows, tapes, isDev, pick);
 	});
 	// one picture at a time: an expanded DEV row pauses the theatre
 	$effect(() => {
@@ -556,6 +541,20 @@
 		window.addEventListener('keydown', onKey);
 		return () => window.removeEventListener('keydown', onKey);
 	});
+
+	/**
+	 * ★ MATCH OF THE DAY, as a DESTINATION (Tris 2026-09-04).
+	 *
+	 * Shown only when the day actually earned a crown — on a quieter day the affordance is ABSENT rather than
+	 * offering a hollow one, which is the same honesty rule that governs the badge itself. Hidden once the
+	 * theatre is already showing it, because a control that swaps in what is already on screen is a lie about
+	 * what tapping it will do.
+	 */
+	const crownOffer = $derived(motd.crowned && motd.pick && !isPick ? motd.pick : null);
+	function playCrown() {
+		const c = motd.pick;
+		if (c) void showRow(c.row); // the same content-swap path a BROWSE row uses — no navigation, no remount
+	}
 
 	function scrollToNowPlaying() {
 		document.getElementById('now-playing')?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
@@ -652,6 +651,11 @@
 			{#if nowPlaying.length}
 				<button type="button" class="onchip" onclick={scrollToNowPlaying}>
 					<span class="dot" aria-hidden="true"></span>{nowPlaying.length} GAME{nowPlaying.length === 1 ? '' : 'S'} ON NOW ›
+				</button>
+			{/if}
+			{#if crownOffer}
+				<button type="button" class="crown" onclick={playCrown} title="Play the day's best match — {crownOffer.reasons.join(' · ')}">
+					★ MATCH OF THE DAY<span class="cw">{crownOffer.row.winner_name}</span>
 				</button>
 			{/if}
 			<button type="button" class="browse" onclick={() => (browseOpen = true)} title="Browse matches (B)">⌕ BROWSE MATCHES</button>
@@ -1364,6 +1368,34 @@
 		border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--line));
 		border-radius: 8px;
 		padding: 7px 10px;
+	}
+	/* the crown is a control now, not the default — gold because it is an earned, verified fact */
+	.crown {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		font: inherit;
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		color: var(--gold);
+		padding: 4px 10px;
+		border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line));
+		border-radius: 8px;
+		background: linear-gradient(180deg, var(--gold-soft), transparent 80%), var(--panel-2);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.crown:hover {
+		border-color: var(--gold);
+	}
+	.crown .cw {
+		color: var(--dim);
+		font-weight: 700;
+		max-width: 120px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.browse,
 	.browseall {
