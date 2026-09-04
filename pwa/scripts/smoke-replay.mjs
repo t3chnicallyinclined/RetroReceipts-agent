@@ -342,8 +342,8 @@ try {
 		const placement = (g, label) => {
 			check(layerOk(g), `${label}: layer rect == canvas rect (k ${g.k.toFixed(4)}, Δ ${g.layer ? [g.layer.dl, g.layer.dt, g.layer.dw, g.layer.dh].map((v) => v.toFixed(1)).join('/') : 'none'})`);
 			// rev 3: identity in the top strip (y 0–24), clear of the health bars (y 25); always on
-			check(g.p1 && near(g.p1.x, 8) && g.p1.y >= 0 && g.p1.b <= 24.5, `${label}: P1 rows x 8 inside y 0–24 (got x ${g.p1?.x.toFixed(1)}, y ${g.p1?.y.toFixed(1)}–${g.p1?.b.toFixed(1)})`);
-			check(g.p2 && near(g.p2.r, 632) && g.p2.y >= 0 && g.p2.b <= 24.5, `${label}: P2 rows right edge x 632 inside y 0–24 (got r ${g.p2?.r.toFixed(1)}, y ${g.p2?.y.toFixed(1)}–${g.p2?.b.toFixed(1)})`);
+			check(g.p1 && near(g.p1.x, 14) && g.p1.y >= 0 && g.p1.b <= 24.5, `${label}: P1 rows x 14 inside y 0–24 (got x ${g.p1?.x.toFixed(1)}, y ${g.p1?.y.toFixed(1)}–${g.p1?.b.toFixed(1)})`);
+			check(g.p2 && near(g.p2.r, 626) && g.p2.y >= 0 && g.p2.b <= 24.5, `${label}: P2 rows right edge x 626 inside y 0–24 (got r ${g.p2?.r.toFixed(1)}, y ${g.p2?.y.toFixed(1)}–${g.p2?.b.toFixed(1)})`);
 			check(g.r1 && near(g.r1.y, 1) && near(g.r1.h, 11) && g.r2 && near(g.r2.y, 13) && near(g.r2.h, 11), `${label}: row 1 y 1–12, row 2 y 13–24 (got r1 ${g.r1?.y.toFixed(1)}+${g.r1?.h.toFixed(1)}, r2 ${g.r2?.y.toFixed(1)}+${g.r2?.h.toFixed(1)})`);
 			check(g.p1 && g.p1.b < 25 && g.p2.b < 25, `${label}: rows clear of the health bars (y 25)`);
 			check(/italic (900|bold)/.test(g.nmFont), `${label}: name in the display face (italic 900; got ${g.nmFont})`);
@@ -399,6 +399,41 @@ try {
 		// any k >= 1, this form pins it to the exact ratio.
 		check(near(g.k, g.canvas.w / 640, 0.01), `overlay: inline k = ${g.k.toFixed(4)} = canvas ${g.canvas.w.toFixed(0)} / 640`);
 		placement(g, 'inline');
+		{
+			// ── rev 4 typography, in the state EVERY REAL TAPE is in today ──────────────────────────────────
+			// The rest of this gate runs with ?devcredit=1, which fills the `Skin by:` row and therefore only
+			// ever proves the SMALL two-row layout. No shipped tape has credits (C13 is not built), so the
+			// layout users actually see was untested until this block.
+			const pn = await newPage(1280, 1600);
+			// PIN THE BUILT-IN: this block gates the template THIS REPO SHIPS. The unpinned assertions above
+			// deliberately run against the SERVER's copy, so if the deployed template is stale they fail loudly
+			// there instead of here — which is the signal that a template edit was not published.
+			await pn.goto(`${URL_}&devskin=none&overlay=/replay/overlay/default.json`, { waitUntil: 'load', timeout: 120000 });
+			await waitEmbed(pn, H);
+			await pn.evaluate((h) => window[h].setOverlay('full'), H);
+			await sleep(250);
+			const T = await pn.evaluate((s) => {
+				const c = document.querySelector(`${s} canvas`).getBoundingClientRect();
+				const k = c.width / 640;
+				const r = (q) => { const b = document.querySelector(`${s} ${q}`)?.getBoundingClientRect(); return b ? { x: (b.left - c.left) / k, y: (b.top - c.top) / k, r: (b.right - c.left) / k, b: (b.bottom - c.top) / k, h: b.height / k } : null; };
+				const nm = document.querySelector(`${s} .ovl .pid.p1 .nm`);
+				return {
+					// NOT divided by k: `.ovl` is transform:scale(k)'d as a whole, so a computed fontSize inside it
+					// is already in 640x480 picture units. Dividing again reported 18px as 16.5.
+					size: nm ? parseFloat(getComputedStyle(nm).fontSize) : 0,
+					p1: r('.ovl .pid.p1'), p2: r('.ovl .pid.p2'),
+					r2: !!document.querySelector(`${s} .ovl .pid.p1 .r2`)
+				};
+			}, SEL);
+			log('overlay rev4 (no credits)', JSON.stringify(T));
+			check(!T.r2, 'rev4: with no credits the `Skin by:` row does not render, so it reserves no space');
+			check(near(T.size, 18, 0.6), `rev4: the player name is 18 px in picture units, up from 12 (got ${T.size.toFixed(1)})`);
+			check(T.p1 && near(T.p1.x, 14), `rev4: P1 identity inset to x 14, up from 8 (got ${T.p1?.x.toFixed(1)})`);
+			check(T.p2 && near(T.p2.r, 626), `rev4: P2 identity inset to x 626 from the right edge (got ${T.p2?.r.toFixed(1)})`);
+			// the hard constraint: the game's health bars and portraits start at y 25 (SPEC §2.1)
+			check(T.p1 && T.p1.b <= 24.5 && T.p2.b <= 24.5, `rev4: still clear of the health bars at y 25 (P1 bottom ${T.p1?.b.toFixed(1)}, P2 ${T.p2?.b.toFixed(1)})`);
+			await pn.close();
+		}
 		{
 			// LIVE-TAB-V2-SPEC P0 gate: a 700 px picture must climb the quality ladder rather than upscale a
 			// 640-wide render — res 4 at dpr 1 (2560×1920 internal). Nothing asserted this before.
@@ -1023,6 +1058,64 @@ try {
 		await pg.waitForFunction(() => !document.querySelector('[role="dialog"][aria-label="Browse matches"]'), { timeout: 30000 });
 		await pg.waitForFunction(() => [...document.querySelectorAll('[data-test="hero"] .acts .a')].some((b) => /Copy link/.test(b.textContent || '')), { timeout: 60000 });
 	};
+
+	// ═══ PLAYBACK CADENCE (the judder fix) ═══════════════════════════════════════════════════════════════
+	// Drives the REAL Pacer from a SYNTHETIC refresh clock, so all four rates are covered without four physical
+	// panels. The requirement being gated: refresh rate may change how many TIMES a frame is shown; it may never
+	// change how fast the match plays. The second assertion below is the one that catches a 120 Hz
+	// double-speed regression.
+	if (has('--pacer')) {
+		const pp = await newPage(1280, 900);
+		await pp.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+		await pp.waitForFunction(() => !!window.__rrPacer, { timeout: 60000 });
+		const R = await pp.evaluate(() => {
+			const Pacer = window.__rrPacer;
+			// PHYSICAL refresh model: timestamp i is i*T plus BOUNDED error. A panel does not random-walk away
+			// from real time, and modelling it as if it did flatters the old algorithm.
+			const train = (hz, n, jit, seed = 999) => {
+				let s = seed; const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+				const T = 1000 / hz; const out = []; let prev = -1;
+				for (let i = 0; i < n; i++) { const t = i * T + (rnd() - 0.5) * 2 * jit; if (t > prev) { out.push(t); prev = t; } }
+				return out;
+			};
+			const run = (hz, speed) => {
+				const ts = train(hz, 1400, 0.5);
+				const p = new Pacer(ts[0], speed);
+				const adv = [];
+				for (let i = 1; i < ts.length; i++) adv.push(p.tick(ts[i], speed));
+				const w = adv.slice(250);
+				const shown = w.reduce((a, b) => a + b, 0);
+				const secs = (ts[ts.length - 1] - ts[250]) / 1000;
+				let beats = 0;
+				for (let i = 1; i < w.length; i++) if ((w[i - 1] === 0 && w[i] === 2) || (w[i - 1] === 2 && w[i] === 0)) beats++;
+				// hold lengths: how many refreshes each source frame was displayed for
+				const holds = []; let run_ = 0;
+				for (const a of w) { if (a === 0) run_++; else { for (let k = 0; k < a; k++) { holds.push(run_ + 1); run_ = 0; } } }
+				const distinct = [...new Set(holds.slice(5, -5))].sort((a, b) => a - b);
+				return { hz, speed, fps: shown / secs, beats, distinct, seq: w.slice(0, 40).join('') };
+			};
+			return {
+				r60: run(60, 60), r90: run(90, 60), r120: run(120, 60), r144: run(144, 60), r240: run(240, 60),
+				half120: run(120, 30), dbl60: run(60, 120)
+			};
+		});
+		for (const k of Object.keys(R)) log(`pacer ${k}`, JSON.stringify(R[k]));
+
+		for (const [k, want] of [['r60', 60], ['r90', 60], ['r120', 60], ['r144', 60], ['r240', 60], ['half120', 30], ['dbl60', 120]]) {
+			const r = R[k];
+			// (a) SPEED is unchanged by refresh rate — the 120 Hz double-speed regression dies here
+			check(Math.abs(r.fps / want - 1) < 0.01, `pacer ${r.hz}Hz @ speed ${r.speed}: plays at ${r.fps.toFixed(3)} fps (want ${want}, within 1%)`);
+			// (b) the cadence is a STABLE pattern, never the noise-driven repeat/skip beat
+			check(r.beats === 0, `pacer ${r.hz}Hz @ speed ${r.speed}: no 0/2 repeat-then-skip beat (${r.beats})`);
+			// (c) at most two distinct hold lengths — one for an integer ratio, two for a Bresenham pattern
+			check(r.distinct.length <= 2, `pacer ${r.hz}Hz @ speed ${r.speed}: hold lengths are ${JSON.stringify(r.distinct)} (<= 2 distinct = a fixed pattern)`);
+		}
+		// the integer ratios must be PERFECTLY uniform, not merely patterned
+		check(R.r60.distinct.length === 1 && R.r60.distinct[0] === 1, `pacer 60Hz: exactly one refresh per source frame, uniformly (${JSON.stringify(R.r60.distinct)})`);
+		check(R.r120.distinct.length === 1 && R.r120.distinct[0] === 2, `pacer 120Hz: every frame held exactly 2 refreshes (${JSON.stringify(R.r120.distinct)})`);
+		check(R.r240.distinct.length === 1 && R.r240.distinct[0] === 4, `pacer 240Hz: every frame held exactly 4 refreshes (${JSON.stringify(R.r240.distinct)})`);
+		await pp.close();
+	}
 
 	// ═══ ↗ SHARE (LIVE-TAB-V2-SPEC §5, P4 gate) ══════════════════════════════════════════════════════════
 	// The OS-sheet half of P4 ("on a real Android phone and a real iPhone the sheet opens and Discord receives

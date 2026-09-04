@@ -72,7 +72,7 @@
       "role": "group",
       "label": "{{p1.label}}",
       "anchor": "top-left",
-      "x": 8,
+      "x": 14,
       "y": 0,
       "w": 250,
       "layout": "column",
@@ -84,8 +84,8 @@
           "class": "r1",
           "layout": "row",
           "align": "left",
-          "h": 11,
-          "mt": 1,
+          "h": "{{p1.creators ? 11 : 20}}",
+          "mt": "{{p1.creators ? 1 : 2}}",
           "gap": 4,
           "children": [
             {
@@ -95,14 +95,16 @@
               "color": "{{p1.won ? gold : ink}}",
               "content": "{{p1.name}}",
               "href": "{{p1.profile}}",
-              "ellipsis": true
+              "ellipsis": true,
+              "size": "{{p1.creators ? 12 : 18}}",
+              "lineHeight": "{{p1.creators ? 11 : 18}}"
             },
             {
               "kind": "rank",
               "class": "rk",
               "rating": "p1.rating",
               "games": "p1.games",
-              "badge": 10,
+              "badge": "{{p1.creators ? 10 : 14}}",
               "href": "{{ranksHref}}",
               "title": "Marvel ladder",
               "outline": true,
@@ -113,7 +115,8 @@
               "class": "rt",
               "style": "mono",
               "content": "{{p1.rating}}",
-              "when": "p1.rating"
+              "when": "p1.rating",
+              "size": "{{p1.creators ? 9 : 12}}"
             },
             {
               "kind": "text",
@@ -121,7 +124,9 @@
               "style": "display",
               "color": "{{p1.won ? gold : ink}}",
               "content": "{{p1.score}}",
-              "when": "p1.score"
+              "when": "p1.score",
+              "size": "{{p1.creators ? 12 : 18}}",
+              "lineHeight": "{{p1.creators ? 11 : 18}}"
             }
           ]
         },
@@ -155,9 +160,11 @@
               },
               "when": "p1.creators"
             }
-          ]
+          ],
+          "when": "p1.creators"
         }
-      ]
+      ],
+      "_": "Identity rows, rev 4 (Tris 2026-09-04: \"the names in the overlay are too small, lets give a little margin more from the edge... we have plenty of room above the health meter, maybe double the size\"). The band above the game's health bars is y0-24 (25px; bars and portraits start at y25, SPEC 2.1) and it is the ONLY free space up there - so 'double' is bounded by the game, not by taste. What made room is that the 'Skin by:' row is empty on every tape today (C13 provenance is not built), so when there are no creators the name takes the whole band: 18px on a 20px row at y2-22, 3px clear of the bars. When creators DO exist the two-row layout returns at its old 11px sizes - expressed as bindings rather than a duplicated row, so the two cases cannot drift apart. Names are user strings of unbounded length and stay ellipsis-clipped inside the group's 250px cap."
     },
     {
       "id": "p2",
@@ -165,7 +172,7 @@
       "role": "group",
       "label": "{{p2.label}}",
       "anchor": "top-right",
-      "x": 8,
+      "x": 14,
       "y": 0,
       "w": 250,
       "layout": "column",
@@ -177,8 +184,8 @@
           "class": "r1",
           "layout": "row",
           "reverse": true,
-          "h": 11,
-          "mt": 1,
+          "h": "{{p2.creators ? 11 : 20}}",
+          "mt": "{{p2.creators ? 1 : 2}}",
           "gap": 4,
           "children": [
             {
@@ -188,14 +195,16 @@
               "color": "{{p2.won ? gold : ink}}",
               "content": "{{p2.name}}",
               "href": "{{p2.profile}}",
-              "ellipsis": true
+              "ellipsis": true,
+              "size": "{{p2.creators ? 12 : 18}}",
+              "lineHeight": "{{p2.creators ? 11 : 18}}"
             },
             {
               "kind": "rank",
               "class": "rk",
               "rating": "p2.rating",
               "games": "p2.games",
-              "badge": 10,
+              "badge": "{{p2.creators ? 10 : 14}}",
               "href": "{{ranksHref}}",
               "title": "Marvel ladder",
               "outline": true,
@@ -206,7 +215,8 @@
               "class": "rt",
               "style": "mono",
               "content": "{{p2.rating}}",
-              "when": "p2.rating"
+              "when": "p2.rating",
+              "size": "{{p2.creators ? 9 : 12}}"
             },
             {
               "kind": "text",
@@ -214,7 +224,9 @@
               "style": "display",
               "color": "{{p2.won ? gold : ink}}",
               "content": "{{p2.score}}",
-              "when": "p2.score"
+              "when": "p2.score",
+              "size": "{{p2.creators ? 12 : 18}}",
+              "lineHeight": "{{p2.creators ? 11 : 18}}"
             }
           ]
         },
@@ -248,9 +260,11 @@
               },
               "when": "p2.creators"
             }
-          ]
+          ],
+          "when": "p2.creators"
         }
-      ]
+      ],
+      "_": "mirror of p1 (SPEC 2.2 #3/#4)"
     },
     {
       "id": "stamp",
@@ -372,5 +386,6 @@
         }
       ]
     }
-  ]
+  ],
+  "rev": 4
 }

@@ -75,10 +75,10 @@ export interface TapeOverlay {
 export interface TplStyle {
 	/** a CSS font-family stack */
 	font?: string;
-	size?: number;
+	size?: number | string;
 	weight?: number;
 	italic?: boolean;
-	lineHeight?: number;
+	lineHeight?: number | string;
 	letterSpacing?: string | number;
 	uppercase?: boolean;
 	/** the 1 px dark outline (text) / a 1 px drop shadow (rank badge) that carries text over any game pixel */
@@ -114,8 +114,10 @@ export interface TplEl extends TplStyle {
 	y?: number;
 	/** max-width */
 	w?: number;
-	h?: number;
-	mt?: number;
+	/** These accept a MUSTACHE BINDING as well as a literal (`"{{p1.creators ? 11 : 20}}"`), so one element can
+	 *  size itself from the data instead of the template carrying two near-identical copies of the same row. */
+	h?: number | string;
+	mt?: number | string;
 	ml?: number;
 	mr?: number;
 	gap?: number;
@@ -137,7 +139,7 @@ export interface TplEl extends TplStyle {
 	/** rank: the paths of the rating / games to derive the tier from, and the badge size */
 	rating?: string;
 	games?: string;
-	badge?: number;
+	badge?: number | string;
 	/** list: the path of the array; each item binds as `item.*` */
 	items?: string;
 	separator?: string | { text: string; ml?: number; mr?: number };
@@ -293,6 +295,13 @@ const TTL_MS = 24 * 3600_000;
 const MISS_TTL_MS = 3600_000;
 export type TemplateFrom = 'preview' | 'tape' | 'server' | 'builtin' | 'inline';
 
+/**
+ * ⚠ `version` here is the SCHEMA version, not a revision counter, and this check is exact. Bumping it to mark
+ * an edit does not "publish a newer template" — it makes every loader reject the file and fall through to the
+ * next source in the chain, SILENTLY (fetchTemplate returns null and loadOverlayTemplate just moves on). That
+ * cost a debugging round: a rev-4 default.json with `version: 2` was ignored in favour of the deployed rev-1
+ * copy, with nothing logged. Put the human revision in `rev`; leave `version` alone until the schema changes.
+ */
 export function validTemplate(t: unknown): t is OverlayTemplate {
 	const o = t as Partial<OverlayTemplate> | null;
 	return !!o && o.version === 1 && typeof o.name === 'string' && Array.isArray(o.elements) && !!o.tokens && typeof o.tokens === 'object';

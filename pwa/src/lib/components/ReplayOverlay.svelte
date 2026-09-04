@@ -29,6 +29,13 @@
 
 	const tokens = $derived(tpl.tokens ?? {});
 	const px = (n: number | undefined) => (n == null ? '' : `${n}px`);
+	/** a numeric template field that may also be a binding (`"{{p1.creators ? 11 : 20}}"`) — see TplEl */
+	const numOf = (v: number | string | undefined, scope: Ctx): number | undefined => {
+		if (v == null) return undefined;
+		if (typeof v === 'number') return v;
+		const n = Number(bind(v, scope, tokens));
+		return Number.isFinite(n) ? n : undefined;
+	};
 	const tok = (s: string | undefined, scope: Ctx) => (s == null ? '' : colorOf(s, scope, tokens));
 
 	/** the element's inline style: named style + overrides, box, layout, placement (top-level = absolute in 640×480) */
@@ -37,10 +44,12 @@
 		const s: TplStyle & TplEl = { ...base, ...e };
 		const out: string[] = [];
 		if (s.font) out.push(`font-family:${s.font}`);
-		if (s.size != null) out.push(`font-size:${s.size}px`);
+		const size = numOf(s.size, scope);
+		if (size != null) out.push(`font-size:${size}px`);
 		if (s.weight != null) out.push(`font-weight:${s.weight}`);
 		if (s.italic) out.push('font-style:italic');
-		if (s.lineHeight != null) out.push(`line-height:${s.lineHeight}px`);
+		const lh = numOf(s.lineHeight, scope);
+		if (lh != null) out.push(`line-height:${lh}px`);
 		if (s.letterSpacing != null) out.push(`letter-spacing:${typeof s.letterSpacing === 'number' ? `${s.letterSpacing}px` : s.letterSpacing}`);
 		if (s.uppercase) out.push('text-transform:uppercase');
 		if (s.outline) out.push(e.kind === 'rank' ? 'filter:drop-shadow(0 0 1px #000)' : `text-shadow:${OUTLINE}`);
@@ -48,9 +57,11 @@
 		if (s.opacity != null) out.push(`opacity:${s.opacity}`);
 		if (s.underline) out.push(s.underline === 'none' ? 'text-decoration:none' : `text-decoration:underline ${s.underline};text-underline-offset:2px`);
 		if (s.ellipsis) out.push('overflow:hidden;text-overflow:ellipsis');
-		if (e.h != null) out.push(`height:${e.h}px`);
+		const eh = numOf(e.h, scope);
+		if (eh != null) out.push(`height:${eh}px`);
 		if (e.w != null) out.push(`max-width:${e.w}px`);
-		if (e.mt != null) out.push(`margin-top:${e.mt}px`);
+		const emt = numOf(e.mt, scope);
+		if (emt != null) out.push(`margin-top:${emt}px`);
 		if (e.ml != null) out.push(`margin-left:${e.ml}px`);
 		if (e.mr != null) out.push(`margin-right:${e.mr}px`);
 		if (e.borderTop) out.push(`border-top:${e.borderTop.replace(/\b[a-zA-Z]\w*\b/g, (w) => tokens[w] ?? w)}`);
@@ -99,8 +110,8 @@
 			{@const rating = num(getPath(scope, e.rating ?? 'p1.rating'))}
 			{@const games = num(getPath(scope, e.games ?? 'p1.games'))}
 			{@const h = bind(e.href, scope, tokens)}
-			{#if h}<a class={cls} style={st} href={h} title={e.title ?? 'Marvel ladder'}><RankBadge {rating} games={games ?? 999} size={e.badge ?? 10} /></a>
-			{:else}<span class={cls} style={st} title={e.title}><RankBadge {rating} games={games ?? 999} size={e.badge ?? 10} /></span>{/if}
+			{#if h}<a class={cls} style={st} href={h} title={e.title ?? 'Marvel ladder'}><RankBadge {rating} games={games ?? 999} size={numOf(e.badge, scope) ?? 10} /></a>
+			{:else}<span class={cls} style={st} title={e.title}><RankBadge {rating} games={games ?? 999} size={numOf(e.badge, scope) ?? 10} /></span>{/if}
 		{:else if e.kind === 'list'}
 			{@const items = (getPath(scope, e.items ?? '') as unknown[] | undefined) ?? []}
 			{@const sep = sepOf(e)}
