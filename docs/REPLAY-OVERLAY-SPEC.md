@@ -5,6 +5,11 @@
 > no box, the house display face with a 1 px dark outline; the space above the LEVEL pods is the game's again. The record
 > stamp (dead gap under the timer) and the watermark (bottom-centre) are unchanged. The top rows are ALWAYS on; the stamp
 > stays full-only. §2.2, §2.5 and the mockup are updated below; BUILT in `ReplayEmbed.svelte` (see `REPLAY-OVERLAY-PLAN-PWA.md`).
+>
+> **Template-driven (2026-09-04).** The placements in §2.2 now LIVE in a JSON template — `pwa/static/replay/overlay/default.json`
+> (the built-in default = this rev 3 table), format in `docs/REPLAY-OVERLAY-TEMPLATE.md`; the server may ship a template + the bound
+> metadata with the tape read (HANDOFF-LANE1-REPLAY-DATA.md STEP 4b). This spec stays the design of record; the template is its
+> executable form. A placement change is a template edit, not a code change.
 
 The replay gets a broadcast overlay **drawn on the rendered screen, the way OBS draws an overlay**: P1's plate
 bottom-left, P2's bottom-right (the game's own HUD sides), the match record under the timer, RETRO RECEIPTS

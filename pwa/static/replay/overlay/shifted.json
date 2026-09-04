@@ -1,0 +1,38 @@
+{
+  "_": "DEV FIXTURE for the smoke test (?overlay=/replay/overlay/shifted.json): the default template with P1 moved to x 20 and the stamp to y 60, to prove a template change moves the rendering with no code change. Not a design.",
+  "version": 1,
+  "name": "shifted-test",
+  "tokens": { "ink": "#eef1f8", "dim": "#c9cedd", "faint": "#8a91a8", "gold": "#ffb020", "stream": "#8b6dff", "scrim": "rgba(0,0,0,0.65)", "wmScrim": "rgba(0,0,0,0.5)", "wmInk": "rgba(255,255,255,0.7)" },
+  "styles": {
+    "display": { "font": "'Barlow Condensed', Inter, 'Segoe UI', system-ui, sans-serif", "size": 12, "weight": 900, "italic": true, "lineHeight": 11, "outline": true },
+    "mono": { "font": "'JetBrains Mono', ui-monospace, monospace", "size": 9, "lineHeight": 11, "color": "dim", "outline": true },
+    "stamp": { "font": "'JetBrains Mono', ui-monospace, monospace", "size": 12, "lineHeight": 14, "color": "dim" },
+    "wm": { "font": "'JetBrains Mono', ui-monospace, monospace", "size": 11, "lineHeight": 12, "letterSpacing": "0.1em", "uppercase": true, "color": "wmInk" }
+  },
+  "elements": [
+    { "id": "p1", "class": "pid p1", "role": "group", "label": "{{p1.label}}", "anchor": "top-left", "x": 20, "y": 0, "w": 250, "layout": "column", "align": "left",
+      "children": [
+        { "id": "p1.r1", "class": "r1", "layout": "row", "h": 11, "mt": 1, "gap": 4, "children": [
+          { "kind": "text", "class": "nm", "style": "display", "color": "{{p1.won ? gold : ink}}", "content": "{{p1.name}}", "href": "{{p1.profile}}" } ] },
+        { "id": "p1.r2", "class": "r2", "layout": "row", "h": 11, "mt": 1, "gap": 4, "style": "mono", "children": [
+          { "kind": "text", "class": "lb", "content": "Skin by:", "when": "p1.creators" },
+          { "kind": "list", "class": "by", "items": "p1.creators", "content": "{{item.name}}", "href": "{{item.href}}", "color": "stream", "separator": ", ", "when": "p1.creators" } ] } ] },
+    { "id": "p2", "class": "pid p2", "role": "group", "label": "{{p2.label}}", "anchor": "top-right", "x": 8, "y": 0, "w": 250, "layout": "column", "align": "right",
+      "children": [
+        { "id": "p2.r1", "class": "r1", "layout": "row", "reverse": true, "h": 11, "mt": 1, "gap": 4, "children": [
+          { "kind": "text", "class": "nm", "style": "display", "color": "{{p2.won ? gold : ink}}", "content": "{{p2.name}}", "href": "{{p2.profile}}" } ] },
+        { "id": "p2.r2", "class": "r2", "layout": "row", "justify": "end", "h": 11, "mt": 1, "gap": 4, "style": "mono", "children": [
+          { "kind": "text", "class": "lb", "content": "Skin by:", "when": "p2.creators" },
+          { "kind": "list", "class": "by", "items": "p2.creators", "content": "{{item.name}}", "href": "{{item.href}}", "color": "stream", "separator": ", ", "when": "p2.creators" } ] } ] },
+    { "id": "stamp", "class": "stamp", "label": "Match record", "anchor": "top-center", "y": 60, "w": 104, "layout": "column", "align": "center", "visibility": "full", "box": { "fill": "scrim", "radius": 3, "padding": [0, 4] }, "style": "stamp",
+      "children": [
+        { "kind": "text", "content": "{{record}}", "when": "record" },
+        { "kind": "text", "content": "{{date}}", "when": "date" },
+        { "kind": "text", "content": "{{stageText}}", "when": "stageText" } ] },
+    { "id": "wm", "class": "wm", "anchor": "top-center", "y": 437, "h": 12, "layout": "row", "gap": 6, "box": { "fill": "wmScrim", "radius": 2, "padding": [0, 6] }, "style": "wm",
+      "children": [
+        { "kind": "text", "content": "{{watermark.text}}", "aria": "hidden" },
+        { "kind": "text", "class": "sep", "content": "·", "opacity": 0.5, "aria": "hidden" },
+        { "kind": "text", "content": "{{watermark.link}}", "href": "{{ranksHref}}", "title": "The Marvel ladder" } ] }
+  ]
+}

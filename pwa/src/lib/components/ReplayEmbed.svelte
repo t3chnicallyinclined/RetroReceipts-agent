@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
-	import RankBadge from './RankBadge.svelte';
+	import ReplayOverlay from './ReplayOverlay.svelte';
+	import { bindCtx, loadOverlayTemplate, type OverlayMeta, type OverlayTemplate, type TemplateFrom } from '$lib/replay/overlay';
 	import type { ReplaySource } from '$lib/replay/source';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { page as appPage } from '$app/state';
@@ -35,7 +36,11 @@
 	// Timing (§2.5): the top rows are ALWAYS on; the record stamp is full-only — full while not playing, for the
 	// first/last 3 s of play, on hover (+3 s); minimal after the same 2.5 s idle timer as the HUD; below k 0.75
 	// minimal-only while playing;
-	// `o` cycles auto → full → minimal → off. Only the game's real textures/geometry are drawn
+	// `o` cycles auto → full → minimal → off. TEMPLATE-DRIVEN (Tris 2026-09-04, docs/REPLAY-OVERLAY-TEMPLATE.md): the layer
+	// is rendered by ReplayOverlay.svelte from a versioned JSON template (built-in static/replay/overlay/default.json,
+	// overridable by the server's /rr/update/overlay-template.json or the tape read's `overlay.template`) bound to ONE
+	// metadata schema — the server's `overlay.meta` when the tape read ships it (HANDOFF STEP 4b), else assembled here
+	// from the row + loadouts. Only the game's real textures/geometry are drawn
 	// (feedback-render-only-game-assets); the layer draws identity, record and credit — text, never art.
 
 	export interface ReplaySide {
@@ -228,8 +233,6 @@
 	const leftWon = $derived(meta.winner === (leftIsB ? 'b' : 'a'));
 	const scoreL = $derived(meta.score ? (leftIsB ? meta.score.b : meta.score.a) : null);
 	const scoreR = $derived(meta.score ? (leftIsB ? meta.score.a : meta.score.b) : null);
-	const groupLabel = (side: ReplaySide, seat: 1 | 2) =>
-		`${seatsKnown ? `Player ${seat}: ` : ''}${side.name || (side.steamid ? `…${side.steamid.slice(-5)}` : 'Player')}`;
 
 	// ── the overlay mode (REPLAY-OVERLAY-SPEC, Tris 2026-09-03): full for the first 3 s of play, on pause/seek/end,
 	// and while hovered inline; minimal (names + watermark) once the same 2.5 s idle timer as the HUD fires during play.
@@ -265,27 +268,40 @@
 	}
 	const creditsL = $derived(creditsFor(left, true));
 	const creditsR = $derived(creditsFor(right, false));
-	/** `Skin by:` row (rev 3): the UNIQUE creators of a side's credited skins, in slot order; own design and stock = nothing */
-	type Creator = { name: string; steamid?: string };
-	function creatorsOf(list: Credit[]): Creator[] {
-		const out: Creator[] = [];
-		for (const c of list) {
-			if (c.own) continue;
-			const name = c.author_name || (c.author_steamid ? `…${c.author_steamid.slice(-5)}` : '');
-			if (!name) continue;
-			const hit = out.find((o) => o.name === name);
-			if (hit) {
-				if (!hit.steamid && is17(c.author_steamid)) hit.steamid = c.author_steamid;
-				continue;
-			}
-			out.push({ name, steamid: is17(c.author_steamid) ? c.author_steamid : undefined });
-		}
-		return out;
-	}
-	const is17 = (sid?: string) => !!sid && /^\d{17}$/.test(sid);
-	const creatorsL = $derived(creatorsOf(creditsL));
-	const creatorsR = $derived(creatorsOf(creditsR));
-	const shownName = (side: ReplaySide) => side.name || (side.steamid ? `…${side.steamid.slice(-5)}` : 'Player');
+	// ── the overlay's data (ONE binding schema, docs/REPLAY-OVERLAY-TEMPLATE.md §2): the tape read's `overlay.meta` VERBATIM
+	// when the server shipped one (no client-side lookups), else the same shape assembled from the row + loadouts.
+	const sideMeta = (side: ReplaySide, won: boolean, score: number | null, list: Credit[]) => ({
+		steamid: side.steamid,
+		name: side.name,
+		rating: side.rating ?? null,
+		games: side.games ?? null,
+		avatar: side.avatar,
+		won,
+		team: side.team,
+		score,
+		credits: list
+	});
+	const ovMeta = $derived.by((): OverlayMeta => {
+		const shipped = source.kind === 'tape' ? source.overlay?.meta : undefined;
+		if (shipped) return shipped;
+		return {
+			mode: meta.mode,
+			ft: meta.ft,
+			game: meta.gameNo,
+			date_ms: meta.ts,
+			stage_id: meta.stageId,
+			duration_s: meta.durationS ?? (count ? Math.round(count / 60) : undefined),
+			seats_known: seatsKnown,
+			saved: !!meta.saved,
+			p1: sideMeta(left, leftWon, scoreL, creditsL),
+			p2: sideMeta(right, !leftWon, scoreR, creditsR)
+		};
+	});
+	const ovCtx = $derived(bindCtx(ovMeta, base));
+	const ovShipped = $derived(source.kind === 'tape' && !!source.overlay?.meta);
+	// the template: ?overlay= preview → the tape's → the server's (24 h cache) → the built-in default (overlay.ts)
+	let tpl = $state<OverlayTemplate | null>(null);
+	let tplFrom = $state<TemplateFrom | ''>('');
 
 	// §5f: the readout during a forward seek is `served → target` — the served fraction IS the progress
 	const roServed = $derived(st === 'seeking' ? mmss(Math.max(seekServed, 0)) : mmss(scrubPreview ?? frame));
@@ -908,6 +924,14 @@
 		get scale() {
 			return k;
 		},
+		/** the overlay template in use: `<from>:<name>` (preview | tape | server | builtin | inline) */
+		get template() {
+			return tpl ? `${tplFrom}:${tpl.name}` : '';
+		},
+		/** the bound overlay metadata (the server's block verbatim when shipped, else the client assembly) + where it came from */
+		get overlayMeta() {
+			return { shipped: ovShipped, ...ovMeta };
+		},
 		/** the display plan: canvas backing (device px), internal res (multiple of 640×480), box taps, scene RT size */
 		get res() {
 			return res;
@@ -943,6 +967,11 @@
 
 	onMount(() => {
 		exposeTestHook();
+		void loadOverlayTemplate(source.kind === 'tape' ? source.overlay?.template : null).then((r) => {
+			if (disposed) return;
+			tpl = r.tpl;
+			tplFrom = r.from;
+		});
 		document.addEventListener('fullscreenchange', onFsChange);
 		window.addEventListener('popstate', onPop);
 		window.addEventListener('resize', layoutFs);
@@ -964,27 +993,6 @@
 		};
 	});
 </script>
-
-{#snippet pid(side: ReplaySide, won: boolean, seat: 1 | 2, creators: Creator[], right: boolean)}
-	<!-- rev 3: the identity rows in the top strip (y 0–24) — row 1 name · rank badge · rating (· set score), row 2 Skin by: -->
-	<div class="pid {right ? 'p2' : 'p1'}" role="group" aria-label={groupLabel(side, seat)}>
-		<div class="r1">
-			{#if is17(side.steamid)}<a class="nm" class:won href="{base}/u/{side.steamid}">{shownName(side)}</a>
-			{:else}<span class="nm" class:won>{shownName(side)}</span>{/if}
-			{#if side.rating != null}
-				<a class="rk" href="{base}/ranks" title="Marvel ladder"><RankBadge rating={side.rating} games={side.games ?? 999} size={10} /></a>
-				<span class="rt">{side.rating}</span>
-			{/if}
-			{#if (right ? scoreR : scoreL) != null}<span class="sc" class:w={won}>{right ? scoreR : scoreL}</span>{/if}
-		</div>
-		<div class="r2" class:empty={!creators.length}>
-			{#if creators.length}
-				<span class="lb">Skin by:</span>
-				{#each creators as c, i (c.name)}{#if i}<span class="cm">,</span>{/if}{#if c.steamid}<a class="by" href="{base}/u/{c.steamid}" aria-label="{c.name}'s profile">{c.name}</a>{:else}<span class="by">{c.name}</span>{/if}{/each}
-			{/if}
-		</div>
-	</div>
-{/snippet}
 
 {#snippet record()}
 	{#if modeLabel}<span class="mode" class:money={meta.mode === 'money'}>{meta.mode === 'money' ? '🪙 ' : ''}{modeLabel}</span>{/if}
@@ -1115,30 +1123,11 @@
 			<div class="ov end"><button type="button" class="again" onclick={(e) => { e.stopPropagation(); play(); }}>▶ Watch again</button></div>
 		{/if}
 
-		<!-- ═══ THE OVERLAY (REPLAY-OVERLAY-SPEC rev 2, on-picture): a 640×480 box scaled with the picture. DOM only —
-		     the game's pixels underneath are untouched (readback sha unchanged). pointer-events: none except links.
-		     Placement = the spec's §2.2 table rev 3 (docs/mockups/replay-overlay.html §1), measured on the game's HUD:
-		       identity  — the TOP STRIP above the health bars (y 0–24): row 1 y 1–12 name · rank · rating (· score),
-		                   row 2 y 13–24 `Skin by: <creators>`; P1 LEFT x 8 / P2 RIGHT edge x 632; no box, 1 px outline
-		       stamp     — the dead gap under the timer (x 269–374, y 56–98): mode·FT·G / date / stage (+ stock colors)
-		       watermark — bottom-centre y 437–449, between the LEVEL pods, above the hyper bars
-		     the top rows and the watermark are ALWAYS on; minimal drops the stamp (and the SAVED pill). -->
-		{#if isPlayable}
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-		<div class="ovl {showOverlay}" class:seats={seatsKnown} style="transform:scale({k})" aria-hidden={showOverlay === 'off'} data-mode={showOverlay} onclick={(e) => e.stopPropagation()}>
-			{@render pid(left, leftWon, 1, creatorsL, false)}
-			{@render pid(right, !leftWon, 2, creatorsR, true)}
-			<div class="stamp" aria-label="Match record">
-				{#if modeLabel || meta.ft || meta.gameNo}
-					<span class:money={meta.mode === 'money'}>{meta.mode === 'money' ? '🪙 ' : ''}{[modeLabel, meta.ft ? `FT${meta.ft}` : '', meta.gameNo ? `G${meta.gameNo}` : ''].filter(Boolean).join(' · ')}</span>
-				{/if}
-				{#if dateText}<span>{dateText}</span>{/if}
-				{#if meta.stageId != null}<span>STAGE {meta.stageId}</span>{/if}
-				{#if !seatsKnown}<span class="stock" title="Seats unknown for this tape — colors are the game's own">stock colors</span>{/if}
-			</div>
-			{#if meta.saved}<span class="saved" title="Saved — this tape never leaves the archive">SAVED</span>{/if}
-			<div class="wm"><span aria-hidden="true">RETRO RECEIPTS</span><span class="sep" aria-hidden="true">·</span><a href="{base}/ranks" title="The Marvel ladder">nobd.net/app/ranks</a></div>
-		</div>
+		<!-- ═══ THE OVERLAY — template-driven (docs/REPLAY-OVERLAY-TEMPLATE.md): a 640×480 DOM layer scaled with the picture,
+		     rendered by ReplayOverlay from `tpl` bound to `ovCtx`. DOM only — the game's pixels underneath are untouched
+		     (readback sha unchanged). Placement lives in the template (spec rev 3 = the built-in default). -->
+		{#if isPlayable && tpl}
+			<ReplayOverlay {tpl} ctx={ovCtx} mode={showOverlay} {k} seats={seatsKnown} onclick={(e) => e.stopPropagation()} />
 		{/if}
 		{#if turnHint}<div class="hint">📱↻ Turn your phone</div>{/if}
 	</div>
@@ -1348,8 +1337,7 @@
 		letter-spacing: 0.1em;
 		color: var(--faint);
 	}
-	.metarow .stock,
-	.stamp .stock {
+	.metarow .stock {
 		color: var(--faint);
 		cursor: help;
 		pointer-events: auto;
@@ -1358,230 +1346,6 @@
 		border: 1px dashed var(--line);
 		padding: 0 5px;
 		border-radius: 4px;
-	}
-
-	/* ═══ THE OVERLAY — 640×480 coordinate space, scaled with the picture (transform: scale(k), origin 0 0).
-	   Every length below is in PICTURE pixels (the designer's table, mockup rev 2 §1): at 2× fullscreen it is exactly
-	   twice as big, on a phone exactly the fit scale — pixel-identical geometry everywhere. Colors are pinned
-	   dark-on-picture (the picture is the game's, not the app theme's): the plate tokens are re-declared here. ═══ */
-	.ovl {
-		position: absolute;
-		left: 0;
-		top: 0;
-		width: 640px;
-		height: 480px;
-		transform-origin: 0 0;
-		pointer-events: none;
-		z-index: 2;
-		font-family: Inter, 'Segoe UI', system-ui, sans-serif;
-		/* 640-space placement (spec §2.2 rev 3) */
-		--ov-pid-side: 8px; /* P1 x 8 · P2 right edge x 632, in the top strip y 0–24 (the health bars start at y 25) */
-		--ov-pid-max: 250px;
-		--ov-stamp-top: 56px; /* the dead gap under the timer: x 269–374, y 56–98 */
-		--ov-stamp-max: 104px;
-		--ov-wm-top: 437px; /* y 437–449, between the pods, above the hyper bars */
-		/* dark-on-picture tokens, theme-independent (--ovl-dim = 4.5:1 over .65 black, spec §6) */
-		--ink: #eef1f8;
-		--dim: #c9cedd;
-		--faint: #8a91a8;
-		--line: rgba(255, 255, 255, 0.18);
-		--line-soft: rgba(255, 255, 255, 0.1);
-		--panel: rgba(0, 0, 0, 0.65);
-		--panel-2: rgba(0, 0, 0, 0.65);
-		color: var(--ink);
-	}
-	.ovl.off {
-		display: none;
-	}
-	.ovl a {
-		pointer-events: auto;
-	}
-	/* #1/#3 the identity rows (rev 3): the top strip above the health bars, y 0–24. No box — a 1 px dark outline
-	   carries the text over any pixels. Row 1 = the display face (the house mark font: condensed italic 900 — an
-	   explicit overlay-only exception to commandment 7), row 2 = mono `Skin by:`. ALWAYS on. */
-	.pid {
-		position: absolute;
-		top: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		max-width: var(--ov-pid-max);
-		min-width: 0;
-		white-space: nowrap;
-	}
-	.pid.p1 {
-		left: var(--ov-pid-side);
-	}
-	.pid.p2 {
-		right: var(--ov-pid-side);
-		align-items: flex-end;
-	}
-	.pid .r1,
-	.pid .r2 {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		height: 11px;
-		margin-top: 1px; /* row 1 y 1–12, row 2 y 13–24 */
-		max-width: 100%;
-	}
-	/* P2 mirrors row 1 (score at the inner edge, name at the outer edge); row 2 keeps reading order, right-justified */
-	.pid.p2 .r1 {
-		flex-direction: row-reverse;
-	}
-	.pid.p2 .r2 {
-		justify-content: flex-end;
-	}
-	.pid .nm {
-		font-family: 'Barlow Condensed', Inter, 'Segoe UI', system-ui, sans-serif;
-		font-style: italic;
-		font-weight: 900;
-		font-size: 12px;
-		line-height: 11px;
-		letter-spacing: 0.01em;
-		color: var(--ink);
-		text-decoration: none;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 2px #000;
-	}
-	.pid .nm.won {
-		color: var(--gold);
-	}
-	a.nm:hover,
-	a.nm:focus-visible {
-		text-decoration: underline dotted;
-		outline: none;
-	}
-	.pid .rk {
-		display: inline-flex;
-		line-height: 0;
-		filter: drop-shadow(0 0 1px #000);
-	}
-	.pid .rt,
-	.pid .r2 {
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		font-size: 9px;
-		line-height: 11px;
-		color: var(--dim);
-		text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 2px #000;
-	}
-	/* the set score rides row 1 (a scorebug puts it next to the name) — gold for the winner */
-	.pid .sc {
-		font-family: 'Barlow Condensed', Inter, 'Segoe UI', system-ui, sans-serif;
-		font-style: italic;
-		font-weight: 900;
-		font-size: 12px;
-		line-height: 11px;
-		color: var(--ink);
-		text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 2px #000;
-	}
-	.pid .sc.w {
-		color: var(--gold);
-	}
-	.pid .r2 .cm {
-		margin-left: -3px;
-	}
-	/* charter: --stream marks a creator credit; a SteamID author is a dotted link */
-	.pid .r2 .by {
-		color: var(--stream);
-		text-decoration: none;
-	}
-	.pid .r2 a.by {
-		text-decoration: underline dotted;
-		text-underline-offset: 2px;
-	}
-	.pid .r2 a.by:hover,
-	.pid .r2 a.by:focus-visible {
-		color: var(--ink);
-		outline: none;
-	}
-	/* #5 the record stamp: three mono lines in the dead gap under the timer */
-	.stamp {
-		position: absolute;
-		left: 50%;
-		top: var(--ov-stamp-top);
-		transform: translateX(-50%);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		max-width: var(--ov-stamp-max);
-		padding: 0 4px; /* h = 3 × 14 = 42 → y 56–98, inside the dead gap (y 55–101) */
-		border-radius: 3px;
-		background: rgba(0, 0, 0, 0.65);
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		font-size: 12px;
-		line-height: 14px;
-		color: var(--dim);
-		white-space: nowrap;
-	}
-	.stamp .money {
-		color: var(--gold);
-	}
-	/* §5a: seats unknown → the picture is stock; a truthful status, not a design choice */
-	.stamp .stock {
-		border-top: 1px dotted var(--faint);
-	}
-	/* #6 the watermark: bottom-centre, decorative except the link */
-	.wm {
-		position: absolute;
-		left: 50%;
-		top: var(--ov-wm-top);
-		transform: translateX(-50%);
-		display: flex;
-		align-items: center;
-		height: 12px;
-		padding: 0 6px;
-		border-radius: 2px;
-		background: rgba(0, 0, 0, 0.5);
-		white-space: nowrap;
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		font-size: 11px;
-		line-height: 12px;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.7);
-	}
-	.wm a {
-		color: inherit;
-		text-decoration: none;
-	}
-	.wm a:hover,
-	.wm a:focus-visible {
-		color: #fff;
-		text-decoration: underline dotted;
-		outline: none;
-	}
-	.wm .sep {
-		opacity: 0.5;
-		margin: 0 3px;
-	}
-	/* #7 the SAVED pill (paid save): gold = trust seal per the charter */
-	.saved {
-		position: absolute;
-		left: 378px;
-		top: 58px;
-		height: 12px;
-		padding: 0 5px;
-		border-radius: 3px;
-		background: var(--gold);
-		color: var(--gold-ink);
-		font-family: 'JetBrains Mono', ui-monospace, monospace;
-		font-size: 9px;
-		line-height: 12px;
-		font-weight: 700;
-		letter-spacing: 0.1em;
-	}
-	/* minimal = identity rows + watermark: the stamp and the pill go — a 300 ms fade OUT then out of flow (`display`
-	   transitions with allow-discrete); back to full is instant. Reduced motion = cut. */
-	.ovl .stamp,
-	.ovl .saved {
-		transition: opacity 0.3s, display 0.3s allow-discrete;
-	}
-	.ovl.minimal .stamp,
-	.ovl.minimal .saved {
-		opacity: 0;
-		display: none;
 	}
 
 	/* transport */
@@ -1841,9 +1605,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.lbar div i,
-		.emb.fs .tr,
-		.ovl .stamp,
-		.ovl .saved {
+		.emb.fs .tr {
 			transition: none;
 		}
 	}

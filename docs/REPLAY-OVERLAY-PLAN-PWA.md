@@ -16,6 +16,16 @@ and autostarts on load."*
 
 ## 0. The mechanism everything sits on (Phase A, BUILT)
 
+**Template-driven (2026-09-04, BUILT — `docs/REPLAY-OVERLAY-TEMPLATE.md`).** Tris: *"the tape overlay should ship separate…
+easier to change at a higher level if we want to change the template / fonts / metadata"* and *"the overlay can be shipped
+from the server at time of replay"*. The `.ovl` layer is now rendered by `ReplayOverlay.svelte` from a versioned JSON template
+(`static/replay/overlay/default.json` = spec rev 3; overridable by `/rr/update/overlay-template.json` with a 24 h cache, by
+the tape read's `overlay.template`, or `?overlay=<url>` in dev) bound to ONE metadata schema (`OverlayMeta`, `lib/replay/
+overlay.ts`): the server's `overlay.meta` verbatim when the tape read ships it (HANDOFF-LANE1-REPLAY-DATA.md STEP 4b — not
+built server-side yet; a dev-manifest fixture `local_stage9_srv` exercises it), else assembled client-side from the row +
+loadouts exactly as before. Placement no longer lives in Svelte CSS; the smoke's placement asserts, screenshots and the
+readback-sha gate are unchanged, plus an alternate-template test (`?overlay=/replay/overlay/shifted.json` → P1 x 20, stamp y 60).
+
 `pwa/src/lib/components/ReplayEmbed.svelte`:
 
 - `.ovl` — a `640×480` DOM box, sibling of the `<canvas>` inside `.pic`, `transform: scale(k)` with `k = .pic.clientWidth / 640`
@@ -212,6 +222,12 @@ flips `⏳ → ▶` with no reload; the envelope read adds < 1 s to TTFF on a 14
 | `pwa/src/lib/replay/export.ts` (NEW, spec only) | the client-side composite (below) |
 
 ### The export path — poster still = canvas frame + overlay composited (SPEC ONLY, no build)
+
+**One template, three renderers.** The poster binds the SAME template document to the SAME `OverlayMeta` as the player
+(`REPLAY-OVERLAY-TEMPLATE.md` §5): server-side (C7) the `elements[]` tree renders to SVG text nodes at 2× in the existing
+fight-card pipeline (SVG → resvg → PNG) over the KO frame; client-side the live `.ovl` DOM goes through an SVG
+`<foreignObject>` over `readback()` pixels. Placements therefore cannot drift between the player and the poster, and a
+template shipped at `/rr/update/overlay-template.json` restyles both without a deploy.
 
 Two producers, one artefact (a 1200×630 PNG, spec §2.4): the 640×480 scene rendered at 2× (1280×960) with the overlay in
 its **full** state, letterboxed into 1200×630 → picture 840×630 (k 1.3125), plain `#000` around it, KO frame (session stats

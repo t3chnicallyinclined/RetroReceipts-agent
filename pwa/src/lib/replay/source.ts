@@ -4,7 +4,10 @@
 //   • source       — where the tape and its asset pack are, for the ReplayEmbed
 //
 // Tape side (lane 1 — the archive contract, built against docs/HANDOFF-LANE1-TAPE-ARCHIVE.md):
-//   GET  /rr/tape?key=<match_key>  → {ok, state:'ready'|'pending'|'archived'|'none', tape_url?, frames?, ts?, session_id?}
+//   GET  /rr/tape?key=<match_key>  → {ok, state:'ready'|'pending'|'archived'|'none', tape_url?, frames?, ts?, session_id?,
+//                                      overlay?: {template, version, meta}}   (STEP 4b, HANDOFF-LANE1-REPLAY-DATA.md: the
+//                                      overlay ships WITH the tape read — `template` = a versioned static file (404 → the
+//                                      built-in), `meta` = the binding schema in lib/replay/overlay.ts, bound VERBATIM)
 //   POST /rr/tape/request {key}    → {ok, state:'pending'}   (authed; the server pulls the tape from R2 into hot storage)
 // Until the endpoint exists it 404s: a 404 / network error falls back to today's inference (pending inside the
 // 3-minute post-result window, else none) and is cached per key for 30 s so no surface ever spams it.
@@ -16,9 +19,10 @@
 import { base } from '$app/paths';
 import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
+import type { TapeOverlay } from './overlay';
 
 export type ReplaySource =
-	| { kind: 'tape'; tapeUrl: string; packUrl: string; start?: number; count?: number; frames?: number }
+	| { kind: 'tape'; tapeUrl: string; packUrl: string; start?: number; count?: number; frames?: number; overlay?: TapeOverlay | null }
 	| { kind: 'stream'; url: string; frames: number } // phones, M-interim keyed frames — C9, not built
 	| { kind: 'none'; reason: NoneReason };
 export type NoneReason = 'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'signin';
@@ -50,6 +54,8 @@ export interface LocalTape {
 	winner: 'a' | 'b';
 	mode: string;
 	ts: number;
+	/** the overlay block as the server will ship it with a tape read (STEP 4b) — dev fixtures only */
+	overlay?: TapeOverlay;
 }
 
 let manifest: Promise<Record<string, LocalTape>> | null = null;
@@ -72,7 +78,7 @@ function withBase(u: string): string {
 
 /** The ReplayEmbed source for a local manifest entry. */
 export function sourceOfLocal(t: LocalTape): ReplaySource {
-	return { kind: 'tape', tapeUrl: withBase(t.tape), packUrl: withBase(t.pack), frames: t.frames };
+	return { kind: 'tape', tapeUrl: withBase(t.tape), packUrl: withBase(t.pack), frames: t.frames, overlay: t.overlay ?? null };
 }
 
 export interface RowLike {
@@ -107,6 +113,8 @@ export interface TapeProbe {
 	frames?: number;
 	ts?: number;
 	session_id?: string;
+	/** STEP 4b: the overlay template + metadata resolved server-side at request time */
+	overlay?: TapeOverlay;
 	/** true when the endpoint answered; false = 404/network → the caller infers from the row */
 	known: boolean;
 }
@@ -126,7 +134,7 @@ export function probeServer(matchKey: string, force = false): Promise<TapeProbe>
 			const j = (await res.json()) as Partial<TapeProbe> & { ok?: boolean };
 			if (j?.ok === false || !j.state) return { state: 'none', known: false };
 			const state = (['ready', 'pending', 'archived', 'none'] as const).includes(j.state) ? j.state : 'none';
-			return { state, tape_url: j.tape_url, frames: j.frames, ts: j.ts, session_id: j.session_id, known: true };
+			return { state, tape_url: j.tape_url, frames: j.frames, ts: j.ts, session_id: j.session_id, overlay: j.overlay, known: true };
 		} catch {
 			return { state: 'none', known: false };
 		}
@@ -181,7 +189,7 @@ export async function resolveSource(row: RowLike): Promise<ReplaySource> {
 	const pr = await probeServer(row.match_key);
 	if (!pr.known) return { kind: 'none', reason: Date.now() - row.ts < PENDING_WINDOW_MS ? 'pending' : 'none' };
 	if (pr.state === 'ready' && pr.tape_url) {
-		return { kind: 'tape', tapeUrl: pr.tape_url, packUrl: await packFor(row.match_key), frames: pr.frames };
+		return { kind: 'tape', tapeUrl: pr.tape_url, packUrl: await packFor(row.match_key), frames: pr.frames, overlay: pr.overlay ?? null };
 	}
 	return { kind: 'none', reason: pr.state === 'ready' ? 'none' : pr.state };
 }

@@ -303,6 +303,11 @@ try {
 		let g = await geom(SEL);
 		check(near(g.k, Math.min(1, g.canvas.w / 640), 0.01), `overlay: inline k = ${g.k.toFixed(4)} (canvas ${g.canvas.w.toFixed(0)} px wide)`);
 		placement(g, 'inline');
+		{
+			const from = await p6.evaluate((h) => window[h].template, H);
+			const name = await p6.evaluate((s) => document.querySelector(`${s} .ovl`)?.getAttribute('data-template'), SEL);
+			check(name === 'retro-receipts-default' && /^(builtin|server):retro-receipts-default$/.test(from), `template: the layer is rendered from the default template (${from})`);
+		}
 		const shotInline = path.join(OUT, 'overlay-inline.png');
 		await (await p6.$(SEL)).screenshot({ path: shotInline });
 		log('screenshot (inline, full overlay, devcredit)', shotInline);
@@ -314,6 +319,7 @@ try {
 		check((await p6.evaluate((h) => window[h].overlay, H)) === 'full', 'overlay: full during the first 3 s of play');
 		await sleep(3000);
 		check((await p6.evaluate((h) => window[h].overlay, H)) === 'minimal', 'overlay: minimal within 3.3 s of play (no pokes)');
+		await sleep(400); // the full-only elements fade out over 300 ms (spec §2.5) before they leave the flow
 		g = await geom(SEL);
 		check(!g.stampShown, 'overlay: minimal hides the record stamp');
 		check(g.p1 && g.p2 && g.by1 === 'Skin by: Ruby', 'overlay: minimal keeps the identity rows (always on) + watermark');
@@ -451,6 +457,45 @@ try {
 		check(bad6.length === 0, `overlay page console clean (${bad6.length} unexpected)`);
 		if (bad6.length) for (const e of bad6) log('  console:', e.slice(0, 300));
 		await p6.close();
+
+		// (6) TEMPLATE-DRIVEN: an alternate template via ?overlay= moves elements with no code change
+		const p9 = await newPage(1280, 1600);
+		await p9.goto(`${URL_}&devcredit=1&devskin=none&overlay=/replay/overlay/shifted.json`, { waitUntil: 'load', timeout: 120000 });
+		await waitEmbed(p9, H);
+		await p9.evaluate((h) => window[h].setOverlay('full'), H);
+		await sleep(300);
+		const g9 = await p9.evaluate((s, h) => {
+			const c = document.querySelector(`${s} canvas`).getBoundingClientRect();
+			const k = window[h].scale;
+			const r = (q) => { const b = document.querySelector(`${s} ${q}`)?.getBoundingClientRect(); return b ? { x: (b.left - c.left) / k, y: (b.top - c.top) / k } : null; };
+			return { tpl: document.querySelector(`${s} .ovl`)?.getAttribute('data-template'), from: window[h].template, p1: r('.ovl .pid.p1'), stamp: r('.ovl .stamp') };
+		}, SEL, H);
+		check(g9.tpl === 'shifted-test' && /^preview:/.test(g9.from), `template: ?overlay= preview loads the alternate template (${g9.from})`);
+		check(g9.p1 && near(g9.p1.x, 20) && g9.stamp && near(g9.stamp.y, 60), `template: elements moved by the template alone — P1 x 20, stamp y 60 (got ${g9.p1?.x.toFixed(1)}, ${g9.stamp?.y.toFixed(1)})`);
+		const rb9 = await frame0sha(p9, H);
+		check(rb9.sha === rbFull.sha, 'template: readback sha unchanged under an alternate template (the layer is chrome, never pixels)');
+		await p9.close();
+
+		// (7) THE OVERLAY BLOCK SHIPPED WITH THE TAPE (STEP 4b): the dev manifest row local_stage9_srv carries one —
+		//     names / credits / watermark bind from it VERBATIM (row names differ; ?devcredit is ignored)
+		const p10 = await newPage(1280, 1600);
+		await p10.goto(`${URL_}&devcredit=1&devskin=none`, { waitUntil: 'load', timeout: 120000 });
+		const srvSel = '[data-test="tape-row-local_stage9_srv"] button';
+		await p10.waitForSelector(srvSel, { timeout: 60000 });
+		await p10.click(srvSel);
+		await waitEmbed(p10, '__rrEmbed');
+		await p10.evaluate(() => window.__rrEmbed.setOverlay('full'));
+		await sleep(300);
+		const g10 = await p10.evaluate(() => {
+			const s = '[data-hook="rrEmbed"]';
+			const t = (q) => (document.querySelector(`${s} ${q}`)?.textContent ?? '').replace(/\s+/g, ' ').trim();
+			return { n1: t('.ovl .pid.p1 .nm'), n2: t('.ovl .pid.p2 .nm'), b1: t('.ovl .pid.p1 .r2'), b2: t('.ovl .pid.p2 .r2'), link: document.querySelector(`${s} .ovl .pid.p1 .r2 a`)?.getAttribute('href') ?? '', wm: t('.ovl .wm'), rec: t('.ovl .stamp .rec'), shipped: window.__rrEmbed.overlayMeta?.shipped };
+		});
+		check(g10.shipped === true, 'tape overlay block: the embed bound the shipped overlay.meta (no client assembly)');
+		check(g10.n1 === 'Server P1' && g10.n2 === 'Server P2', `tape overlay block: names verbatim from overlay.meta (got "${g10.n1}" / "${g10.n2}")`);
+		check(g10.b1 === 'Skin by: Zed' && g10.b2 === '' && /\/u\/76561198000000002$/.test(g10.link), `tape overlay block: credits from overlay.meta, ?devcredit ignored (got "${g10.b1}" / "${g10.b2}", link ${g10.link})`);
+		check(/SERVER WATERMARK/.test(g10.wm) && /RANKED · FT3 · G2/.test(g10.rec), `tape overlay block: watermark + record from overlay.meta ("${g10.wm}" / "${g10.rec}")`);
+		await p10.close();
 	}
 
 	if (has('--hero')) {
