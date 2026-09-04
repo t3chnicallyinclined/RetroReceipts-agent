@@ -7,6 +7,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { page as appPage } from '$app/state';
 	import { requestReplay } from '$lib/replay/source';
+	import { Pacer } from '$lib/replay/pacer';
 	import {
 		loadEngine,
 		gpuDevice,
@@ -159,6 +160,9 @@
 	let frame = $state(0);
 	let count = $state(0);
 	let speed = $state(60); // game frames per second: 60 = real time
+	// the presentation cadence (lib/replay/pacer.ts). Speed stays wall-clock-driven; only the per-refresh
+	// decision of "how many source frames now" becomes deterministic.
+	const pacer = new Pacer();
 	let halfAuto = $state(false); // "playing at half speed" (worker can't keep up)
 	let userSpeed = $state(false); // the user chose a speed: the auto half-speed never overrides it
 	let seekTarget = $state(-1);
@@ -677,31 +681,32 @@
 		if (introTimer) clearTimeout(introTimer);
 		introTimer = setTimeout(() => (intro = false), 3000);
 		poke();
-		let last = performance.now();
-		let acc = 0;
 		// ⚠ PACE OFF THE WALL CLOCK, NOT OFF requestAnimationFrame's COUNT (player.html:194-227): the capture is
-		// a fixed 60 fps of GAME time, so elapsed ms is the only correct pacing on 144 Hz and 30 Hz alike.
+		// a fixed 60 fps of GAME time, so elapsed ms is the only correct authority for SPEED on 144 Hz and 30 Hz
+		// alike. That principle is unchanged. What moved into `Pacer` is the per-refresh CADENCE: the old
+		// `Math.floor(acc / interval)` re-decided it every refresh from a value sitting exactly on the threshold,
+		// so on a 60.000 Hz panel vsync noise — not real time — chose between repeating a frame and skipping one.
+		// Measured against a physical refresh model: 248 repeats + 249 skips per 1149 refreshes at 60 Hz (43% of
+		// frames disturbed) with the average fps still a perfect 60.05, which is exactly why the recording looks
+		// clean and the playback still shakes. See lib/replay/pacer.ts for the model and the numbers.
+		pacer.reset(performance.now(), speed);
+		// `target` is what the PACER has decided we should be on; `frame` is what is actually on screen. They are
+		// deliberately separate: `show()` is async, so reading `frame` back to compute the next target let a slow
+		// decode re-issue the same frame and then jump — the stall-and-lurch the pacer exists to prevent.
+		let target = frame;
 		const step = (now: number) => {
 			if (!playing) return;
-			const interval = 1000 / speed;
-			acc += now - last;
-			last = now;
-			let advance = Math.floor(acc / interval);
+			const advance = pacer.tick(now, speed);
 			if (advance > 0) {
-				acc -= advance * interval;
-				if (advance > 4) {
-					advance = 4;
-					acc = 0;
-				}
-				const next = frame + advance;
-				if (next >= count) {
+				target += advance;
+				if (target >= count) {
 					void show(count - 1);
 					playing = false;
 					st = 'ended';
 					onended?.();
 					return;
 				}
-				show(next).catch(() => {});
+				show(target).catch(() => {});
 			}
 			raf = requestAnimationFrame(step);
 		};
