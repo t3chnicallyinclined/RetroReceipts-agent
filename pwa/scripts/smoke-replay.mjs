@@ -748,6 +748,60 @@ try {
 		await pm.screenshot({ path: shotM });
 		log('screenshot (phone, art loaded on tap)', shotM);
 		await pm.close();
+
+		// (5) AUTOPLAY ON LOAD for the LATEST TAPE hero when the art is a SERVER pack (Tris 2026-09-04).
+		//     A fresh viewer must not auto-download; the tick loads and plays; every later load autoplays with no click.
+		const HERO_URL = `${arg('--url', 'http://localhost:5173/match?dev=1')}&hero=${ART}&devskin=none`;
+		const freshCtx = await browser.createBrowserContext(); // its own localStorage + Cache Storage = a first-time viewer
+		const pf = await freshCtx.newPage();
+		await pf.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 });
+		const reqsF = packReqs(pf);
+		await pf.goto(HERO_URL, { waitUntil: 'load', timeout: 120000 });
+		await pf.waitForFunction(() => !!window.__rrHero, { timeout: 60000, polling: 250 });
+		await sleep(4000);
+		const stF = await pf.evaluate(() => window.__rrHero.state);
+		check(stF === 'nopack', `autoplay: a first-time viewer's hero waits on the art panel (state ${stF})`);
+		check(reqsF.length === 0, `autoplay: a first-time viewer downloads no art on load (${reqsF.length} requests)`);
+		check(await pf.evaluate(() => !!document.querySelector('[data-test="hero"] .emb .ov.art .own input')), 'autoplay: the first-time hero shows the ownership checkbox');
+		await pf.click('[data-test="hero"] .emb .ov.art .own input');
+		await pf.click('[data-test="hero"] .emb .ov.art button');
+		const stF2 = await waitEmbed(pf, '__rrHero', ['playing', 'ready', 'paused', 'error', 'nopack', 'unavailable']);
+		check(stF2.state === 'playing', `autoplay: ticking the box loads the art and plays immediately (${stF2.state})`);
+		check(reqsF.length > 0, `autoplay: the download started on the tick (${reqsF.length} files)`);
+		await pf.close();
+
+		// the SAME context again: acknowledged + cached → plays with no click at all
+		const pg2 = await freshCtx.newPage();
+		await pg2.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 });
+		const reqsG = packReqs(pg2);
+		await pg2.goto(HERO_URL, { waitUntil: 'load', timeout: 120000 });
+		const stG = await waitEmbed(pg2, '__rrHero', ['playing', 'ready', 'paused', 'error', 'nopack', 'unavailable']);
+		check(stG.state === 'playing', `autoplay: an acknowledged viewer's hero plays on load with NO click (${stG.state})`);
+		const packG = await pg2.evaluate(() => window.__rrHero.pack);
+		check(packG.networkBytes === 0 && packG.cachedFiles > 0, `autoplay: it played from Cache Storage — 0 network bytes, ${packG.cachedFiles} cached files`);
+		check(reqsG.length === 0, `autoplay: no pack file hit the network on the autoplaying load (${reqsG.length} requests)`);
+		const shotAuto = path.join(OUT, 'hero-autoplay.png');
+		await (await pg2.$('[data-test="hero"] .emb')).screenshot({ path: shotAuto });
+		log('screenshot (hero autoplaying from cache, no click)', shotAuto);
+		// and it never restarts itself after the viewer pauses it
+		await pg2.evaluate(() => window.__rrHero.pause());
+		await sleep(2500);
+		check((await pg2.evaluate(() => window.__rrHero.state)) === 'paused', 'autoplay: the hero stays paused once the viewer pauses it');
+		await pg2.close();
+
+		// reduced motion: acknowledged, cached — and still never autoplays (nor auto-downloads)
+		const pr2 = await freshCtx.newPage();
+		await pr2.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 });
+		const reqsR = packReqs(pr2);
+		await pr2.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+		await pr2.goto(HERO_URL, { waitUntil: 'load', timeout: 120000 });
+		await pr2.waitForFunction(() => !!window.__rrHero, { timeout: 60000, polling: 250 });
+		await sleep(4000);
+		const stR2 = await pr2.evaluate(() => window.__rrHero.state);
+		check(stR2 !== 'playing', `autoplay: prefers-reduced-motion never autoplays the hero (state ${stR2})`);
+		check(reqsR.length === 0, `autoplay: prefers-reduced-motion downloads no art on load (${reqsR.length} requests)`);
+		await pr2.close();
+		await freshCtx.close();
 	}
 
 	if (has('--surfaces')) {

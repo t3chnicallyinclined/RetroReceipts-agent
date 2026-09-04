@@ -89,6 +89,7 @@
 		credits = null,
 		autoplay = 'auto',
 		autoload = true,
+		autoart = false,
 		quality = 'high',
 		hookName = 'rrEmbed',
 		onready = null,
@@ -111,6 +112,9 @@
 		autoplay?: 'auto' | 'never';
 		/** false = sit `closed` on the poster until a tap (phones: a 20 MB pack + tape never auto-downloads on mobile data) */
 		autoload?: boolean;
+		/** true = fetch the ART automatically (no click) once ownership is acknowledged — the LATEST TAPE hero only.
+		 *  A row embed leaves this false: expanding a row shows the art panel and the viewer asks for the download. */
+		autoart?: boolean;
 		/** the window global the test hook registers under (`window.__<hookName>`); the LIVE hero uses 'rrHero' so the
 		 *  smoke test can drive it and an expanded row (default 'rrEmbed') at the same time */
 		hookName?: string;
@@ -423,10 +427,20 @@
 			return;
 		}
 		if (packSrc.kind === 'server' && !assembled && !packWanted) {
-			// the art is ours to serve, but only to owners who asked: the panel takes the attestation + the tap
 			attested = packSrc.attested || (await hasOwnership());
-			st = 'nopack';
-			return;
+			// AUTOPLAY ON LOAD (Tris 2026-09-04: "for the recent match, let's make it autoplay on load — it's better
+			// UX") — the HERO only (`autoart`): once this viewer has acknowledged ownership (local record or a
+			// signed-in attestation) the art is fetched and the tape plays with no click, instant when the shared
+			// parts are already in Cache Storage. A FIRST-TIME viewer never auto-downloads ~20 MB: the panel takes the
+			// tick, and every later load autoplays. A ROW embed keeps the panel (expanding a row is not asking for a
+			// 20 MB download); phones returned at the `closed` gate above; reduced-motion / Save-Data do not auto-fetch
+			// either — we only download what we would play.
+			const wouldPlay = autoplay === 'auto' && !reducedMotion() && !saveData();
+			if (!autoart || !autoload || !attested || !wouldPlay) {
+				st = 'nopack';
+				return;
+			}
+			packWanted = true;
 		}
 		st = 'loading';
 		slow = false;

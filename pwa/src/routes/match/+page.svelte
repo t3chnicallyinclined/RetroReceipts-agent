@@ -460,7 +460,7 @@
 	</div>
 	{#if hero}
 		{#if hero.source}
-			<ReplayEmbed bind:this={heroEmbed} source={hero.source} poster={hero.poster} meta={hero.meta} autoload={heroAutoload} hookName="rrHero" onstate={(s) => (heroSt = s)} />
+			<ReplayEmbed bind:this={heroEmbed} source={hero.source} poster={hero.poster} meta={hero.meta} autoload={heroAutoload} autoart={heroAutoload} hookName="rrHero" onstate={(s) => (heroSt = s)} />
 		{:else}
 			<div class="resolving"><span class="rail">Finding the tape</span></div>
 		{/if}
