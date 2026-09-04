@@ -72,6 +72,11 @@ button{font:inherit;color:var(--ink);cursor:pointer}
 .onnow{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:var(--live);border:1px solid color-mix(in srgb,var(--live) 34%,var(--line));background:color-mix(in srgb,var(--live) 10%,transparent);border-radius:999px;padding:3px 7px}
 .browse{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--ink);border:1px solid color-mix(in srgb,var(--gold) 40%,var(--line));background:var(--panel-2);border-radius:8px;padding:7px 10px;min-height:34px}
 .msub{font:10px/1 'JetBrains Mono',monospace;color:var(--dim)}
+/* MATCH OF THE DAY - earned badge + shout-out sub-line (spec 1.6) */
+.motd{display:inline-flex;align-items:center;gap:5px;font:9px/1 'JetBrains Mono',monospace;font-weight:700;letter-spacing:.12em;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 42%,var(--line));background:var(--gold-soft);border-radius:6px;padding:4px 7px}
+.why{font:9.5px/1.4 'JetBrains Mono',monospace;color:var(--dim);margin:2px 0 7px}
+.why b{color:var(--gold);font-weight:700}
+.why s{text-decoration:none;color:var(--faint)}
 
 .pic{position:relative;width:366px;height:274.5px;background:#000;border:1px solid color-mix(in srgb,var(--stream) 30%,var(--line));border-radius:11px;overflow:hidden}
 .pic .art{position:absolute;inset:0;background:repeating-linear-gradient(135deg,#0f1320 0 8px,#141a2b 8px 16px);display:grid;place-items:center;text-align:center}
@@ -224,11 +229,11 @@ button{font:inherit;color:var(--ink);cursor:pointer}
       </div>
 
       <div class="marq">
-        <span class="mtab"><span class="ic">▶</span> LATEST TAPE</span>
+        <span class="motd">★ MATCH OF THE DAY</span>
         <span class="onnow"><span class="dot"></span> 2 ON NOW ›</span>
         <button class="browse">⌕ BROWSE</button>
       </div>
-      <div class="msub" style="margin-bottom:7px">Duc vs JFRESH · RANKED · 12m ago</div>
+      <div class="why"><b>Duc</b> <s>over</s> JFRESH — comeback ·<br>48-hit combo · +22 rating</div>
 
       <div class="pic">
         <div class="art"><div class="artlbl"><b>GAME PICTURE</b><br>640×480 re-render · 366×275 displayed<br>internal res 4×, box-filtered</div></div>
@@ -279,6 +284,7 @@ button{font:inherit;color:var(--ink);cursor:pointer}
       </div>
       <div class="tabbar"><span class="tab on"><i></i>Live</span><span class="tab"><i></i>Ranks</span><span class="tab"><i></i>Bracket</span><span class="tab"><i></i>Skins</span></div>
     </div></div>
+    <div class="annot">MATCH OF THE DAY is the theatre’s DEFAULT pick, not a badge on the newest match. The badge is earned — ≥ 6 replayable matches today and a score ≥ 60; below that the marquee reads <b>▶ TODAY</b> with the same reasons and no superlative, and with nothing replayable it is today’s <b>▶ LATEST TAPE</b> (Frame E). Reasons come only from fields already on the feed row.</div>
     <div class="annot">±5 s and the speed select are already hidden below 720 px (ReplayEmbed.svelte:1736-1758), so the transport stays 48 px with 36 px targets. Ticks are 3 px wide with 44 px tap areas; anything under 4 px apart is one cluster tick with a count.</div>
   </div>
 

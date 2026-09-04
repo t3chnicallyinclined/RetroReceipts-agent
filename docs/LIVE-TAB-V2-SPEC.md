@@ -73,7 +73,7 @@ LIVE  (route /match — href unchanged, so every share link keeps working)
 ├─ YOUR MATCH one-liner              ← only while you are in a match          §1.4
 │
 ├─ ▓▓▓ THE THEATRE ▓▓▓
-│    ├─ marquee   ▶ LATEST TAPE · Duc vs JFRESH · RANKED · 12m ago    ⌕ BROWSE MATCHES
+│    ├─ marquee   ★ MATCH OF THE DAY · Duc over JFRESH — comeback · +22   ⌕ BROWSE MATCHES   §1.6
 │    ├─ the picture (4:3 — the game's own pixels + the .ovl overlay layer)
 │    ├─ transport  ▶ ━━●━━━━ 0:42 / 1:58 · 1× · ◱ · ⛶     (+ comment ticks on the bar, §4.3)
 │    ├─ record row RANKED · FT3 · G3 · 2026-09-02 21:14 · CLOCK TOWER · 1:58 · ◍   THE TAPE ›
@@ -94,9 +94,10 @@ results.
 `pickTheatre()` replaces `pickHero` (`match/+page.svelte:329-357`) — same shape, one priority list:
 
 1. the URL's pick — `?m=<match_key>` (a share link, or a row picked in BROWSE);
-2. the **latest tape** — newest feed row whose `availability()` is `ready`/`saved` (today's rule, unchanged);
-3. the newest result, unplayable — poster + the honest state copy;
-4. nothing at all.
+2. **match of the day** — the highest-scoring replayable match from today, when there is one (§1.6);
+3. the **latest tape** — newest feed row whose `availability()` is `ready`/`saved` (today's rule, unchanged);
+4. the newest result, unplayable — poster + the honest state copy;
+5. nothing at all.
 
 **Live games are not a picture.** They cannot be re-rendered in the browser today —
 `join_link`/`spectate_url` are Steam/host links (`matchfeed.svelte.ts:76`), not frames, and
@@ -148,6 +149,73 @@ The in-place expansion panel and its duplicate actions row are **deleted**
 (`match/+page.svelte:551-569, 598-617`). Reason: with a theatre on the page, expanding in place means two
 pictures and a permanent question about which one is "the" picture. `replaceState`, not `pushState`, because
 the theatre's content is a view state — ten row taps must not cost ten back presses.
+
+### 1.6 MATCH OF THE DAY
+
+A thin editorial layer on the resolver already described — no new data, no new component, no new store.
+
+**The rule, in one paragraph.** Over today's rows (viewer-local day) that are `replay.state === 'ready'`,
+score each: `comeback` +40, `ocv` +35, `perfect` +25, `combo ≥ 40` +30 (or `≥ 25` +15), rating swing
+`|elo| ≥ 20` +25 (or `≥ 12` +12), **both** players rated ≥ 1200 +20, `mode === 'money'` +15, `verified` +10.
+Ties go to the newer match. Everything in that list is already on the feed row — `combo`, `ocv`, `perfect`,
+`comeback`, `elo`, `winner_rating`/`loser_rating`, `mode`, `verified`, `replay.state`
+(`app.rs:1042-1064`; mirrored in `MatchResult`, `matchfeed.svelte.ts:28-64`). The weights say something a
+player would agree with out loud: *a comeback beats an OCV beats a flawless game; a big swing between two
+good players beats a big swing between two new ones; a huge combo counts; money counts a little; a fact we
+cannot vouch for counts for nothing (never against it)*.
+
+It runs on **one** un-scoped `GET /rr/matches/feed?limit=100` at load — `mode` is optional
+(`routes.rs:1188`, `app.rs:983`), so a single request covers all four modes. No new endpoint, no per-row work.
+
+**Limited tapes.** The shout-out is the shop window, so a fighters-only tape is a poor pick — but `world` is
+only knowable **after** the tape opens (`rr-render/src/feed.rs:74`), so the picker cannot see it today.
+Honest position: `world === false` becomes a **−30 preference** the moment optional contract **C16** lands
+(§6), and never a hard bar — on a day where 26 of 40 tapes are fighters-only, barring them would empty the
+pick. Until C16 the crown can land on a limited tape, and the theatre's own `◍ FIGHTERS ONLY` chip (§2.2)
+tells the truth about it. That is the whole mitigation, and it is already built.
+
+**A quiet day.** The badge is earned, not decorative. It appears only when there are **≥ 6 replayable
+matches today and the top score is ≥ 60**. Below that, naming a winner is a claim about a competition that
+did not happen. So there are exactly three marquee labels, and each is literally true:
+
+| Condition | Marquee | Sub-line |
+|---|---|---|
+| ≥ 6 replayable today **and** top score ≥ 60 | `★ MATCH OF THE DAY` | the shout-out |
+| something replayable today, but not enough to crown | `▶ TODAY` | the same shout-out, no superlative |
+| nothing replayable today | `▶ LATEST TAPE` — today's behaviour, unchanged | `Duc vs JFRESH · RANKED · 12m ago` |
+
+**It is the default pick, not a badge on the latest match.** The page's job is that the first thing a
+visitor sees is the most watchable match; "newest" was only ever a proxy for that. So the priority list in
+§1.2 becomes: `?m=` → **match of the day** → latest tape → newest unplayable → nothing. The two existing
+guards are untouched and still win: a share link's `?m=` beats the pick, and a picture being watched is
+never yanked (`match/+page.svelte:331, 345`). When the pick *is* the newest match, nothing special happens —
+it is simply both.
+
+**The shout-out** replaces the marquee's existing sub-line, so the theatre gains **no extra row**. Record
+voice, mono, `--dim`, at most three reasons in score order, players named with the winner's name in gold:
+
+```
+★ MATCH OF THE DAY
+Duc over JFRESH — comeback · 48-hit combo · +22 rating
+```
+
+Reason strings: `comeback` (`title="won from 3–1 down or worse"` — the flag is a character-count comeback,
+not rounds, `app.rs:1051`), `one-character victory`, `flawless game`, `<n>-hit combo`, `+<n> rating`,
+`money match`. Never a superlative, never an adjective we cannot source from a field.
+
+**Share.** It does **not** go in the OG image: the fight card is disk-cached per session and becomes
+immutable once verified (`ogimg.rs:244-256`), so a badge baked into it goes stale tomorrow and cannot be
+corrected. It *does* go in the share **text**, which is composed client-side at share time — so
+`navigator.share({ text })` (§5) reads `Match of the day: Duc over JFRESH — comeback, 48-hit combo.` No new
+artefact, no new server work.
+
+**Manual override: wait, and do not reuse the announcement.** `POST /rr/admin/announce` takes
+`{text ≤ 280, level, ttl_ms}` and nothing else (`routes.rs:1408-1435`) — no match key, no link — and clients
+dismiss announcements locally and permanently (`localStorage['rr_seen_announcements']`,
+`announce.svelte.ts:16`), which is the opposite of what a pin needs. It can *say* "watch Duc vs JFRESH", and
+that is a genuine shout-out worth using on day one; it cannot *pin*. A real pin is a small admin contract
+later, and it should wait until the automatic rule has been watched for a while — if the rule picks well,
+the override is never needed, and building it first would hide that.
 
 ---
 
@@ -421,6 +489,9 @@ That is true and checkable: the server serves scraper user-agents an OG page wit
 `og:image` = the fight card and `twitter:card=summary_large_image` (`routes.rs:252-254, 2329-2338`;
 `ogimg.rs:268`), and `facebookexternalhit`, `discord` and `twitter` are all in the UA list.
 
+**The share text** is composed client-side, so it can carry the day's shout-out where the cached OG image
+cannot: `Match of the day: Duc over JFRESH — comeback, 48-hit combo.` (§1.6). The copied URL is unchanged.
+
 **Where the control lives:** the theatre's actions row (§1.1), the LIVE RESULTS row's meta rail is unchanged,
 and `SessionModal` / the share pages keep their existing copy-link buttons — this beta only adds the OS sheet
 and the clipboard fallback to the shared helper, so every surface gains both.
@@ -493,6 +564,15 @@ record row; actions row; LIVE RESULTS rows swap the theatre; the in-place panel 
 the `?mm=` funnel still lands on the accept button; `readback()` sha unchanged from P0 (the theatre changed
 chrome, not pixels).
 
+**P1b — MATCH OF THE DAY.** The scorer over one un-scoped `limit=100` fetch; the three marquee labels; the
+shout-out sub-line; the pick slotted at priority 2; the share text.
+*Gate:* the scorer is **pure and reproducible** — the same 100 rows in gives the same `match_key` out, twice,
+and a hand-computed score for the day's top three agrees with the implementation to the point; on a seeded
+day of 5 replayable matches the badge is **absent**, the marquee reads `▶ TODAY` and the sub-line contains no
+superlative; with zero replayable rows the behaviour is byte-for-byte today's `▶ LATEST TAPE` path; a `?m=`
+share link and a picture already playing both beat the pick (no yank); the OG image for the picked session is
+**unchanged** — the badge exists only in DOM chrome and in `navigator.share({text})`.
+
 **P2 — the limited-replay marker.** `info.world` / `stage_id` → the record-row chip; the `world` binding and
 the `FIGHTERS ONLY` stamp in `default.json`.
 *Gate:* a 0.3.31 tape shows the marker in **both** the chip and an exported still, and a 0.3.50 tape shows
@@ -552,3 +632,8 @@ mechanisms and the §4.6 copy.
   (`rail.rs:329` already knows). Your call — it is a product decision, not a design one.
 - **Q7** Auto-hide at **three distinct reporters** (mirroring the existing `FLAG_MIN`). With a few dozen daily
   players, is three the right number, or should it be two?
+- **Q8** MATCH OF THE DAY is crowned only at **≥ 6 replayable matches and a score ≥ 60** — below that the
+  theatre still opens on the best one but calls it `▶ TODAY` with no superlative. Are those the right two
+  numbers for the volume you actually see on a weekday?
+- **Q9** The scorer gives a money match **+15**. It is the shop window, but it is also the most contentious
+  match on the platform. Keep the nudge, or score money matches exactly like every other match?

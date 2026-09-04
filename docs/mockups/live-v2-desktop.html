@@ -84,6 +84,11 @@ button{font:inherit;color:var(--ink);cursor:pointer}
 .msub s{text-decoration:none;color:var(--faint)}
 .onnow{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--live);border:1px solid color-mix(in srgb,var(--live) 34%,var(--line));background:color-mix(in srgb,var(--live) 10%,transparent);border-radius:999px;padding:3px 9px}
 .browse{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:800;letter-spacing:.03em;color:var(--ink);border:1px solid color-mix(in srgb,var(--gold) 40%,var(--line));background:var(--panel-2);border-radius:9px;padding:7px 13px}
+/* MATCH OF THE DAY — earned badge + the shout-out sub-line (§1.6) */
+.motd{display:inline-flex;align-items:center;gap:6px;font:10px/1 'JetBrains Mono',monospace;font-weight:700;letter-spacing:.14em;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 42%,var(--line));background:var(--gold-soft);border-radius:6px;padding:4px 8px}
+.why{font:11px/1 'JetBrains Mono',monospace;color:var(--dim);letter-spacing:.03em;margin:-2px 0 8px}
+.why b{color:var(--gold);font-weight:700}
+.why s{text-decoration:none;color:var(--faint)}
 
 /* the picture */
 .pic{position:relative;width:700px;height:525px;background:#000;border:1px solid color-mix(in srgb,var(--stream) 30%,var(--line));border-radius:12px;overflow:hidden}
@@ -282,11 +287,11 @@ button{font:inherit;color:var(--ink);cursor:pointer}
 
     <div class="tcol">
       <div class="marq">
-        <span class="mtab"><span class="ic">▶</span> LATEST TAPE</span>
-        <span class="msub">Duc <s>vs</s> JFRESH · RANKED · 12m ago</span>
+        <span class="motd">★ MATCH OF THE DAY</span>
         <span class="onnow"><span class="dot"></span> 2 GAMES ON NOW ›</span>
         <button class="browse">⌕ BROWSE MATCHES</button>
       </div>
+      <div class="why"><b>Duc</b> <s>over</s> JFRESH — <span title="won from 3–1 down or worse">comeback</span> · 48-hit combo · +22 rating</div>
 
       <div class="pic">
         <div class="art">
@@ -354,6 +359,7 @@ button{font:inherit;color:var(--ink);cursor:pointer}
         <button class="abtn">↗ Share</button>
         <span class="shnote">Paste it anywhere — Discord, X and Facebook unfurl the fight card.</span>
       </div>
+      <span class="annot">MATCH OF THE DAY is the theatre's DEFAULT pick, not a badge on the latest match — the first thing a visitor sees should be the most watchable match, not merely the most recent. The badge is earned: ≥ 6 replayable matches today and a score ≥ 60. Below that the marquee reads <b>▶ TODAY</b> with the same reasons and no superlative; with nothing replayable it is today's <b>▶ LATEST TAPE</b> (Frame 3). Reasons come only from fields on the row — comeback / ocv / perfect / combo / elo (app.rs:1042-1064). (§1.6)</span>
       <span class="annot">↗ Share renders ONLY where <b>navigator.share</b> exists (mobile). Desktop gets the link, which is what gets pasted into a Discord anyway. No per-network buttons — TikTok and Instagram cannot take a link at all. (§5)</span>
     </div>
 
