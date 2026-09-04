@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
 	import { api } from '$lib/config';
+	import { copyText, COPIED_MS } from '$lib/share';
 	import MatchReceipt from '$lib/components/MatchReceipt.svelte';
 	import type { MatchReceiptData } from '$lib/components/MatchReceipt.svelte';
 
@@ -39,12 +40,11 @@
 
 	let copied = $state(false);
 	async function copyLink() {
-		try {
-			await navigator.clipboard.writeText(location.href);
+		// this page's own URL is already in the address bar, so a refusal here genuinely does leave the user a
+		// way to get the link — no reveal needed, but the timing still matches every other surface
+		if (await copyText(location.href)) {
 			copied = true;
-			setTimeout(() => (copied = false), 1600);
-		} catch {
-			/* clipboard blocked — the URL bar still has it */
+			setTimeout(() => (copied = false), COPIED_MS);
 		}
 	}
 </script>

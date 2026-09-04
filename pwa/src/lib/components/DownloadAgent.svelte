@@ -3,6 +3,7 @@
 	import { agent } from '$lib/stores/agent.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { agentWinUrl, WIN_URL_FALLBACK } from '$lib/agentUrl';
+	import { copyText, COPIED_MS } from '$lib/share';
 
 	// 📥 "Get the desktop agent" prompt. The web app only fills up once the tray agent is running (it reads
 	// the game and reports matches/ranks/money), so nudge anyone who doesn't have one. AUTO-HIDES the moment
@@ -48,12 +49,10 @@
 		}
 	}
 	async function copyLinux() {
-		try {
-			await navigator.clipboard.writeText(LINUX_CMD);
+		// the command is already rendered on screen for manual selection, so a refusal is not a dead end here
+		if (await copyText(LINUX_CMD)) {
 			copied = true;
-			setTimeout(() => (copied = false), 1600);
-		} catch {
-			/* clipboard blocked — the command is visible to select manually */
+			setTimeout(() => (copied = false), COPIED_MS);
 		}
 	}
 

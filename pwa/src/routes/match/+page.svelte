@@ -21,7 +21,8 @@
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
-	import { shortSetLink } from '$lib/share';
+	import { canShare, copyText, shareLink, theatreLink, COPIED_MS } from '$lib/share';
+	import { shoutText } from '$lib/stores/motd.svelte';
 	import { timeAgo } from '$lib/format';
 	import { motd } from '$lib/stores/motd.svelte';
 	import {
@@ -263,15 +264,36 @@
 		};
 	}
 
+	// ── ⧉ COPY LINK / ↗ SHARE (§5) ───────────────────────────────────────────────────────────────────────
 	let copied = $state('');
-	async function copyLink(sessionId: string) {
-		try {
-			await navigator.clipboard.writeText(shortSetLink(sessionId));
+	/** the URL to REVEAL when the clipboard refuses — a copy button that silently does nothing is a dead button */
+	let copyFallback = $state('');
+	async function copyLink(sessionId: string, matchKey?: string) {
+		// the link carries ?m= so the recipient lands on the GAME that is in the theatre, not the top of the set
+		const url = theatreLink(sessionId, matchKey);
+		if (await copyText(url)) {
+			copyFallback = '';
 			copied = sessionId;
-			setTimeout(() => (copied = ''), 1800);
-		} catch {
-			/* clipboard blocked — the receipt itself has the link */
+			setTimeout(() => (copied = ''), COPIED_MS);
+		} else {
+			copyFallback = url;
 		}
+	}
+
+	// rendered only where the OS actually has a sheet; decided at mount, never during SSR
+	let osShare = $state(false);
+	onMount(() => {
+		osShare = canShare();
+	});
+	async function shareTheatre() {
+		const t = theatre;
+		if (!t?.sessionId) return;
+		const url = theatreLink(t.sessionId, t.key);
+		// the share TEXT is composed here, at share time, which is why it can carry the day's shout-out that the
+		// disk-cached OG fight card cannot (ogimg goes immutable once verified, §1.6 "Share")
+		const text = isPick && motd.pick ? shoutText(motd.pick) : theatreSub;
+		const ok = await shareLink({ title: 'Retro Receipts', text, url });
+		if (!ok) await copyLink(t.sessionId, t.key); // sheet unavailable or dismissed — fall back to the link
 	}
 
 	// ── DEV: TEST TAPES — the local packs as playable rows (dev build or ?dev=1) so the replay path can be
@@ -646,12 +668,30 @@
 		<div class="acts">
 			{#if theatre.sessionId}
 				<button type="button" class="a" onclick={() => openSet(theatre?.sessionId ?? '')} title="THE TAPE — the set receipt"><span class="ico">🧾</span><span class="txt">THE TAPE ›</span></button>
-				<button type="button" class="a" onclick={() => copyLink(theatre?.sessionId ?? '')} title="Copy link"><span class="ico">⧉</span><span class="txt">{copied === theatre.sessionId ? 'Copied' : 'Copy link'}</span></button>
+				<button type="button" class="a" onclick={() => copyLink(theatre?.sessionId ?? '', theatre?.key)} title="Copy link"><span class="ico">⧉</span><span class="txt">{copied === theatre.sessionId ? 'Copied' : 'Copy link'}</span></button>
+				{#if osShare}
+					<button type="button" class="a" onclick={shareTheatre} title="Share"><span class="ico">↗</span><span class="txt">Share</span></button>
+				{/if}
 			{/if}
 			{#if theatre.playable}
 				<button type="button" class="a" onclick={() => void theatreEmbed?.enterFullscreen()} title="Full screen (F)"><span class="ico">⛶</span><span class="txt">Full screen</span></button>
 			{/if}
 		</div>
+		{#if theatre.sessionId}
+			<!-- true and checkable: the server serves scrapers an OG page with a 1200×630 fight card and
+			     twitter:card=summary_large_image, and facebookexternalhit/discord/twitter are all in its UA list. -->
+			<p class="sharenote">Paste it anywhere — Discord, X and Facebook unfurl the fight card.</p>
+		{/if}
+		{#if copyFallback}
+			<!-- the clipboard refused: show the link so it can still be selected by hand -->
+			<input
+				class="cfb"
+				readonly
+				value={copyFallback}
+				aria-label="Match link — copy it manually"
+				onfocus={(e) => e.currentTarget.select()}
+			/>
+		{/if}
 	{:else if coldLoad}
 		<div class="resolving"><span class="rail">Finding the last match</span></div>
 	{:else}
@@ -1286,6 +1326,25 @@
 		border-radius: 50%;
 		background: var(--live);
 		flex: none;
+	}
+	.sharenote {
+		max-width: 702px;
+		margin: 6px auto 0;
+		font-size: 11px;
+		color: var(--faint);
+	}
+	.cfb {
+		display: block;
+		max-width: 702px;
+		width: 100%;
+		margin: 6px auto 0;
+		font: inherit;
+		font-size: 12px;
+		color: var(--ink);
+		background: var(--panel-2);
+		border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--line));
+		border-radius: 8px;
+		padding: 7px 10px;
 	}
 	.browse,
 	.browseall {

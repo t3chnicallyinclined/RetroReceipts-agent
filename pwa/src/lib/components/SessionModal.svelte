@@ -6,7 +6,7 @@
 	import SetReceipt from './SetReceipt.svelte';
 	import type { SetReceiptData } from './SetReceipt.svelte';
 	import ReportModal from './ReportModal.svelte';
-	import { shortSetLink } from '$lib/share';
+	import { shortSetLink, copyText, COPIED_MS } from '$lib/share';
 
 	// The SET modal — an overlay around THE TAPE (SetReceipt). Opened with a session_id from a result OR a
 	// Now Playing card. This component owns ONLY the modal mechanics: fetch + live re-poll, focus trap,
@@ -25,13 +25,16 @@
 	let copied = $state(false);
 	// ⚑ report the player you just faced — shown only when the VIEWER is a participant of this set
 	let repOpen = $state(false);
+	/** the link to reveal when the clipboard refuses — never a button that silently does nothing (§5) */
+	let copyFallback = $state('');
 	async function copyShort(): Promise<void> {
-		try {
-			await navigator.clipboard.writeText(shortSetLink(sessionId));
+		const url = shortSetLink(sessionId);
+		if (await copyText(url)) {
+			copyFallback = '';
 			copied = true;
-			setTimeout(() => (copied = false), 1600);
-		} catch {
-			/* clipboard blocked */
+			setTimeout(() => (copied = false), COPIED_MS);
+		} else {
+			copyFallback = url;
 		}
 	}
 
@@ -159,6 +162,10 @@
 			<SetReceipt r={data} me={auth.steamid ?? null} {live} />
 			<div class="row">
 				<button type="button" class="open" onclick={copyShort}>{copied ? '✓ Link copied' : '⧉ Copy link'}</button>
+			{#if copyFallback}
+				<!-- the clipboard refused: show the link so it can still be selected by hand (§5) -->
+				<input class="cfb" readonly value={copyFallback} aria-label="Share link — copy it manually" onfocus={(e) => e.currentTarget.select()} />
+			{/if}
 				{#if repOpp}
 					<button type="button" class="open" onclick={() => (repOpen = true)}>⚑ Report</button>
 				{/if}
@@ -170,6 +177,18 @@
 </div>
 
 <style>
+	.cfb {
+		display: block;
+		width: 100%;
+		margin-top: 8px;
+		font: inherit;
+		font-size: 12px;
+		color: var(--ink);
+		background: var(--panel-2);
+		border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--line));
+		border-radius: 8px;
+		padding: 7px 10px;
+	}
 	.ovl {
 		position: fixed;
 		inset: 0;

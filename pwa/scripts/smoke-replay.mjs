@@ -1012,6 +1012,92 @@ try {
 		}
 	}
 } finally {
+	// The theatre pinned to a LOCAL dev tape has no session_id, so it legitimately shows no share link — there
+	// is no set receipt to point at. To test SHARE we must first put a REAL feed row in the theatre, which is
+	// also the realistic path: open BROWSE, pick a match, share what you are watching.
+	const putRealMatchInTheatre = async (pg) => {
+		await pg.waitForSelector('[data-test="hero"]', { timeout: 60000 });
+		await pg.keyboard.press('KeyB');
+		await pg.waitForFunction(() => document.querySelectorAll('[role="dialog"] .brow .mb').length > 0, { timeout: 60000 });
+		await pg.evaluate(() => document.querySelector('[role="dialog"] .brow .mb').click());
+		await pg.waitForFunction(() => !document.querySelector('[role="dialog"][aria-label="Browse matches"]'), { timeout: 30000 });
+		await pg.waitForFunction(() => [...document.querySelectorAll('[data-test="hero"] .acts .a')].some((b) => /Copy link/.test(b.textContent || '')), { timeout: 60000 });
+	};
+
+	// ═══ ↗ SHARE (LIVE-TAB-V2-SPEC §5, P4 gate) ══════════════════════════════════════════════════════════
+	// The OS-sheet half of P4 ("on a real Android phone and a real iPhone the sheet opens and Discord receives
+	// the link") CANNOT be asserted headlessly — there is no sheet and no Discord here. What is asserted:
+	// the control appears ONLY where navigator.share exists, it is called with the right url/text, the copied
+	// link carries ?m=, and a REFUSED clipboard still leaves the URL selectable instead of a dead button.
+	if (has('--share')) {
+		// (a) desktop: no navigator.share → no ↗ Share control, and copy still works
+		const pd = await newPage(1280, 1600);
+		await pd.evaluateOnNewDocument(() => {
+			try { delete Navigator.prototype.share; } catch { /* already absent */ }
+			window.__copied = null;
+			navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); };
+		});
+		await pd.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+		await putRealMatchInTheatre(pd);
+		const hasShareBtn = await pd.evaluate(() => [...document.querySelectorAll('[data-test="hero"] .acts .a')].some((b) => /Share/.test(b.textContent || '')));
+		check(!hasShareBtn, 'share: on a browser with no navigator.share the ↗ Share control is ABSENT');
+		const copyRes = await pd.evaluate(async () => {
+			const b = [...document.querySelectorAll('[data-test="hero"] .acts .a')].find((x) => /Copy link/.test(x.textContent || ''));
+			if (!b) return { ok: false, why: 'no copy button' };
+			b.click();
+			await new Promise((r) => setTimeout(r, 300));
+			return { ok: true, copied: window.__copied, label: b.textContent.trim(), fallback: !!document.querySelector('[data-test="hero"] .cfb') };
+		});
+		log('share: desktop copy', JSON.stringify(copyRes));
+		check(copyRes.ok && /^https:\/\/nobd\.net\/(s\/[0-9a-f]+|app\/r\/set\/)/.test(copyRes.copied ?? ''), `share: copy writes the short link (${copyRes.copied})`);
+		check(/m=/.test(copyRes.copied ?? ''), `share: the copied link carries ?m= so the recipient lands on THIS game (${copyRes.copied})`);
+		check(/Copied/.test(copyRes.label ?? ''), 'share: the button confirms with "Copied"');
+		check(!copyRes.fallback, 'share: a SUCCESSFUL copy does not reveal the manual-select fallback');
+		await pd.close();
+
+		// (b) a browser that HAS a share sheet → the control appears and is called with the right payload
+		const ps = await newPage(1280, 1600);
+		await ps.evaluateOnNewDocument(() => {
+			window.__shared = null;
+			Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => { window.__shared = d; return Promise.resolve(); } });
+		});
+		await ps.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+		await putRealMatchInTheatre(ps);
+		const shared = await ps.evaluate(async () => {
+			const b = [...document.querySelectorAll('[data-test="hero"] .acts .a')].find((x) => /Share/.test(x.textContent || ''));
+			if (!b) return null;
+			b.click();
+			await new Promise((r) => setTimeout(r, 300));
+			return window.__shared;
+		});
+		log('share: navigator.share payload', JSON.stringify(shared));
+		check(!!shared, 'share: where navigator.share EXISTS the ↗ Share control is rendered and calls it');
+		check(!!shared && /m=/.test(shared.url || ''), `share: the shared url carries ?m= (${shared?.url})`);
+		check(!!shared && typeof shared.text === 'string' && shared.text.length > 0, `share: a share TEXT is composed client-side (${shared?.text})`);
+		await ps.close();
+
+		// (c) the clipboard REFUSES → the URL is still selectable. Five of the six old copy sites did nothing here.
+		const pc = await newPage(1280, 1600);
+		await pc.evaluateOnNewDocument(() => {
+			navigator.clipboard.writeText = () => Promise.reject(new Error('denied'));
+			document.execCommand = () => false; // defeat the legacy fallback too, so this really is the failure path
+		});
+		await pc.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+		await putRealMatchInTheatre(pc);
+		const fb = await pc.evaluate(async () => {
+			const b = [...document.querySelectorAll('[data-test="hero"] .acts .a')].find((x) => /Copy link/.test(x.textContent || ''));
+			b.click();
+			await new Promise((r) => setTimeout(r, 300));
+			const i = document.querySelector('[data-test="hero"] .cfb');
+			return { present: !!i, value: i?.value ?? '', readonly: i?.hasAttribute('readonly'), label: b.textContent.trim() };
+		});
+		log('share: clipboard denied', JSON.stringify(fb));
+		check(fb.present && fb.readonly, 'share: a DENIED clipboard reveals a readonly, selectable URL instead of doing nothing');
+		check(/^https:\/\/nobd\.net\//.test(fb.value) && /m=/.test(fb.value), `share: the revealed URL is the real share link (${fb.value})`);
+		check(!/Copied/.test(fb.label), 'share: and it does NOT claim "Copied" when nothing was copied');
+		await pc.close();
+	}
+
 	// ═══ ⌕ BROWSE MATCHES (LIVE-TAB-V2-SPEC §3, P3 gate) ═════════════════════════════════════════════════
 	if (has('--browse')) {
 		const pb = await newPage(1280, 1600);

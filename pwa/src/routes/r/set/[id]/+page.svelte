@@ -6,7 +6,7 @@
 	import SetReceipt from '$lib/components/SetReceipt.svelte';
 	import type { SetReceiptData } from '$lib/components/SetReceipt.svelte';
 	import ReportModal from '$lib/components/ReportModal.svelte';
-	import { shortSetLink } from '$lib/share';
+	import { shortSetLink, copyText, COPIED_MS } from '$lib/share';
 
 	// 🧾 /r/set/<session_id> — the RANKED counterpart to /r/<wager_id>. Public + read-only so a set is
 	// shareable to anyone, same as the money slip. Reads the same /rr/session?id= payload SessionModal uses,
@@ -51,14 +51,16 @@
 
 	let copied = $state(false);
 	let repOpen = $state(false);
+	let copyFallback = $state('');
 	async function copyLink() {
-		try {
-			// SHORT form (nobd.net/s/<tail>) — clean, identical to the address-bar link (no seat param).
-			await navigator.clipboard.writeText(shortSetLink(id));
+		// SHORT form (nobd.net/s/<tail>) — clean, identical to the address-bar link (no seat param).
+		const url = shortSetLink(id);
+		if (await copyText(url)) {
+			copyFallback = '';
 			copied = true;
-			setTimeout(() => (copied = false), 1600);
-		} catch {
-			/* clipboard blocked — the URL bar still has it */
+			setTimeout(() => (copied = false), COPIED_MS);
+		} else {
+			copyFallback = url;
 		}
 	}
 </script>
@@ -80,6 +82,10 @@
 			: null}
 		<div class="actrow">
 			<button type="button" class="act" onclick={copyLink}>{copied ? '✓ Link copied' : 'Copy link'}</button>
+			{#if copyFallback}
+				<!-- the clipboard refused: show the link so it can still be selected by hand (§5) -->
+				<input class="cfb" readonly value={copyFallback} aria-label="Share link — copy it manually" onfocus={(e) => e.currentTarget.select()} />
+			{/if}
 			{#if opp}
 				<!-- report lives ON the receipt — you report the player you just faced (the server enforces
 				     the recent-match rule anyway; this surface makes the honest path the obvious one) -->
@@ -91,6 +97,18 @@
 </div>
 
 <style>
+	.cfb {
+		display: block;
+		width: 100%;
+		margin-top: 8px;
+		font: inherit;
+		font-size: 12px;
+		color: var(--ink);
+		background: var(--panel-2);
+		border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--line));
+		border-radius: 8px;
+		padding: 7px 10px;
+	}
 	.page {
 		display: flex;
 		flex-direction: column;
