@@ -1389,8 +1389,24 @@ fn start_gamestate_capture() {
             // poll (vs v1's 200ms) is what lets us land inside the ~1-2s intro window.
             let full = (0..5).all(|i| start_row.hp[i] >= 144);
             if full { full_since.get_or_insert_with(std::time::Instant::now); } else { full_since = None; }
+            // 0.3.52 ⚠ THE FALLBACK MUST ALSO SEE "IN BATTLE". Health alone does NOT separate a fight from
+            // CHARACTER SELECT: at select every fighter already reads hp 144, so the 1.5 s full-health timer
+            // fires there. That matters because blk+0x6D04 is the stage-SELECT CURSOR (FUN_14062a720: pad
+            // bitmask blk+0x33A68+side*2, bit 0x800/0x400, wraps mod 0x11) which the match loader later
+            // CONSUMES -- so at select the cursor has already advanced to the NEXT stage while the PREVIOUS
+            // match's bank is still resident, and a tape started there is stamped with the wrong stage and
+            // renders the wrong stage art. Evidence: receipt-20260903-165128 -- 6D04=1, all six fighters at
+            // hp 144, resident bank stage 0, mode (1,1,1). Across all 16 dumps, mode byte[2]==2 (in battle)
+            // separated every case: 13/13 frames agreed with the resident bank, 0 mismatches.
+            // gs_match_load (the +-213 spawn) is unaffected -- it already implies a loaded match.
+            // FAIL OPEN: block only on a POSITIVE non-battle reading. If the byte cannot be read at all we
+            // keep the old behaviour rather than silently never recording — a read failure must degrade to
+            // the previous (over-eager) gate, never to a gate that records nothing.
+            let in_battle = base.checked_sub(BLK_BACK)
+                .and_then(|blk| unsafe { rpm_u8(h, blk + BLK_MODE_OFF + 2) })
+                .map_or(true, |m| m == 2);
             let ready = gs_match_load(&start_row)
-                || (full && full_since.map_or(false, |t| t.elapsed().as_millis() > 1500));
+                || (full && in_battle && full_since.map_or(false, |t| t.elapsed().as_millis() > 1500));
             if !ready { std::thread::sleep(std::time::Duration::from_millis(50)); continue; }
             full_since = None; // consumed → re-arm the fallback timer for the next match
 

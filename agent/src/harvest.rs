@@ -1180,7 +1180,12 @@ pub unsafe fn read_match_start(h: &dyn MemSource, base: usize, exe_base: usize) 
         }
     }
     let build_id = game_build_id(h, exe_base);
-    // stage number (blk+0x6D3C) — const per match; art comes from the Collection arc, not the tape.
+    // Stage number, blk+0x6D04 (NOT 0x6D3C — that read 0 in every capture; see STG_OFF).
+    // ⚠ It is the stage-SELECT CURSOR (FUN_14062a720), which the match loader CONSUMES (caseD_5 @0x14060ed0a,
+    // FUN_14060c370 case 1 indexing DAT_140a6aa80/aa30[id]). So it is the resident bank's stage only ONCE A
+    // MATCH IS LOADED -- at character select it has already advanced to the NEXT pick while the previous
+    // match's bank is still resident. The caller must therefore only reach here in battle; reader.rs's start
+    // gate enforces that (mode byte blk+0x3CB8[2] == 2). It is const for the DURATION of a loaded match.
     let stage_id = base.checked_sub(BLK_BACK).and_then(|blk| rpm_u8(h, blk + STG_OFF)).unwrap_or(0);
     // The sim frame this match starts on, read from blk+0x3CC8 — the SAME counter the
     // anchor stamped itself with. Any anchor at or after it was captured before an
