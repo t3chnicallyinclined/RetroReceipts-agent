@@ -268,7 +268,9 @@
 	});
 	const ariaPic = $derived(`Match replay, frame ${frame + 1} of ${count}`);
 	// the `o` toast / the seek pill / the half-speed note share one slot
-	const noteText = $derived(ovToast ? ovToast : st === 'seeking' ? 'skipping ahead…' : halfAuto && playing ? 'playing at half speed' : '');
+	const noteText = $derived(
+		ovToast ? ovToast : st === 'seeking' ? 'skipping ahead…' : halfAuto && playing ? 'half speed · the decoder is behind' : ''
+	);
 
 	// ── sides (REPLAY-OVERLAY-SPEC §1.1-1.2): the game's sides when seats are known — P1's plate LEFT, P2's RIGHT,
 	// the same sides as the health bars in the picture; unknown seats = the row's order (a left, b right), unlabelled,
@@ -749,11 +751,33 @@
 		if (w[`__${hookName}`] === hook) delete w[`__${hookName}`];
 	}
 
-	// worker health: if the rolling average record time exceeds 16 ms for ~2 s, drop to half speed (§7.9)
+	// ── worker health (§7.9), MEASURED AND FIXED 2026-09-04 ──────────────────────────────────────────────────────
+	// Tris: "the replay seems to be stuck at half speed." It was. Two bugs, both here:
+	//   1. `player.stats().avgMs` is the average over the WHOLE run (`timings` is never trimmed), so ONE cold-start
+	//      spike poisons it forever. Measured on this machine, the LIVE tab, full tape: sample 1 avgMs 20.2 with
+	//      maxMs 194 (first-use texture uploads) — over the 16 ms line — while the frames decoded IN THAT SECOND
+	//      averaged 14.7 ms. The watchdog dropped to half speed on a number that described the past, not the present.
+	//   2. The drop was one-way: nothing ever restored 60, so a transient cost halved the rest of the session.
+	// Now: sample the DELTA (cumulative sum and count both come from stats(), so the per-interval average is exact
+	// with no engine change), and use hysteresis. A manual speed choice still wins permanently (`userSpeed`).
+	//
+	// ⚠ The thresholds are set from MEASURED cost, not taste. A first pass used restore < 12 ms and the gate caught it:
+	// this machine's steady state for a full tape is 13–16.9 ms/frame, so `< 12` was unreachable and the throttle was
+	// once again permanent — the same bug in a new dress. Restore is now < 15 ms (still 10% under the 16.7 ms budget
+	// for 60 fps) and needs 4 s of it against the drop's 2 s, so the asymmetry (not a wide dead band) is what stops
+	// flapping around the line.
+	const SLOW_MS = 16; // a 60 fps frame budget is 16.7 ms
+	const OK_MS = 15; // reachable on real hardware, still inside the budget
 	let watchIv: ReturnType<typeof setInterval> | null = null;
+	let devSlowMs = 0; // DEV: forced interval cost for the recovery gate
+	let devSlowLeft = 0;
+	let health = $state({ interval: 0, avgMs: 0, frames: 0, maxMs: 0 });
 	function watchWorker() {
 		if (watchIv) return;
 		let over = 0;
+		let good = 0;
+		let lastFrames = 0;
+		let lastSum = 0;
 		watchIv = setInterval(() => {
 			if (!player || !playing) {
 				if (watchIv) clearInterval(watchIv);
@@ -761,12 +785,35 @@
 				return;
 			}
 			const s = player.stats();
-			if (s.frames > 30 && s.avgMs > 16) over++;
-			else over = 0;
-			// only drop to half speed once, and never after the user has picked a speed themselves
-			if (over >= 2 && speed === 60 && !userSpeed && !halfAuto) {
+			const sum = s.avgMs * s.frames;
+			const dFrames = s.frames - lastFrames;
+			const dSum = sum - lastSum;
+			lastFrames = s.frames;
+			lastSum = sum;
+			if (dFrames <= 0) return; // nothing decoded this second (paused, or the window is fully served)
+			let interval = dSum / dFrames; // the cost of the frames decoded IN THIS SECOND
+			if (devSlowLeft > 0) {
+				devSlowLeft--;
+				interval = devSlowMs;
+			}
+			health = { interval, avgMs: s.avgMs, frames: s.frames, maxMs: s.maxMs };
+			if (interval > SLOW_MS) {
+				over++;
+				good = 0;
+			} else if (interval < OK_MS) {
+				good++;
+				over = 0;
+			} else {
+				over = 0;
+				good = 0; // the dead band: neither drop nor restore
+			}
+			if (userSpeed) return; // the user chose a speed — never fight them
+			if (over >= 2 && speed === 60 && !halfAuto) {
 				speed = 30;
 				halfAuto = true;
+			} else if (good >= 4 && halfAuto) {
+				speed = 60;
+				halfAuto = false;
 			}
 		}, 1000);
 	}
@@ -1056,6 +1103,27 @@
 		get scale() {
 			return k;
 		},
+		/** worker health as the watchdog sees it, plus the current speed and whether IT chose it */
+		get health() {
+			const st2 = player?.stats?.();
+			return {
+				speed,
+				halfAuto,
+				userSpeed,
+				intervalMs: health.interval, // the windowed cost the watchdog acts on
+				frames: st2?.frames ?? 0,
+				avgMs: st2?.avgMs ?? 0, // the lifetime average (what the old watchdog wrongly used)
+				maxMs: st2?.maxMs ?? 0,
+				openMs: st2?.openMs ?? 0
+			};
+		},
+		/** DEV ONLY: force the watchdog's per-second cost for `n` samples — the transient-slowness recovery gate */
+		devSlow: (ms: number, n = 3) => {
+			if (!import.meta.env.DEV) return false;
+			devSlowMs = ms;
+			devSlowLeft = n;
+			return true;
+		},
 		/** the tape's own quality: `world` from the feed, the recording agent, and what the UI says about it */
 		get quality2() {
 			return { world: tapeInfo?.world ?? null, agent: tapeInfo?.agent ?? '', limited, oldClient, viewerIsPlayer };
@@ -1209,6 +1277,7 @@
 	class:portrait
 	class:hudoff={fullscreen && !hud}
 	class:seeking={st === 'seeking'}
+	class:throttled={halfAuto && playing}
 	bind:this={wrap}
 	tabindex="-1"
 	use:surface
@@ -1807,7 +1876,7 @@
 	}
 	/* §5f: the `skipping ahead…` pill is the only sign of progress — it never fades while seeking */
 	.emb.fs.hudoff .tr,
-	.emb.fs.hudoff:not(.seeking) .note:not(.toast) {
+	.emb.fs.hudoff:not(.seeking):not(.throttled) .note:not(.toast) {
 		opacity: 0;
 		pointer-events: none;
 	}

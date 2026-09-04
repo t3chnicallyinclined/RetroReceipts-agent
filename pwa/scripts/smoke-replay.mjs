@@ -20,6 +20,9 @@
 //               y 0–24, stamp in the dead gap, watermark above the hyper bars) within 1 px; (3) no element enters a
 //               §2.1 no-go zone (rows clear of the health bars at y 25); (4) minimal within 3.3 s of play, full on pause / hover; (5) the fullscreen HUD fades
 //               ≤ 2.5 s and is anchored to the picture's bottom edge. Screenshots of every frame go to --out.
+//   --health    THE HALF-SPEED WATCHDOG (2026-09-04): a transient slow period drops playback to half speed and then
+//               RECOVERS to 60 when throughput comes back (hysteresis: >16 ms for 2 s down, <12 ms for 3 s up), the
+//               UI says so while it lasts, and a manual speed choice is never overridden.
 //   --limited   LIMITED REPLAYS (measured on prod 2026-09-04: a tape from an agent < 0.3.34 has no world sections, so
 //               it draws fighters with no stage and no HUD): builds the fixture by stripping nodes/anodes/aobjs/palrows
 //               from a copy of the local tape and forcing ver 0.3.31, then asserts the LIMITED marker + the update
@@ -886,6 +889,46 @@ try {
 		check(qF.world === true && qF.limited === false, `limited: a full tape reports world:true (agent ${qF.agent})`);
 		check(!uiF.chrome && !uiF.marker && !uiF.nudge, 'limited: a full-quality replay shows neither the marker nor the nudge');
 		await pfull.close();
+	}
+
+	if (has('--health')) {
+		// ═══ the watchdog: transient slowness must not leave playback at half speed ═══
+		const ph = await newPage();
+		await ph.goto(`${URL_}&devskin=none`, { waitUntil: 'load', timeout: 120000 });
+		await ph.waitForSelector(rowSel, { timeout: 60000 });
+		await ph.click(rowSel);
+		await waitEmbed(ph, '__rrEmbed');
+		await ph.evaluate(() => window.__rrEmbed.play());
+		await sleep(1500);
+		const h0 = await ph.evaluate(() => window.__rrEmbed.health);
+		log('health (steady)', JSON.stringify(h0));
+		check(h0.speed === 60 && h0.halfAuto === false, `health: a healthy run stays at 60 (speed ${h0.speed}, halfAuto ${h0.halfAuto})`);
+		check(h0.intervalMs > 0 && h0.intervalMs < h0.avgMs + 50, `health: the watchdog measures a per-second cost (${h0.intervalMs.toFixed(1)} ms) alongside the lifetime average (${h0.avgMs.toFixed(1)} ms)`);
+
+		// force a transient slow period: 3 samples at 40 ms/frame → the drop
+		check(await ph.evaluate(() => window.__rrEmbed.devSlow(40, 3)), 'health: the dev slow-injection hook is available');
+		await ph.waitForFunction(() => window.__rrEmbed.health.halfAuto === true, { timeout: 20000, polling: 250 });
+		const h1 = await ph.evaluate(() => window.__rrEmbed.health);
+		check(h1.speed === 30 && h1.halfAuto === true, `health: sustained slowness drops to half speed (speed ${h1.speed})`);
+		const note = await ph.evaluate(() => (document.querySelector('[data-hook="rrEmbed"] .note')?.textContent ?? '').trim());
+		check(/half speed/.test(note), `health: the UI says it is throttled ("${note}")`);
+		check(await ph.evaluate(() => document.querySelector('[data-hook="rrEmbed"] .spd')?.value === '30'), 'health: the speed control reads ½×, not 1×');
+
+		// throughput recovers → back to 60 within the hysteresis window, no click. The fast period is injected so the
+		// gate proves the LOGIC on any machine; the thresholds themselves are set from the measured 13–16.9 ms range.
+		await ph.evaluate(() => window.__rrEmbed.devSlow(5, 6));
+		await ph.waitForFunction(() => window.__rrEmbed.health.halfAuto === false, { timeout: 30000, polling: 250 });
+		const h2 = await ph.evaluate(() => window.__rrEmbed.health);
+		check(h2.speed === 60 && h2.halfAuto === false, `health: it RECOVERS to 60 once throughput comes back (speed ${h2.speed}, ${h2.intervalMs.toFixed(1)} ms/frame)`);
+		check(await ph.evaluate(() => !document.querySelector('[data-hook="rrEmbed"] .note')?.textContent.includes('half speed')), 'health: the half-speed note disappears on recovery');
+
+		// a manual choice is never overridden
+		await ph.select('[data-hook="rrEmbed"] .spd', '30');
+		await ph.evaluate(() => window.__rrEmbed.devSlow(2, 6));
+		await sleep(4500);
+		const h3 = await ph.evaluate(() => window.__rrEmbed.health);
+		check(h3.speed === 30 && h3.userSpeed === true && h3.halfAuto === false, `health: a manual ½× is never overridden by the watchdog (speed ${h3.speed}, userSpeed ${h3.userSpeed})`);
+		await ph.close();
 	}
 
 	if (has('--surfaces')) {
