@@ -88,6 +88,18 @@ fn pack_from_sources(tape: &Tape, atlas_dir: &Path, dasm_dir: &Path, stage_dir: 
             }
         }
     }
+    // per-character HUD portrait / name-plate DAT pages (TCW 0xC9A..0xCA5) -- see world::hud_portrait_pages
+    let pdir = tcw_dir.parent().map(|p| p.join("portraits")).unwrap_or_else(|| PathBuf::from("portraits"));
+    if add_file(&mut pack, "portraits/index.json", &pdir.join("index.json")) {
+        if let Ok(idx) = serde_json::from_slice::<serde_json::Value>(pack.get("portraits/index.json").unwrap()) {
+            for &cid in tape.p1_team.iter().chain(tape.p2_team.iter()) {
+                let Some(ent) = idx.get("chars").and_then(|c| c.get(cid.to_string())) else { continue };
+                for pv in ent.get("pages").and_then(|p| p.as_array()).cloned().unwrap_or_default() {
+                    if let Some(f) = pv.get("file").and_then(|x| x.as_str()) { add_file(&mut pack, &format!("portraits/{f}"), &pdir.join(f)); }
+                }
+            }
+        }
+    }
     if let Some(c) = camera { add_file(&mut pack, "camera_block.json", c); }
     pack
 }

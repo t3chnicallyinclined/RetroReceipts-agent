@@ -91,6 +91,9 @@ pub struct Tape {
     pub p1_team: Vec<u8>, pub p2_team: Vec<u8>,
     /// `tape.get('costume') or [0]*6`
     pub costume: Vec<i64>,
+    /// `tape.get('assist') or [0]*6` -- the per-slot ASSIST TYPE byte (fighter+0x655, agent `OFF_ASSIST`).
+    /// FUN_14060d560 indexes `DAT_140a6aac4 = {1,0,3,0}` with it to pick the HUD portrait page (see world.rs).
+    pub assist: Vec<i64>,
     pub schema: Vec<String>,
     cols: HashMap<String, usize>,
     /// The raw rows, one JSON array per frame (positional by `schema`).
@@ -128,15 +131,16 @@ impl Tape {
         let nodes_stride = o.get("nodes_stride").and_then(|x| x.as_u64()).unwrap_or(44) as usize;
         let anodes_stride = o.get("anodes_stride").and_then(|x| x.as_u64()).unwrap_or(96) as usize;
         let palrows_stride = o.get("palrows_stride").and_then(|x| x.as_u64()).unwrap_or(148) as usize;
-        let costume = o.get("costume").and_then(|x| x.as_array())
+        let six = |n: &str| o.get(n).and_then(|x| x.as_array())
             .map(|a| a.iter().map(|x| x.as_i64().unwrap_or(0)).collect::<Vec<_>>())
             .filter(|a| !a.is_empty()).unwrap_or_else(|| vec![0; 6]);
+        let (costume, assist) = (six("costume"), six("assist"));
         let mut t = Tape {
             ver: o.get("ver").and_then(|x| x.as_str()).unwrap_or("").to_string(),
             tape_ver: o.get("tape_ver").and_then(|x| x.as_i64()).unwrap_or(0),
             nodes_stride, anodes_stride, palrows_stride,
             stage_id: o.get("stage_id").and_then(|x| x.as_i64()),
-            p1_team: as_u8_vec(o.get("p1_team")), p2_team: as_u8_vec(o.get("p2_team")), costume,
+            p1_team: as_u8_vec(o.get("p1_team")), p2_team: as_u8_vec(o.get("p2_team")), costume, assist,
             schema, cols, frames,
             nodes: BTreeMap::new(), pals: Vec::new(), palrows: HashMap::new(), anodes: HashMap::new(), aobjs: Vec::new(), pages: Vec::new(),
         };

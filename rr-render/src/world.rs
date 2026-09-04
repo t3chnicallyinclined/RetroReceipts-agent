@@ -81,6 +81,47 @@ pub struct WorldAssets {
     pub stage_preload: Vec<(String, Page)>,
     /// the TCW library `tcw_pages/index.json`: key -> decoded page (only entries whose file exists)
     pub lib_pages: HashMap<String, Page>,
+    /// `portraits/index.json` (`rip_portraits.py`): (cid, 0x800-page index 0..3) -> decoded 32x32 page.
+    /// The per-character HUD portrait / name-plate pages the engine patches into TCW 0xC9A..0xCA5.
+    pub portrait_pages: HashMap<(u8, usize), Page>,
+}
+
+// ── RUNTIME-PATCHED HUD PORTRAIT / NAME SLOTS (TCW 0xC9A..0xCA5) ────────────────────────────────────────
+// `FUN_14060d560` rewrites twelve HUD texture slots at EVERY MATCH LOAD from the six fighters' own character
+// DATs, so their pixels are roster-dependent and are NOT a property of the HUD bank file. Resolving them out of
+// the capture-derived TCW library (which holds whatever roster the capture happened to contain) is what put
+// Sentinel's portrait and name plate on a Magneto/Storm/Colossus tape. The rule, all CONFIRMED by reading the
+// Steam binary (docs/PORTRAIT-PAGES-GHIDRA.md in mvc-live-skins-quarters):
+//     for each fighter slot s (stride 0x738): k = DAT_140a6aac8[s]
+//         portrait -> texHdr[10 + k] = TCW 0xC9A + k, pixels = DAT page DAT_140a6aac4[*(fighter+0x655)]
+//         name     -> texHdr[16 + k] = TCW 0xCA0 + k, pixels = DAT page 2 (fixed)
+//     fighter+0x655 is the ASSIST TYPE (alpha/beta/gamma, set at select by FUN_14062a460), which the tape
+//     already carries as `assist[slot]` (agent `OFF_ASSIST` = 0x4E9 off the pre-fix base + 0x16C).
+//     slot s is P1's team member s/2 when s is even, P2's when odd (select code; also `web.rs` skin routing).
+/// `DAT_140a6aac8`: fighter slot -> HUD texHdr record offset k.
+pub const PORTRAIT_SLOT_K: [usize; 6] = [0, 3, 1, 4, 2, 5];
+/// `DAT_140a6aac4`: `*(fighter+0x655)` (assist type) -> index of the 0x800-B page inside the character DAT blob.
+pub const PORTRAIT_ASSIST_PAGE: [usize; 4] = [1, 0, 3, 0];
+/// The name plate is always the third 0x800-B page (source DC 0x0CE61000 = 0x0CE60000 + 2 * 0x800).
+pub const PORTRAIT_NAME_PAGE: usize = 2;
+pub const PORTRAIT_TCW: u32 = 0xC9A;
+pub const PORTRAIT_NAME_TCW: u32 = 0xCA0;
+
+/// The twelve `"%08X"` TCW keys this tape's roster patches, with the page each one must show.
+/// Empty when the pack carries no `portraits/` rip (the caller then keeps whatever the library had).
+pub fn hud_portrait_pages(assets: &WorldAssets, tape: &Tape) -> Vec<(String, Page)> {
+    let mut out = Vec::new();
+    if assets.portrait_pages.is_empty() { return out; }
+    for s in 0..6usize {
+        let team = if s % 2 == 0 { &tape.p1_team } else { &tape.p2_team };
+        let Some(&cid) = team.get(s / 2) else { continue };
+        let k = PORTRAIT_SLOT_K[s];
+        let a = (tape.assist.get(s).copied().unwrap_or(0) & 3) as usize;
+        for (tcw, page) in [(PORTRAIT_TCW + k as u32, PORTRAIT_ASSIST_PAGE[a]), (PORTRAIT_NAME_TCW + k as u32, PORTRAIT_NAME_PAGE)] {
+            if let Some(p) = assets.portrait_pages.get(&(cid, page)) { out.push((format!("{:08X}", tcw), p.clone())); }
+        }
+    }
+    out
 }
 
 /// Per-model arc meshes in first-seen order (Python `arc_models` dict).
@@ -218,6 +259,8 @@ impl WorldState {
         let mut tape_pages = HashMap::new();
         for (k, p) in &assets.stage_preload { tape_pages.entry(k.clone()).or_insert_with(|| p.clone()); }
         for (k, p) in &tape.pages { tape_pages.insert(k.clone(), p.clone()); }
+        // roster-dependent HUD slots: these MUST beat `assets.lib_pages` (see hud_portrait_pages).
+        for (k, p) in hud_portrait_pages(assets, tape) { tape_pages.insert(k, p); }
         WorldState { deck_cache: None, pscb_memo: HashMap::new(), tkey_memo: HashMap::new(), tape_pages, arc: assets.stage_rip.as_ref().map(ArcModels::build), prop_cache: HashMap::new(), prop_stats: Default::default() }
     }
 }

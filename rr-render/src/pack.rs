@@ -112,6 +112,26 @@ impl AssetPack {
                 }
             }
         }
-        WorldAssets { stage_rip, stage_preload, lib_pages }
+        // The twelve runtime-patched HUD slots (TCW 0xC9A..0xCA5) are per-CHARACTER, not per-bank: the pack
+        // ships every roster character's four 0x800-B DAT pages and `world::hud_portrait_pages` picks the two
+        // that this tape's slot/assist-type combination patches in. Without this the capture library's pages
+        // (a different roster) are used -- the "wrong character's portrait/name" bug.
+        let mut portrait_pages = HashMap::new();
+        if let Some(b) = self.get("portraits/index.json") {
+            if let Ok(idx) = serde_json::from_slice::<serde_json::Value>(b) {
+                for (cid, ent) in idx.get("chars").and_then(|c| c.as_object()).cloned().unwrap_or_default() {
+                    let Ok(cid) = cid.parse::<u8>() else { continue };
+                    for (k, pv) in ent.get("pages").and_then(|p| p.as_array()).cloned().unwrap_or_default().iter().enumerate() {
+                        let Some(file) = pv.get("file").and_then(|f| f.as_str()) else { continue };
+                        let fmt = pv.get("fmt").and_then(|x| x.as_u64()).unwrap_or(28) as u32;
+                        if let Some(pg) = self.get(&format!("portraits/{file}")).and_then(|pb| png_page(pb, fmt)) {
+                            portrait_pages.insert((cid, k), pg);
+                        }
+                    }
+                }
+            }
+            log.push(format!("portraits: {} character DAT pages (HUD TCW 0xC9A..0xCA5)", portrait_pages.len()));
+        }
+        WorldAssets { stage_rip, stage_preload, lib_pages, portrait_pages }
     }
 }

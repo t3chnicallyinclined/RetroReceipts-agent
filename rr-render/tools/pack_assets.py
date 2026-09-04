@@ -12,6 +12,7 @@ Layout (rr_render::pack::AssetPack):
     stage/STGxx.json + STGxx_tNN.png    (arc rip; the PNGs are the WRONG rip_stage decode = the Python fallback)
     tcw/stage_XX/index.json + PNGs      (host-decoded stage pages, rip_texbank.py --bank stage)
     tcw/index.json + PNGs               (capture-derived TCW library)
+    portraits/index.json + PNGs         (per-character HUD portrait/name DAT pages, rip_portraits.py)
     camera_block.json
     frozen/template_2574.json frozen/world_4445.json   (informational copy; the crate embeds them)
     tape.json.gz                        (--tape-copy: the tape itself, so the page can fetch it from the pack)
@@ -33,6 +34,7 @@ def main():
     ap.add_argument('--dasm', default=DASM)
     ap.add_argument('--stages', default=STAGES)
     ap.add_argument('--tcw', default=os.path.join(REPLAY, 'tcw_pages'))
+    ap.add_argument('--portraits', default=os.path.join(REPLAY, 'portraits'))
     ap.add_argument('--camera', default=os.path.join(REPLAY, 'camera_block.json'))
     ap.add_argument('--tape-copy', action='store_true', help='copy the tape into the pack as tape.json.gz')
     a = ap.parse_args()
@@ -96,6 +98,21 @@ def main():
             fn = v.get('file', 'tcw_%s_%dx%d_f%d.png' % (k, v['w'], v['h'], v['fmt']))
             if os.path.exists(os.path.join(a.tcw, fn)):
                 put('tcw/' + fn, os.path.join(a.tcw, fn))
+    # The twelve runtime-patched HUD slots (TCW 0xC9A..0xCA5) are per-CHARACTER: ship this roster's DAT pages
+    # so the emitter does not fall back to the capture library's (different-roster) portraits and name plates.
+    pidx = os.path.join(a.portraits, 'index.json')
+    if os.path.exists(pidx):
+        pj = json.load(open(pidx))
+        chars = {str(c): pj.get('chars', {}).get(str(c)) for c in roster}
+        put('portraits/index.json', pidx)
+        for c, ent in chars.items():
+            if not ent:
+                missing.append(('portraits/cid %s' % c, pidx)); continue
+            for pv in (ent.get('pages') or []):
+                if pv and os.path.exists(os.path.join(a.portraits, pv['file'])):
+                    put('portraits/' + pv['file'], os.path.join(a.portraits, pv['file']))
+    else:
+        missing.append(('portraits/index.json', pidx))
     put('camera_block.json', a.camera)
     for fz in ('template_2574.json', 'world_4445.json'):
         put('frozen/' + fz, os.path.join(HERE, '..', 'src', 'frozen', fz))
