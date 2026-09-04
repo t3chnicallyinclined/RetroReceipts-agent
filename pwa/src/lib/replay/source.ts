@@ -3,6 +3,10 @@
 //   • availability — what the ReplayAffordance shows (▶ REPLAY / ⏳ TAPE INCOMING / 📼 REQUEST REPLAY / — / 🔒)
 //   • source       — where the tape and its asset pack are, for the ReplayEmbed
 //
+// Replays are OPEN: a signed-out visitor resolves and plays a tape exactly like a signed-in one (Tris 2026-09-04).
+// The only account-bound action left here is `POST /rr/tape/request` (an archive pull writes on the server); the
+// ownership acknowledgement that gates the ART lives in lib/replay/pack.ts.
+//
 // Tape side (lane 1 — the archive contract, built against docs/HANDOFF-LANE1-TAPE-ARCHIVE.md):
 //   GET  /rr/tape?key=<match_key>  → {ok, state:'ready'|'pending'|'archived'|'none', tape_url?, frames?, ts?, session_id?,
 //                                      pack?: {manifest_url:'/rr/packs/manifest?key=…', attested:bool}  (2026-09-04: the
@@ -29,10 +33,11 @@ export type ReplaySource =
 	| { kind: 'tape'; tapeUrl: string; packUrl: string; start?: number; count?: number; frames?: number; overlay?: TapeOverlay | null; pack?: TapePackRef | null }
 	| { kind: 'stream'; url: string; frames: number } // phones, M-interim keyed frames — C9, not built
 	| { kind: 'none'; reason: NoneReason };
-export type NoneReason = 'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'signin';
+export type NoneReason = 'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported';
 
-/** Row-level replay availability — what the affordance shows. `signin` is the auth gate over ready/archived. */
-export type ReplayAvail = 'ready' | 'pending' | 'archived' | 'none' | 'expired' | 'saved' | 'signin';
+/** Row-level replay availability — what the affordance shows. No auth gate: replays are open to everyone
+ *  (Tris 2026-09-04: "let's not make it so you have to sign in to play the replays"). */
+export type ReplayAvail = 'ready' | 'pending' | 'archived' | 'none' | 'expired' | 'saved';
 
 export interface LocalTapeSide {
 	steamid: string;
@@ -155,6 +160,7 @@ export function probeServer(matchKey: string, force = false): Promise<TapeProbe>
 
 /** POST /rr/tape/request {key} — one click pulls the tape from R2 into hot storage; the row turns pending. */
 export async function requestReplay(matchKey: string): Promise<{ ok: boolean; error?: string }> {
+	// the ARCHIVE PULL is a server-side write, so it still needs an account (watching a hot tape does not)
 	if (!auth.authed) return { ok: false, error: 'signin' };
 	try {
 		const res = await fetch(api(TAPE_REQUEST_PATH), {
@@ -175,9 +181,12 @@ export async function requestReplay(matchKey: string): Promise<{ ok: boolean; er
 /** Rows within this window after `ts` with a key are `pending` (agent upload lag), then `none` (§7.11). */
 const PENDING_WINDOW_MS = 3 * 60_000;
 
-/** The sign-in gate: replays are for players with an account (Tris 2026-09-03); dev test tapes stay open. */
+/**
+ * No gate — replays play for everyone, signed in or not (Tris 2026-09-04: "let's not make it so you have to sign
+ * in to play the replays"). Kept as the ONE place a future gate would live so callers never re-invent one; the
+ * ownership acknowledgement for the ART is a separate thing and still applies (lib/replay/pack.ts).
+ */
 export function gated(a: ReplayAvail): ReplayAvail {
-	if ((a === 'ready' || a === 'archived' || a === 'saved') && !auth.authed && !import.meta.env.DEV) return 'signin';
 	return a;
 }
 
@@ -192,7 +201,6 @@ export async function availability(row: RowLike): Promise<ReplayAvail> {
 
 /** Resolve a row into an embed source: local manifest first, then the archive contract. */
 export async function resolveSource(row: RowLike): Promise<ReplaySource> {
-	if (!auth.authed && !import.meta.env.DEV) return { kind: 'none', reason: 'signin' };
 	const loc = await localFor(row);
 	if (loc) return sourceOfLocal(loc.tape);
 	if (!row.match_key) return { kind: 'none', reason: 'none' };

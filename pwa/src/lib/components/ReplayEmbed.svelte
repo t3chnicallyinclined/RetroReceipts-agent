@@ -19,7 +19,7 @@
 		type GpuDeviceLike
 	} from '$lib/replay/engine';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
-	import { assemblePack, getAttest, isDevFixture, loadPackManifest, mbText, PackError, postAttest, type AssembledPack, type PackManifest, type PackSource } from '$lib/replay/pack';
+	import { acknowledgeOwnership, assemblePack, hasOwnership, loadPackManifest, mbText, PackError, type AssembledPack, type PackManifest, type PackSource } from '$lib/replay/pack';
 	import type { Credit } from './SkinCredit.svelte';
 
 	// ▶ REPLAYEMBED (LIVE-TAB-SPEC §7 + REPLAY-OVERLAY-SPEC) — a rendered media element: the game's OWN pixels,
@@ -131,7 +131,7 @@
 	$effect(() => {
 		onstate?.(st);
 	});
-	let reason = $state<'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'signin'>('none');
+	let reason = $state<'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported'>('none');
 	let requesting = $state(false);
 	let requestNote = $state('');
 	let err = $state<{ code: string; message: string } | null>(null);
@@ -424,7 +424,7 @@
 		}
 		if (packSrc.kind === 'server' && !assembled && !packWanted) {
 			// the art is ours to serve, but only to owners who asked: the panel takes the attestation + the tap
-			attested = packSrc.attested || (await getAttest(false, isDevFixture(packSrc)));
+			attested = packSrc.attested || (await hasOwnership());
 			st = 'nopack';
 			return;
 		}
@@ -511,15 +511,11 @@
 				// the art failed on its own terms: sign in · attest · a missing part · a broken file
 				clearTimeout(slowTimer);
 				packMissing = e.part ?? '';
-				if (e.code === 'signin') {
-					reason = 'signin';
-					st = 'unavailable';
-					return;
-				}
 				packWanted = false;
 				attested = e.code === 'attest' ? false : attested;
 				packNote =
-					e.code === 'attest' ? 'Tick the box first — the art is only for owners.'
+					e.code === 'rate' ? 'Too many art downloads from this connection. Try again later, or sign in.'
+					: e.code === 'attest' ? 'Tick the box first — the art is only for owners.'
 					: e.code === 'missing' ? `No art for ${e.part || 'this stage/character'} yet.`
 					: e.code === 'sha' ? `That file arrived damaged (${e.part}). Try again.`
 					: 'The art did not load — try again.';
@@ -557,24 +553,14 @@
 		packMissing = '';
 		packBusy = true;
 		try {
-			const devFix = isDevFixture(packSrc);
 			if (packSrc.kind === 'server' && !attested) {
 				if (!ownsChecked) {
 					packNote = 'Tick the box first — the art is only for owners.';
 					return;
 				}
-				if (!auth.authed && !devFix) {
-					reason = 'signin';
-					st = 'unavailable';
-					return;
-				}
-				const r = await postAttest(devFix);
+				// no account needed: signed out this is a local record + the X-RR-Owns-Game header (lib/replay/pack.ts)
+				const r = await acknowledgeOwnership();
 				if (!r.ok) {
-					if (r.error === 'signin') {
-						reason = 'signin';
-						st = 'unavailable';
-						return;
-					}
 					packNote = 'Could not record that — try again.';
 					return;
 				}
@@ -1215,9 +1201,6 @@
 					<span class="h">Tape gone.</span><span class="s">Only the last 100 live results keep a replay.</span>
 				{:else if reason === 'unsupported'}
 					<span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span>
-				{:else if reason === 'signin'}
-					<span class="h">Sign in to watch the tape.</span><span class="s">Replays are for players with an account.</span>
-					<button class="signin" onclick={(e) => { e.stopPropagation(); auth.login(); }}>Sign in through Steam</button>
 				{:else}
 					<span class="h">No tape for this one.</span><span class="s">Neither player's agent recorded it.</span>
 				{/if}

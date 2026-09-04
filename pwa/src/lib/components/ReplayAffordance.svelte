@@ -6,9 +6,9 @@
 
 	// ▶ REPLAYAFFORDANCE — THE one way a replay's availability shows, everywhere a match or game row is
 	// rendered (LIVE results, the set view's per-game rows, the share pages, profile history, receipts).
-	// States (Tris 2026-09-03): ▶ REPLAY (ready — loud, --stream) · ⏳ TAPE INCOMING (pending) ·
-	// 📼 REQUEST REPLAY (archived — one click pulls the tape from R2, then pending) · — (none) ·
-	// 🔒 SIGN IN TO WATCH (signed out — click starts the Steam login).
+	// States: ▶ REPLAY (ready — loud, --stream) · ⏳ TAPE INCOMING (pending) · 📼 REQUEST REPLAY (archived — one
+	// click pulls the tape from R2, then pending) · — (none). No sign-in state: a ready tape shows ▶ REPLAY to
+	// everyone (Tris 2026-09-04); only the archive PULL still needs an account (it writes on the server).
 	// Give it either a resolved `state` or a `row` (it resolves availability itself, cached in source.ts).
 	// `as="span"` = decoration inside a row that is itself a <button> (the row's click opens the replay);
 	// `as="button"` = standalone: clicking a ready one opens the app-wide ReplaySheet with `meta`.
@@ -58,8 +58,7 @@
 		pending: '⏳ TAPE INCOMING',
 		archived: '📼 REQUEST REPLAY',
 		none: '—',
-		expired: '—',
-		signin: '🔒 SIGN IN TO WATCH'
+		expired: '—'
 	};
 	const TITLE: Record<ReplayAvail, string> = {
 		ready: 'Watch the replay',
@@ -67,15 +66,13 @@
 		pending: 'Tape not in yet — the agent uploads it after the set',
 		archived: 'In the archives — one click pulls it back',
 		none: 'No tape for this one',
-		expired: 'Tape gone',
-		signin: 'Replays are for players with an account — sign in through Steam'
+		expired: 'Tape gone'
 	};
 
 	async function click(e: MouseEvent) {
 		e.stopPropagation();
 		const s = shown;
 		if (!s || busy) return;
-		if (s === 'signin') return auth.login();
 		if (s === 'archived') {
 			if (!row?.match_key) return;
 			busy = true;
@@ -97,7 +94,7 @@
 		<span class="ra {shown} {size}" title={TITLE[shown]} aria-hidden={shown === 'none' || shown === 'expired' ? 'true' : undefined}>{LABEL[shown]}</span>
 	{:else}
 		<button type="button" class="ra {shown} {size}" class:busy title={note || TITLE[shown]} aria-label={LABEL[shown].replace(/^\S+\s/, '')} onclick={click} disabled={busy}>
-			{#if busy}…{:else if shown === 'signin'}🔒 SIGN IN<span class="xw"> TO WATCH</span>{:else}{LABEL[shown]}{/if}
+			{busy ? '…' : LABEL[shown]}
 		</button>
 	{/if}
 {/if}
@@ -158,20 +155,6 @@
 	}
 	button.ra.archived:hover {
 		background: color-mix(in srgb, var(--stream) 22%, transparent);
-	}
-	.ra.signin {
-		color: var(--dim);
-		border-style: dashed;
-	}
-	/* §5e: on the phone fold the meta column is 76 px (LIVE-TAB-SPEC §8) → `🔒 SIGN IN`; the full copy stays on title/aria-label */
-	@media (max-width: 720px) {
-		.ra.signin .xw {
-			display: none;
-		}
-	}
-	button.ra.signin:hover {
-		color: var(--ink);
-		border-color: var(--gold);
 	}
 	.ra.none,
 	.ra.expired {

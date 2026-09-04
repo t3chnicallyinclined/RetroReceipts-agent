@@ -29,7 +29,9 @@
 //               pack is byte-identical to the local directory pack (same file names, offsets, lengths and a matching
 //               blob sha-256) and the frame-0 readback equals the local-pack baseline; (3) a second load hits Cache
 //               Storage — 0 network bytes for the shared parts; (4) under a mobile UA the art loads on the tap, never
-//               automatically.
+//               automatically; (5) OPEN REPLAYS (2026-09-04): the whole run is SIGNED OUT — a tape resolves and plays
+//               with no account, the ownership tick posts NO /rr/attest, every pack request carries X-RR-Owns-Game: 1,
+//               the acknowledgement survives a reload, and a row with no tape key is still refused.
 // Chrome needs a real GPU: the flags below are the ones capture_video.mjs uses.
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -167,6 +169,12 @@ try {
 	await page.waitForSelector(rowSel, { timeout: 60000 });
 	check(true, `test row ${ROW} rendered`);
 	check(await page.evaluate((s) => /REPLAY/.test(document.querySelector(s)?.textContent ?? ''), rowSel), 'row shows the ▶ REPLAY affordance');
+	// OPEN REPLAYS: this whole run is signed out (no token is ever set) — no 🔒 chip may exist anywhere on the tab
+	check(
+		await page.evaluate(() => !document.body.textContent.includes('SIGN IN TO WATCH') && !document.querySelector('.ra.signin')),
+		'open: no 🔒 SIGN IN chip on the page while signed out'
+	);
+	check(await page.evaluate(() => !localStorage.getItem('rr_token')), 'open: the run is genuinely signed out (no token)');
 	await page.click(rowSel);
 	check(await page.evaluate((s) => document.querySelector(s)?.getAttribute('aria-expanded') === 'true', rowSel), 'row aria-expanded=true');
 
@@ -620,6 +628,14 @@ try {
 		await sleep(1200);
 		check(reqsA.length === 0, `art: NO pack file requested before the attestation (${reqsA.length} requests)`);
 
+		// every /rr/attest call and every pack request header (the signed-out path must post nothing and send the header)
+		const attestCalls = [];
+		const packHeaders = [];
+		pa.on('request', (r) => {
+			if (r.url().includes('/rr/attest')) attestCalls.push(`${r.method()} ${r.url()}`);
+			if (r.url().includes('art=1')) packHeaders.push(r.headers()['x-rr-owns-game'] ?? '(none)');
+		});
+
 		// tick + load
 		await pa.click(`[data-hook="rrEmbed"] .ov.art .own input`);
 		check(!(await pa.evaluate(() => document.querySelector('[data-hook="rrEmbed"] .ov.art button')?.disabled)), 'art: ticking the box enables the button');
@@ -631,6 +647,10 @@ try {
 		check(packA.kind === 'server' && packA.attested === true, 'art: the embed used the server pack path with the attestation recorded');
 		check(packA.files === fixture.files.length && packA.totalBytes === fixture.total_bytes, `art: the manifest drove the load (${packA.files} files, ${packA.totalBytes} B)`);
 		check(packA.networkBytes === fixture.total_bytes, `art: every file came off the network on the first load (${packA.networkBytes} B)`);
+		check(attestCalls.length === 0, `open: signed out, the tick posted nothing to /rr/attest (${attestCalls.length} calls)`);
+		check(packHeaders.length > 0 && packHeaders.every((h) => h === '1'), `open: X-RR-Owns-Game: 1 on every pack request (${packHeaders.filter((h) => h === '1').length}/${packHeaders.length})`);
+		const owns = await pa.evaluate(() => localStorage.getItem('rr.owns.v1'));
+		check(!!owns && JSON.parse(owns).owns_game === true && typeof JSON.parse(owns).ts === 'number', `open: the acknowledgement is a versioned local record (${owns})`);
 		check(reqsA.length === fixture.files.length, `art: exactly the manifest's files were requested (${reqsA.length})`);
 
 		// (2) byte-identical to the local directory pack: same names/offsets/lengths + the same frame-0 pixels
@@ -671,6 +691,15 @@ try {
 		log('art pack (second load)', JSON.stringify(packB));
 		check(packB.networkBytes === 0 && packB.cachedFiles === fixture.files.length, `art: the second load is 100% Cache Storage — 0 network bytes, ${packB.cachedFiles} cached files`);
 		check(reqsB.length === 0, `art: no pack file hit the network on the second load (${reqsB.length} requests)`);
+		// the acknowledgement survived the reload with no account, so the second visit skipped the checkbox
+		check(await pb.evaluate(() => !!localStorage.getItem('rr.owns.v1')), 'open: the acknowledgement survives a reload without an account');
+		check(await pb.evaluate(() => !document.querySelector('[data-hook="rrEmbed"] .ov.art .own')), 'open: an acknowledged viewer sees no checkbox on the next visit');
+		// a row with no tape key is still refused — opening the gate did not open everything
+		const refused = await pb.evaluate(async () => {
+			const m = await import('/src/lib/replay/source.ts');
+			return [await m.availability({ ts: Date.now() }), (await m.resolveSource({ ts: Date.now() })).kind, (await m.resolveSource({ ts: Date.now() })).reason];
+		});
+		check(refused[0] === 'none' && refused[1] === 'none' && refused[2] === 'none', `open: a keyless (lobby) row is still refused — availability ${refused[0]}, source ${refused[1]}/${refused[2]}`);
 		await pb.close();
 
 		// (4) a phone: the same flow, on the tap, never automatic

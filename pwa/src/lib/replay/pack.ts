@@ -13,8 +13,12 @@
 // a sha256 check per file (WebCrypto — the art must be exactly what the manifest promises), and Cache Storage keyed by
 // url+sha so the shared parts (common, chars, stage) make the second replay of the same roster/stage instant.
 //
-// Ownership: the art is loaded only after the viewer attests they own the game (POST /rr/attest {owns_game:true});
-// the server enforces it (403 {error:'attest'}) and this module never fetches a file before the attestation is in.
+// Ownership, WITHOUT an account (Tris 2026-09-04: "you can keep the checkbox there, but just not have the sign in
+// needed"): the art is the game's own assets, so the viewer still acknowledges they own the game — but watching needs
+// no sign-in. Signed out, the tick is recorded in localStorage (versioned {owns_game, ts}) and every pack request
+// carries `X-RR-Owns-Game: 1`; signed in, it is `POST /rr/attest` as before. The server accepts either and reports
+// `pack.attested`, so someone who already acknowledged sees only the button. A 429 (anti-scrape limit) is one honest
+// line, never an automatic retry.
 import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
 
@@ -50,7 +54,7 @@ export interface AssembledPack {
 }
 /** every failure the UI distinguishes: sign in · attest · a missing part · anything else */
 export class PackError extends Error {
-	code: 'signin' | 'attest' | 'missing' | 'fetch' | 'sha';
+	code: 'signin' | 'attest' | 'missing' | 'fetch' | 'sha' | 'rate';
 	part?: string;
 	constructor(code: PackError['code'], message: string, part?: string) {
 		super(message);
@@ -63,19 +67,39 @@ export class PackError extends Error {
 export const ATTEST_PATH = '/rr/attest';
 let attestCache: { at: number; owns: boolean } | null = null;
 const ATTEST_TTL = 5 * 60_000;
-/** DEV ONLY: a fixture manifest (static, no server) records the attestation here so the gate is exercisable offline */
-const DEV_ATTEST_KEY = 'rr.attest.dev';
-const devAttested = () => {
+/** the account-free acknowledgement: a versioned record so a later wording change can ask again */
+export const OWNS_KEY = 'rr.owns.v1';
+export interface OwnsRecord {
+	owns_game: boolean;
+	ts: number;
+}
+/** the local acknowledgement, or null — survives a reload with no account */
+export function ownsLocal(): OwnsRecord | null {
 	try {
-		return localStorage.getItem(DEV_ATTEST_KEY) === '1';
+		const raw = localStorage.getItem(OWNS_KEY);
+		if (!raw) return null;
+		const j = JSON.parse(raw) as OwnsRecord;
+		return j?.owns_game ? j : null;
 	} catch {
-		return false;
+		return null;
 	}
-};
+}
+function setOwnsLocal(): OwnsRecord {
+	const rec: OwnsRecord = { owns_game: true, ts: Date.now() };
+	try {
+		localStorage.setItem(OWNS_KEY, JSON.stringify(rec));
+	} catch {
+		/* private mode: the tick lives for this page only */
+	}
+	return rec;
+}
+/** every pack request: the bearer token when signed in, and the account-free ownership header once acknowledged */
+export function packHeaders(): Record<string, string> {
+	return { ...auth.headers(), ...(ownsLocal() ? { 'X-RR-Owns-Game': '1' } : {}) };
+}
 
 /** GET /rr/attest → {ok, owns_game, ts}. Signed out (or the endpoint is missing) = not attested. */
-export async function getAttest(force = false, dev = false): Promise<boolean> {
-	if (dev) return devAttested();
+export async function getAttest(force = false): Promise<boolean> {
 	if (!auth.authed) return false;
 	if (!force && attestCache && Date.now() - attestCache.at < ATTEST_TTL) return attestCache.owns;
 	try {
@@ -90,17 +114,7 @@ export async function getAttest(force = false, dev = false): Promise<boolean> {
 	}
 }
 /** POST /rr/attest {owns_game:true} — the checkbox the viewer ticked. One per account; idempotent. */
-export async function postAttest(dev = false): Promise<{ ok: boolean; error?: string }> {
-	if (dev) {
-		// a fixture pack: the tick is recorded locally; no account, no server call (never reachable in a prod build)
-		try {
-			localStorage.setItem(DEV_ATTEST_KEY, '1');
-		} catch {
-			/* private mode: the tick lives for this page only */
-		}
-		attestCache = { at: Date.now(), owns: true };
-		return { ok: true };
-	}
+export async function postAttest(): Promise<{ ok: boolean; error?: string }> {
 	if (!auth.authed) return { ok: false, error: 'signin' };
 	try {
 		const res = await fetch(api(ATTEST_PATH), {
@@ -119,13 +133,30 @@ export async function postAttest(dev = false): Promise<{ ok: boolean; error?: st
 export function forgetAttest(): void {
 	attestCache = null;
 	try {
-		localStorage.removeItem(DEV_ATTEST_KEY);
+		localStorage.removeItem(OWNS_KEY);
 	} catch {
 		/* nothing stored */
 	}
 }
-/** a manifest served from the app's own static folder is a DEV FIXTURE (prod manifests come from /rr/packs/…) */
-export const isDevFixture = (src: PackSource | null) => !!src && src.kind === 'server' && src.manifestUrl.includes('/replay/');
+
+/** Has this viewer acknowledged ownership? The local record counts for everyone; a signed-in account also asks the server. */
+export async function hasOwnership(): Promise<boolean> {
+	if (ownsLocal()) return true;
+	return auth.authed ? getAttest() : false;
+}
+/**
+ * The tick: signed in → POST /rr/attest (plus the local record, the fallback the server also accepts); signed out →
+ * the local record + the `X-RR-Owns-Game` header on every pack request. Never asks anyone to sign in.
+ */
+export async function acknowledgeOwnership(): Promise<{ ok: boolean; error?: string }> {
+	setOwnsLocal();
+	if (auth.authed) {
+		const r = await postAttest();
+		if (!r.ok && r.error !== 'signin') return { ok: true, error: r.error }; // the header path still works
+	}
+	attestCache = { at: Date.now(), owns: true };
+	return { ok: true };
+}
 
 // ── the manifest ────────────────────────────────────────────────────────────────────────────────────────────
 const abs = (u: string) => (/^https?:\/\//.test(u) || u.startsWith('/replay/') ? u : api(u));
@@ -139,7 +170,8 @@ export async function loadPackManifest(src: PackSource): Promise<PackManifest> {
 		const files = (j.files ?? []).map((f) => ({ ...f, url: `${src.packUrl}/${f.name}` }));
 		return { files, total_bytes: files.reduce((a, f) => a + (f.bytes || 0), 0) };
 	}
-	const res = await fetch(abs(src.manifestUrl), { headers: { accept: 'application/json', ...auth.headers() } });
+	const res = await fetch(abs(src.manifestUrl), { headers: { accept: 'application/json', ...packHeaders() } });
+	if (res.status === 429) throw new PackError('rate', 'rate limited');
 	if (res.status === 401) throw new PackError('signin', 'sign in to load the art');
 	if (res.status === 403) {
 		const j = (await res.json().catch(() => ({}))) as { error?: string };
@@ -198,9 +230,10 @@ export async function assemblePack(
 			}
 		}
 		if (!bytes) {
-			const res = await fetch(f.url, { headers: { ...auth.headers() } }).catch((e) => {
+			const res = await fetch(f.url, { headers: packHeaders() }).catch((e) => {
 				throw new PackError('fetch', `${f.name}: ${String((e as Error)?.message ?? e)}`, f.name);
 			});
+			if (res.status === 429) throw new PackError('rate', `${f.name}: rate limited`, f.name);
 			if (res.status === 401) throw new PackError('signin', `${f.name}: sign in`, f.name);
 			if (res.status === 403) throw new PackError('attest', `${f.name}: attestation required`, f.name);
 			if (res.status === 404) throw new PackError('missing', `${f.name}: not on the server`, f.name);
