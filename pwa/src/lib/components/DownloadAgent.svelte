@@ -2,7 +2,7 @@
 	import { browser } from '$app/environment';
 	import { agent } from '$lib/stores/agent.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import { api } from '$lib/config';
+	import { agentWinUrl, WIN_URL_FALLBACK } from '$lib/agentUrl';
 
 	// 📥 "Get the desktop agent" prompt. The web app only fills up once the tray agent is running (it reads
 	// the game and reports matches/ranks/money), so nudge anyone who doesn't have one. AUTO-HIDES the moment
@@ -15,22 +15,13 @@
 	// happen (offline, blocked, malformed manifest); it floats to the newest release so only a further
 	// FILENAME change would strand it.
 	// Linux needs no equivalent: it installs through install-bazzite.sh, which resolves the binary itself.
-	const WIN_URL_FALLBACK =
-		'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/rr-agent.exe';
 	const LINUX_CMD = 'curl -fsSL https://nobd.net/rr/update/install-bazzite.sh | bash';
 
 	let winUrl = $state(WIN_URL_FALLBACK);
 
+	// the manifest-resolved URL (lib/agentUrl.ts — shared with the replay's update nudge)
 	async function resolveWinUrl() {
-		try {
-			const res = await fetch(api('/rr/update/agent-latest.json'), { cache: 'no-store' });
-			if (!res.ok) return; // keep the fallback
-			const url = (await res.json())?.url;
-			// Only trust an absolute https URL — never let a bad manifest point the button somewhere odd.
-			if (typeof url === 'string' && url.startsWith('https://')) winUrl = url;
-		} catch {
-			/* offline / blocked / unparseable — the fallback URL already works */
-		}
+		winUrl = await agentWinUrl();
 	}
 
 	// Lead with the visitor's platform (both are always reachable once expanded).

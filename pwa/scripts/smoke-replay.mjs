@@ -20,6 +20,10 @@
 //               y 0–24, stamp in the dead gap, watermark above the hyper bars) within 1 px; (3) no element enters a
 //               §2.1 no-go zone (rows clear of the health bars at y 25); (4) minimal within 3.3 s of play, full on pause / hover; (5) the fullscreen HUD fades
 //               ≤ 2.5 s and is anchored to the picture's bottom edge. Screenshots of every frame go to --out.
+//   --limited   LIMITED REPLAYS (measured on prod 2026-09-04: a tape from an agent < 0.3.34 has no world sections, so
+//               it draws fighters with no stage and no HUD): builds the fixture by stripping nodes/anodes/aobjs/palrows
+//               from a copy of the local tape and forcing ver 0.3.31, then asserts the LIMITED marker + the update
+//               nudge appear on it (and that no HUD/stage was faked), and that NEITHER appears on the full tape.
 //   --hero      the LATEST TAPE hero reaches `playing` on load with no click (desktop), sits `closed` with NO tape or
 //               pack request under a mobile user-agent, and stops at `ready` under prefers-reduced-motion.
 //   --art       THE ART GATE (2026-09-04, the server serves packs to owners): writes static/replay/packfix/manifest.json
@@ -60,6 +64,22 @@ const L3 = arg('--l3', '');
 const STOCK_SHA = arg('--stock-sha', '');
 const CHROME = arg('--chrome', 'C:/Program Files/Google/Chrome/Application/chrome.exe');
 fs.mkdirSync(OUT, { recursive: true });
+
+/** the LIMITED tape fixture: the local tape with the four world sections removed and ver forced to an old agent */
+async function writeLimitedTape() {
+	const zlib = await import('node:zlib');
+	const gz = Buffer.from(await (await fetch(`${ORIGIN}/replay/packs/${ROW}/tape.json.gz`)).arrayBuffer());
+	const env = JSON.parse(zlib.gunzipSync(gz).toString('utf8'));
+	const dropped = ['nodes', 'anodes', 'aobjs', 'palrows'].filter((k) => k in env);
+	for (const k of Object.keys(env)) if (/^(nodes|anodes|aobjs|palrows)(_|$)/.test(k)) delete env[k];
+	env.ver = '0.3.31';
+	env.stage_id = null;
+	const dir = path.resolve('static/replay/packfix');
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, 'limited.json.gz'), zlib.gzipSync(Buffer.from(JSON.stringify(env))));
+	log(`limited fixture: dropped ${dropped.join(', ')} → ver ${env.ver}, static/replay/packfix/limited.json.gz`);
+	return dropped;
+}
 
 /** the server-shaped pack manifest fixture: the real local pack's files, addressed by URL exactly as the server will */
 async function writePackFixture() {
@@ -802,6 +822,70 @@ try {
 		check(reqsR.length === 0, `autoplay: prefers-reduced-motion downloads no art on load (${reqsR.length} requests)`);
 		await pr2.close();
 		await freshCtx.close();
+	}
+
+	if (has('--limited')) {
+		// ═══ LIMITED REPLAY: the marker + the update nudge on an old-client tape, and neither on a full one ═══
+		const dropped = await writeLimitedTape();
+		check(dropped.length === 4, `limited: the fixture dropped all four world sections (${dropped.join(', ')})`);
+		const pl = await newPage();
+		// pin the BUILT-IN template: the live server template predates the `limited` element, and the marker must not
+		// depend on it — the chrome row below is asserted separately and is what always renders
+		await pl.goto(`${URL_}&devskin=none&overlay=/replay/overlay/default.json`, { waitUntil: 'load', timeout: 120000 });
+		const limSel = '[data-test="tape-row-local_stage9_limited"] button';
+		await pl.waitForSelector(limSel, { timeout: 60000 });
+		await pl.click(limSel);
+		const stL = await waitEmbed(pl, '__rrEmbed', ['ready', 'playing', 'paused', 'error', 'nopack', 'unavailable']);
+		check(stL.state !== 'error' && stL.state !== 'nopack', `limited: the old-client tape still plays (state ${stL.state})`);
+		const qL = await pl.evaluate(() => window.__rrEmbed.quality2);
+		log('limited tape quality', JSON.stringify(qL));
+		check(qL.world === false, `limited: the feed reports world:false for the stripped tape (${qL.world})`);
+		check(qL.agent === '0.3.31' && qL.limited === true && qL.oldClient === true, `limited: agent ${qL.agent} → limited ${qL.limited}, oldClient ${qL.oldClient}`);
+		await pl.evaluate(() => window.__rrEmbed.setOverlay('full'));
+		await sleep(300);
+		const uiL = await pl.evaluate(() => {
+			const s = '[data-hook="rrEmbed"]';
+			const t = (q) => (document.querySelector(`${s} ${q}`)?.textContent ?? '').replace(/\s+/g, ' ').trim();
+			return {
+				chrome: t('.metarow .limited'),
+				chromeTitle: document.querySelector(`${s} .metarow .limited`)?.getAttribute('title') ?? '',
+				marker: t('.ovl .stamp .limited'),
+				markerTitle: document.querySelector(`${s} .ovl .stamp .limited`)?.getAttribute('title') ?? '',
+				nudge: t('[data-test="update-nudge"] .nl'),
+				href: document.querySelector(`${s} [data-test="update-nudge"] .nb`)?.getAttribute('href') ?? '',
+				stage: t('.ovl .stamp .stage')
+			};
+		});
+		log('limited UI', JSON.stringify(uiL));
+		check(uiL.chrome === 'LIMITED · older client', `limited: the chrome's record row carries the marker ("${uiL.chrome}")`);
+		check(/recorded before the client captured the stage and HUD/i.test(uiL.chromeTitle), 'limited: the marker explains itself on hover');
+		check(uiL.marker === 'LIMITED · older client', `limited: the built-in overlay template carries the same marker ("${uiL.marker}")`);
+		check(uiL.stage === '', `limited: no stage line invented for a tape with no stage id ("${uiL.stage}")`);
+		check(/Is this your match\? Update Retro Receipts to record full-quality replays\./.test(uiL.nudge), `limited: the update nudge is present ("${uiL.nudge}")`);
+		check(/^https:\/\/.+/.test(uiL.href), `limited: the nudge links at the manifest-resolved agent URL (${uiL.href})`);
+		const shotL = path.join(OUT, 'limited-replay.png');
+		await (await pl.$('[data-hook="rrEmbed"]')).screenshot({ path: shotL });
+		log('screenshot (limited replay: marker + nudge)', shotL);
+		await pl.close();
+
+		// the FULL tape in the same build: neither marker nor nudge
+		const pfull = await newPage();
+		await pfull.goto(`${URL_}&devskin=none`, { waitUntil: 'load', timeout: 120000 });
+		await pfull.waitForSelector(rowSel, { timeout: 60000 });
+		await pfull.click(rowSel);
+		await waitEmbed(pfull, '__rrEmbed');
+		const qF = await pfull.evaluate(() => window.__rrEmbed.quality2);
+		await pfull.evaluate(() => window.__rrEmbed.setOverlay('full'));
+		await sleep(300);
+		const uiF = await pfull.evaluate(() => ({
+			chrome: !!document.querySelector('[data-hook="rrEmbed"] .metarow .limited'),
+			marker: !!document.querySelector('[data-hook="rrEmbed"] .ovl .stamp .limited'),
+			nudge: !!document.querySelector('[data-hook="rrEmbed"] [data-test="update-nudge"]')
+		}));
+		log('full tape quality', JSON.stringify(qF), JSON.stringify(uiF));
+		check(qF.world === true && qF.limited === false, `limited: a full tape reports world:true (agent ${qF.agent})`);
+		check(!uiF.chrome && !uiF.marker && !uiF.nudge, 'limited: a full-quality replay shows neither the marker nor the nudge');
+		await pfull.close();
 	}
 
 	if (has('--surfaces')) {

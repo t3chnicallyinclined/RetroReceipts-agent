@@ -51,6 +51,13 @@ export interface OverlayMeta {
 	duration_s?: number;
 	/** false = the row's order, unlabelled, `stock colors` on the stamp (spec §5a); absent = known (the server's p1/p2 ARE the seats) */
 	seats_known?: boolean;
+	/**
+	 * The tape carries no world sections, so the replay draws the fighters with NO stage and NO HUD (no health bars,
+	 * timer or portraits). MEASURED on prod 2026-09-04: agents before 0.3.34 never captured them (of the newest 40
+	 * tapes, 26 were 0.3.31 = fighters only, 14 were 0.3.50 = full), and tapes before 0.3.36 also have no trustworthy
+	 * stage id (the server returns `stage_id: null`). The overlay says so plainly — we never fake a HUD or a stage.
+	 */
+	limited?: boolean;
 	saved?: boolean;
 	/** `RETRO RECEIPTS · nobd.net/app/ranks` — the part after ` · ` is the link text */
 	watermark?: string;
@@ -271,6 +278,7 @@ export function bindCtx(m: OverlayMeta, basePath: string = base): Ctx {
 		stageText: m.stage_name ? m.stage_name.toUpperCase() : m.stage_id != null ? `STAGE ${m.stage_id}` : '',
 		duration,
 		seatsKnown,
+		limited: !!m.limited,
 		saved: !!m.saved,
 		watermark: { text: wm[0] ?? '', link: wm.slice(1).join(' · ') },
 		ranksHref: `${basePath}/ranks`,

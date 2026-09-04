@@ -1,10 +1,16 @@
 {
-  "_": "RETRO RECEIPTS replay overlay — the built-in default template (REPLAY-OVERLAY-SPEC rev 3 placement). Format: docs/REPLAY-OVERLAY-TEMPLATE.md. Units are 640x480 picture px; the layer scales with the picture. Ship a newer copy at /rr/update/overlay-template.json to change it without a PWA deploy.",
+  "_": "RETRO RECEIPTS replay overlay — the built-in default template (REPLAY-OVERLAY-SPEC rev 3 placement). Format: docs/REPLAY-OVERLAY-TEMPLATE.md. Units are 640x480 picture px; the layer scales with the picture. Ship a newer copy at /rr/update/overlay-template.json to change it without a PWA deploy. The `limited` element marks a tape recorded before agent 0.3.34 (no stage/HUD sections).",
   "version": 1,
   "name": "retro-receipts-default",
   "fonts": [
-    { "family": "Barlow Condensed", "url": null },
-    { "family": "JetBrains Mono", "url": null }
+    {
+      "family": "Barlow Condensed",
+      "url": null
+    },
+    {
+      "family": "JetBrains Mono",
+      "url": null
+    }
   ],
   "tokens": {
     "ink": "#eef1f8",
@@ -20,69 +26,350 @@
     "wmInk": "rgba(255,255,255,0.7)"
   },
   "styles": {
-    "display": { "font": "'Barlow Condensed', Inter, 'Segoe UI', system-ui, sans-serif", "size": 12, "weight": 900, "italic": true, "lineHeight": 11, "letterSpacing": "0.01em", "outline": true },
-    "mono": { "font": "'JetBrains Mono', ui-monospace, monospace", "size": 9, "lineHeight": 11, "color": "dim", "outline": true },
-    "stamp": { "font": "'JetBrains Mono', ui-monospace, monospace", "size": 12, "lineHeight": 14, "color": "dim" },
-    "wm": { "font": "'JetBrains Mono', ui-monospace, monospace", "size": 11, "lineHeight": 12, "letterSpacing": "0.1em", "uppercase": true, "color": "wmInk" },
-    "pill": { "font": "'JetBrains Mono', ui-monospace, monospace", "size": 9, "lineHeight": 12, "weight": 700, "letterSpacing": "0.1em", "color": "goldInk" }
+    "display": {
+      "font": "'Barlow Condensed', Inter, 'Segoe UI', system-ui, sans-serif",
+      "size": 12,
+      "weight": 900,
+      "italic": true,
+      "lineHeight": 11,
+      "letterSpacing": "0.01em",
+      "outline": true
+    },
+    "mono": {
+      "font": "'JetBrains Mono', ui-monospace, monospace",
+      "size": 9,
+      "lineHeight": 11,
+      "color": "dim",
+      "outline": true
+    },
+    "stamp": {
+      "font": "'JetBrains Mono', ui-monospace, monospace",
+      "size": 12,
+      "lineHeight": 14,
+      "color": "dim"
+    },
+    "wm": {
+      "font": "'JetBrains Mono', ui-monospace, monospace",
+      "size": 11,
+      "lineHeight": 12,
+      "letterSpacing": "0.1em",
+      "uppercase": true,
+      "color": "wmInk"
+    },
+    "pill": {
+      "font": "'JetBrains Mono', ui-monospace, monospace",
+      "size": 9,
+      "lineHeight": 12,
+      "weight": 700,
+      "letterSpacing": "0.1em",
+      "color": "goldInk"
+    }
   },
   "elements": [
     {
-      "id": "p1", "class": "pid p1", "role": "group", "label": "{{p1.label}}",
-      "anchor": "top-left", "x": 8, "y": 0, "w": 250, "layout": "column", "align": "left", "visibility": "always",
+      "id": "p1",
+      "class": "pid p1",
+      "role": "group",
+      "label": "{{p1.label}}",
+      "anchor": "top-left",
+      "x": 8,
+      "y": 0,
+      "w": 250,
+      "layout": "column",
+      "align": "left",
+      "visibility": "always",
       "children": [
-        { "id": "p1.r1", "class": "r1", "layout": "row", "align": "left", "h": 11, "mt": 1, "gap": 4, "children": [
-          { "kind": "text", "class": "nm {{p1.won ? won : ''}}", "style": "display", "color": "{{p1.won ? gold : ink}}", "content": "{{p1.name}}", "href": "{{p1.profile}}", "ellipsis": true },
-          { "kind": "rank", "class": "rk", "rating": "p1.rating", "games": "p1.games", "badge": 10, "href": "{{ranksHref}}", "title": "Marvel ladder", "outline": true, "when": "p1.rating" },
-          { "kind": "text", "class": "rt", "style": "mono", "content": "{{p1.rating}}", "when": "p1.rating" },
-          { "kind": "text", "class": "sc", "style": "display", "color": "{{p1.won ? gold : ink}}", "content": "{{p1.score}}", "when": "p1.score" }
-        ] },
-        { "id": "p1.r2", "class": "r2", "layout": "row", "align": "left", "h": 11, "mt": 1, "gap": 4, "style": "mono", "children": [
-          { "kind": "text", "class": "lb", "content": "Skin by:", "when": "p1.creators" },
-          { "kind": "list", "class": "by", "items": "p1.creators", "content": "{{item.name}}", "href": "{{item.href}}", "ariaLabel": "{{item.name}}'s profile", "color": "stream", "separator": { "text": ",", "ml": -3 }, "when": "p1.creators" }
-        ] }
+        {
+          "id": "p1.r1",
+          "class": "r1",
+          "layout": "row",
+          "align": "left",
+          "h": 11,
+          "mt": 1,
+          "gap": 4,
+          "children": [
+            {
+              "kind": "text",
+              "class": "nm {{p1.won ? won : ''}}",
+              "style": "display",
+              "color": "{{p1.won ? gold : ink}}",
+              "content": "{{p1.name}}",
+              "href": "{{p1.profile}}",
+              "ellipsis": true
+            },
+            {
+              "kind": "rank",
+              "class": "rk",
+              "rating": "p1.rating",
+              "games": "p1.games",
+              "badge": 10,
+              "href": "{{ranksHref}}",
+              "title": "Marvel ladder",
+              "outline": true,
+              "when": "p1.rating"
+            },
+            {
+              "kind": "text",
+              "class": "rt",
+              "style": "mono",
+              "content": "{{p1.rating}}",
+              "when": "p1.rating"
+            },
+            {
+              "kind": "text",
+              "class": "sc",
+              "style": "display",
+              "color": "{{p1.won ? gold : ink}}",
+              "content": "{{p1.score}}",
+              "when": "p1.score"
+            }
+          ]
+        },
+        {
+          "id": "p1.r2",
+          "class": "r2",
+          "layout": "row",
+          "align": "left",
+          "h": 11,
+          "mt": 1,
+          "gap": 4,
+          "style": "mono",
+          "children": [
+            {
+              "kind": "text",
+              "class": "lb",
+              "content": "Skin by:",
+              "when": "p1.creators"
+            },
+            {
+              "kind": "list",
+              "class": "by",
+              "items": "p1.creators",
+              "content": "{{item.name}}",
+              "href": "{{item.href}}",
+              "ariaLabel": "{{item.name}}'s profile",
+              "color": "stream",
+              "separator": {
+                "text": ",",
+                "ml": -3
+              },
+              "when": "p1.creators"
+            }
+          ]
+        }
       ]
     },
     {
-      "id": "p2", "class": "pid p2", "role": "group", "label": "{{p2.label}}",
-      "anchor": "top-right", "x": 8, "y": 0, "w": 250, "layout": "column", "align": "right", "visibility": "always",
+      "id": "p2",
+      "class": "pid p2",
+      "role": "group",
+      "label": "{{p2.label}}",
+      "anchor": "top-right",
+      "x": 8,
+      "y": 0,
+      "w": 250,
+      "layout": "column",
+      "align": "right",
+      "visibility": "always",
       "children": [
-        { "id": "p2.r1", "class": "r1", "layout": "row", "reverse": true, "h": 11, "mt": 1, "gap": 4, "children": [
-          { "kind": "text", "class": "nm {{p2.won ? won : ''}}", "style": "display", "color": "{{p2.won ? gold : ink}}", "content": "{{p2.name}}", "href": "{{p2.profile}}", "ellipsis": true },
-          { "kind": "rank", "class": "rk", "rating": "p2.rating", "games": "p2.games", "badge": 10, "href": "{{ranksHref}}", "title": "Marvel ladder", "outline": true, "when": "p2.rating" },
-          { "kind": "text", "class": "rt", "style": "mono", "content": "{{p2.rating}}", "when": "p2.rating" },
-          { "kind": "text", "class": "sc", "style": "display", "color": "{{p2.won ? gold : ink}}", "content": "{{p2.score}}", "when": "p2.score" }
-        ] },
-        { "id": "p2.r2", "class": "r2", "layout": "row", "justify": "end", "h": 11, "mt": 1, "gap": 4, "style": "mono", "children": [
-          { "kind": "text", "class": "lb", "content": "Skin by:", "when": "p2.creators" },
-          { "kind": "list", "class": "by", "items": "p2.creators", "content": "{{item.name}}", "href": "{{item.href}}", "ariaLabel": "{{item.name}}'s profile", "color": "stream", "separator": { "text": ",", "ml": -3 }, "when": "p2.creators" }
-        ] }
+        {
+          "id": "p2.r1",
+          "class": "r1",
+          "layout": "row",
+          "reverse": true,
+          "h": 11,
+          "mt": 1,
+          "gap": 4,
+          "children": [
+            {
+              "kind": "text",
+              "class": "nm {{p2.won ? won : ''}}",
+              "style": "display",
+              "color": "{{p2.won ? gold : ink}}",
+              "content": "{{p2.name}}",
+              "href": "{{p2.profile}}",
+              "ellipsis": true
+            },
+            {
+              "kind": "rank",
+              "class": "rk",
+              "rating": "p2.rating",
+              "games": "p2.games",
+              "badge": 10,
+              "href": "{{ranksHref}}",
+              "title": "Marvel ladder",
+              "outline": true,
+              "when": "p2.rating"
+            },
+            {
+              "kind": "text",
+              "class": "rt",
+              "style": "mono",
+              "content": "{{p2.rating}}",
+              "when": "p2.rating"
+            },
+            {
+              "kind": "text",
+              "class": "sc",
+              "style": "display",
+              "color": "{{p2.won ? gold : ink}}",
+              "content": "{{p2.score}}",
+              "when": "p2.score"
+            }
+          ]
+        },
+        {
+          "id": "p2.r2",
+          "class": "r2",
+          "layout": "row",
+          "justify": "end",
+          "h": 11,
+          "mt": 1,
+          "gap": 4,
+          "style": "mono",
+          "children": [
+            {
+              "kind": "text",
+              "class": "lb",
+              "content": "Skin by:",
+              "when": "p2.creators"
+            },
+            {
+              "kind": "list",
+              "class": "by",
+              "items": "p2.creators",
+              "content": "{{item.name}}",
+              "href": "{{item.href}}",
+              "ariaLabel": "{{item.name}}'s profile",
+              "color": "stream",
+              "separator": {
+                "text": ",",
+                "ml": -3
+              },
+              "when": "p2.creators"
+            }
+          ]
+        }
       ]
     },
     {
-      "id": "stamp", "class": "stamp", "label": "Match record",
-      "anchor": "top-center", "y": 56, "w": 104, "layout": "column", "align": "center", "visibility": "full",
-      "box": { "fill": "scrim", "radius": 3, "padding": [0, 4] }, "style": "stamp",
+      "id": "stamp",
+      "class": "stamp",
+      "label": "Match record",
+      "anchor": "top-center",
+      "y": 56,
+      "w": 104,
+      "layout": "column",
+      "align": "center",
+      "visibility": "full",
+      "box": {
+        "fill": "scrim",
+        "radius": 3,
+        "padding": [
+          0,
+          4
+        ]
+      },
+      "style": "stamp",
       "children": [
-        { "kind": "text", "class": "rec", "content": "{{record}}", "color": "{{money ? gold : dim}}", "when": "record" },
-        { "kind": "text", "class": "date", "content": "{{date}}", "when": "date" },
-        { "kind": "text", "class": "stage", "content": "{{stageText}}", "when": "stageText" },
-        { "kind": "text", "class": "stock", "content": "stock colors", "color": "faint", "borderTop": "1px dotted faint", "title": "Seats unknown for this tape — colors are the game's own", "when": "!seatsKnown" }
+        {
+          "kind": "text",
+          "class": "rec",
+          "content": "{{record}}",
+          "color": "{{money ? gold : dim}}",
+          "when": "record"
+        },
+        {
+          "kind": "text",
+          "class": "date",
+          "content": "{{date}}",
+          "when": "date"
+        },
+        {
+          "kind": "text",
+          "class": "stage",
+          "content": "{{stageText}}",
+          "when": "stageText"
+        },
+        {
+          "kind": "text",
+          "class": "stock",
+          "content": "stock colors",
+          "color": "faint",
+          "borderTop": "1px dotted faint",
+          "title": "Seats unknown for this tape — colors are the game's own",
+          "when": "!seatsKnown"
+        },
+        {
+          "kind": "text",
+          "class": "limited",
+          "content": "LIMITED · older client",
+          "color": "faint",
+          "borderTop": "1px dotted faint",
+          "title": "Recorded before the client captured the stage and HUD — the fighters are the game's own pixels; nothing here is faked",
+          "when": "limited"
+        }
       ]
     },
     {
-      "id": "saved", "class": "saved", "kind": "text", "content": "SAVED", "title": "Saved — this tape never leaves the archive",
-      "anchor": "top-left", "x": 378, "y": 58, "h": 12, "visibility": "full", "when": "saved",
-      "box": { "fill": "gold", "radius": 3, "padding": [0, 5] }, "style": "pill"
+      "id": "saved",
+      "class": "saved",
+      "kind": "text",
+      "content": "SAVED",
+      "title": "Saved — this tape never leaves the archive",
+      "anchor": "top-left",
+      "x": 378,
+      "y": 58,
+      "h": 12,
+      "visibility": "full",
+      "when": "saved",
+      "box": {
+        "fill": "gold",
+        "radius": 3,
+        "padding": [
+          0,
+          5
+        ]
+      },
+      "style": "pill"
     },
     {
-      "id": "wm", "class": "wm",
-      "anchor": "top-center", "y": 437, "h": 12, "layout": "row", "gap": 6, "visibility": "always",
-      "box": { "fill": "wmScrim", "radius": 2, "padding": [0, 6] }, "style": "wm",
+      "id": "wm",
+      "class": "wm",
+      "anchor": "top-center",
+      "y": 437,
+      "h": 12,
+      "layout": "row",
+      "gap": 6,
+      "visibility": "always",
+      "box": {
+        "fill": "wmScrim",
+        "radius": 2,
+        "padding": [
+          0,
+          6
+        ]
+      },
+      "style": "wm",
       "children": [
-        { "kind": "text", "content": "{{watermark.text}}", "aria": "hidden" },
-        { "kind": "text", "class": "sep", "content": "·", "opacity": 0.5, "aria": "hidden" },
-        { "kind": "text", "content": "{{watermark.link}}", "href": "{{ranksHref}}", "title": "The Marvel ladder" }
+        {
+          "kind": "text",
+          "content": "{{watermark.text}}",
+          "aria": "hidden"
+        },
+        {
+          "kind": "text",
+          "class": "sep",
+          "content": "·",
+          "opacity": 0.5,
+          "aria": "hidden"
+        },
+        {
+          "kind": "text",
+          "content": "{{watermark.link}}",
+          "href": "{{ranksHref}}",
+          "title": "The Marvel ladder"
+        }
       ]
     }
   ]

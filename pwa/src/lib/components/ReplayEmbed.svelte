@@ -20,6 +20,7 @@
 	} from '$lib/replay/engine';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
 	import { acknowledgeOwnership, assemblePack, hasOwnership, loadPackManifest, mbText, PackError, type AssembledPack, type PackManifest, type PackSource } from '$lib/replay/pack';
+	import { agentWinUrl } from '$lib/agentUrl';
 	import type { Credit } from './SkinCredit.svelte';
 
 	// ▶ REPLAYEMBED (LIVE-TAB-SPEC §7 + REPLAY-OVERLAY-SPEC) — a rendered media element: the game's OWN pixels,
@@ -183,6 +184,41 @@
 	let packMissing = $state('');
 	let assembled: AssembledPack | null = null; // survives a quality retry: never download the art twice
 	let packWanted = false; // the viewer asked for the art (or already had it) → skip the panel on the next start()
+	// ── LIMITED REPLAYS (measured on prod 2026-09-04) ────────────────────────────────────────────────────────────
+	// A tape recorded by an agent before 0.3.34 carries no `nodes`/`anodes`/`aobjs`/`palrows`, so the replay draws the
+	// six fighters with NO stage and NO HUD (no health bars, timer or portraits). Of the newest 40 tapes on the server
+	// 26 were 0.3.31 (fighters only) and 14 were 0.3.50 (full) — so most replays a visitor opens today are the limited
+	// kind, and unlabelled it reads as broken rather than as old. Tapes before 0.3.36 also have no trustworthy stage id
+	// (the server already returns `stage_id: null`). We SAY so and never fake a HUD or a stage to cover it.
+	//
+	// The signal is the feed's own `info.world` (rr-render `feed.rs:74` → `Emitter::world_enabled()`, and `sprites.rs:127`
+	// sets `world_assets = None` unless `!tape.anodes.is_empty()`): tape-driven, no version sniffing. The UPDATE NUDGE
+	// needs a second test though — `world_assets` is also None when the PACK has no camera/stage, and blaming the
+	// viewer's client for that would be false — so the nudge fires only when the envelope's `ver` (info.agent) is
+	// below 0.3.34, the version that started capturing the world.
+	const WORLD_SINCE = '0.3.34';
+	let tapeInfo = $state<{ world?: unknown; agent?: string; tape_ver?: number; stage_id?: number } | null>(null);
+	function verLt(v: string | undefined, min: string): boolean {
+		if (!v) return false; // unknown version: never accuse a client we cannot name
+		const a = v.split('.').map((n) => parseInt(n, 10) || 0);
+		const b = min.split('.').map((n) => parseInt(n, 10) || 0);
+		for (let i = 0; i < Math.max(a.length, b.length); i++) {
+			const x = a[i] ?? 0, y = b[i] ?? 0;
+			if (x !== y) return x < y;
+		}
+		return false;
+	}
+	/** the visible truth: this replay has no stage and no HUD */
+	const limited = $derived(tapeInfo != null && tapeInfo.world === false);
+	/** …and the cause is the recording client, so an update would fix the NEXT match */
+	const oldClient = $derived(limited && verLt(tapeInfo?.agent, WORLD_SINCE));
+	/** the signed-in viewer is one of the two players in this match — the nudge gets personal */
+	const viewerIsPlayer = $derived.by(() => {
+		const me = auth.steamid;
+		if (!me) return false;
+		return [meta.p1, meta.p2, meta.a.steamid, meta.b.steamid].some((s) => s === me);
+	});
+	let winUrl = $state('');
 	let liveText = $state('');
 	let ttff = $state(0);
 	let openMs = $state(0);
@@ -316,6 +352,7 @@
 			stage_id: meta.stageId,
 			duration_s: meta.durationS ?? (count ? Math.round(count / 60) : undefined),
 			seats_known: seatsKnown,
+			limited,
 			saved: !!meta.saved,
 			p1: sideMeta(left, leftWon, scoreL, creditsL),
 			p2: sideMeta(right, !leftWon, scoreR, creditsR)
@@ -506,6 +543,7 @@
 			});
 			if (disposed) return;
 			openMs = p.openMs ?? 0;
+			tapeInfo = p.info ?? null;
 			count = p.count;
 			await p.prepareAll((i, n) => report('prime', i, n));
 			if (disposed) return;
@@ -1018,6 +1056,10 @@
 		get scale() {
 			return k;
 		},
+		/** the tape's own quality: `world` from the feed, the recording agent, and what the UI says about it */
+		get quality2() {
+			return { world: tapeInfo?.world ?? null, agent: tapeInfo?.agent ?? '', limited, oldClient, viewerIsPlayer };
+		},
 		/** the art: where it comes from, whether ownership is attested, and what the last assembly cost */
 		get pack() {
 			return {
@@ -1074,6 +1116,11 @@
 	function exposeTestHook() {
 		(window as unknown as Record<string, unknown>)[`__${hookName}`] = hook;
 	}
+
+	$effect(() => {
+		// the manifest-resolved agent URL (lib/agentUrl.ts, shared with DownloadAgent) — fetched only if the nudge shows
+		if (oldClient && !winUrl) void agentWinUrl().then((u) => (winUrl = u));
+	});
 
 	onMount(() => {
 		exposeTestHook();
@@ -1169,7 +1216,14 @@
 	style="--fsw:{Math.round(640 * fsScale)}px;--fsby:{fsBy}px"
 >
 	<!-- inline chrome-top = ONE 28 px record row (mockup rev 2 §1); the plates live on the picture now. Hidden in fullscreen. -->
-	<div class="metarow" aria-label="Match record">{@render record()}</div>
+	<div class="metarow" aria-label="Match record">
+		{@render record()}
+		<!-- the LIMITED marker lives in the COMPONENT's record row, not only in the overlay template: the template is
+		     server-shippable (loader order: ?overlay= → tape → /rr/update/overlay-template.json → built-in), so a
+		     deployed template that predates this marker would silently drop it. The built-in template carries the same
+		     element for the fullscreen/poster paths; this row is the one that always renders. -->
+		{#if limited}<span class="limited" title="Recorded before the client captured the stage and HUD — the fighters are the game's own pixels; nothing here is faked">LIMITED · older client</span>{/if}
+	</div>
 
 	<!-- the picture: 4:3, the game's own pixels + THE OVERLAY (DOM, 640×480 space, scaled with the picture).
 	     Tap = play/pause, double-tap = fullscreen (§6.5); keyboard equivalents live on the wrapper + the transport. -->
@@ -1262,6 +1316,14 @@
 	     / the band under it (portrait, never fades). The only chrome that ever sits on the picture besides the overlay. -->
 	{@render transport(fullscreen)}
 	{#if noteText}<div class="note" class:toast={!!ovToast}>{noteText}</div>{/if}
+	<!-- the update nudge: a limited tape means the RECORDING client was old, so the fix is the next match, not this one.
+	     Shown to everyone (a signed-out viewer may still be one of the players); direct when we know they are. -->
+	{#if oldClient}
+		<div class="nudge" data-test="update-nudge">
+			<span class="nl">{viewerIsPlayer ? 'This is your match — update to record full-quality replays.' : 'Is this your match? Update Retro Receipts to record full-quality replays.'}</span>
+			<a class="nb" href={winUrl} rel="noopener">📥 Update</a>
+		</div>
+	{/if}
 	<span class="sr" aria-live="polite">{liveText}</span>
 </div>
 
@@ -1500,6 +1562,14 @@
 		padding: 0 5px;
 		border-radius: 4px;
 	}
+	/* record voice: this replay is old, not broken */
+	.metarow .limited {
+		border: 1px dashed var(--line);
+		padding: 0 5px;
+		border-radius: 4px;
+		color: var(--faint);
+		cursor: help;
+	}
 
 	/* transport */
 	.tr {
@@ -1634,6 +1704,37 @@
 		color: var(--dim);
 		padding: 0 12px 6px;
 		background: var(--panel);
+	}
+	/* the update nudge — quiet, under the picture, never over it */
+	.nudge {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		flex-wrap: wrap;
+		padding: 6px 12px 8px;
+		background: var(--panel);
+		border-top: 1px solid var(--line-soft);
+		font-size: 11.5px;
+		color: var(--dim);
+	}
+	.nudge .nb {
+		font-family: ui-monospace, monospace;
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		color: var(--gold);
+		border: 1px solid color-mix(in srgb, var(--gold) 40%, var(--line));
+		border-radius: 7px;
+		padding: 3px 9px;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.nudge .nb:hover {
+		background: var(--gold-soft);
+	}
+	.emb.fs .nudge {
+		display: none; /* fullscreen is the picture — the nudge waits for the card */
 	}
 	.sr {
 		position: absolute;

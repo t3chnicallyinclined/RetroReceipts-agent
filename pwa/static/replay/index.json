@@ -180,6 +180,37 @@
         "manifest_url": "/replay/packfix/manifest.json",
         "attested": false
       }
+    },
+    "local_stage9_limited": {
+      "_": "DEV FIXTURE: local_stage9 with the four world sections (nodes/anodes/aobjs/palrows) stripped and ver forced to 0.3.31 -- i.e. exactly what an agent before 0.3.34 recorded: fighters only, no stage, no HUD. scripts/smoke-replay.mjs --limited generates the tape into static/replay/packfix/ (gitignored). Exercises the LIMITED marker + the update nudge against the SAME pack as the full row.",
+      "tape": "/replay/packfix/limited.json.gz",
+      "pack": "/replay/packs/local_stage9",
+      "frames": 5222,
+      "stageId": null,
+      "agent": "0.3.31",
+      "a": {
+        "steamid": "76561197999665347",
+        "name": "Tris",
+        "team": [
+          42,
+          52,
+          44
+        ]
+      },
+      "b": {
+        "steamid": "",
+        "name": "local P2",
+        "team": [
+          23,
+          12,
+          46
+        ]
+      },
+      "winner": "a",
+      "mode": "lobby",
+      "ts": 1788200000000,
+      "p1": "76561197999665347",
+      "p2": ""
     }
   }
 }
