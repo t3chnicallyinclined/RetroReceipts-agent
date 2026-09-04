@@ -1133,8 +1133,10 @@
 			devSlowLeft = n;
 			return true;
 		},
-		/** the tape's own quality: `world` from the feed, the recording agent, and what the UI says about it */
-		get quality2() {
+		/** The TAPE's own facts: `world` from the feed, the recording agent, and what the UI says about them.
+		 *  Named `tape` because `quality` above is the DISPLAY quality ('high' | 'base') — the previous name
+		 *  `quality2` invited exactly the confusion of reading one and getting the other. */
+		get tape() {
 			return { world: tapeInfo?.world ?? null, agent: tapeInfo?.agent ?? '', limited, oldClient, viewerIsPlayer };
 		},
 		/** the art: where it comes from, whether ownership is attested, and what the last assembly cost */

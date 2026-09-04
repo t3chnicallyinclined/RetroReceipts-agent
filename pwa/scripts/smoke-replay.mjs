@@ -367,7 +367,23 @@ try {
 		await p6.evaluate((h) => window[h].setOverlay('off'), H);
 		const rbOff = await frame0sha(p6, H);
 		check(rbFull.sha === rbOff.sha && rbFull.bytes === rbOff.bytes, `overlay: readback sha identical with the layer full and off (${rbFull.sha.slice(0, 12)}…)`);
-		if (h6.key === ROW) check(rbFull.sha === rb0.sha, 'overlay: hero frame-0 sha == the stock baseline sha (same tape, layer is chrome, never pixels)');
+		// The theatre renders at its OWN size now (LIVE-TAB-V2-SPEC §1.3: 700 px → res 4), so its scene RT is a
+		// different target from the 640/res-2 row baseline and a raw sha comparison would be comparing 33.5 MB of
+		// pixels against 8 MB. Compare like with like: equality against the stock baseline ONLY when the two
+		// actually rendered at the same resolution; otherwise assert the readback is the right SIZE for the res
+		// it claims, and let the --l3 check above prove the pixels against the dev player at that same res.
+		// (The "layer is chrome, never pixels" property is proven by the full-vs-off check on the line above,
+		// which runs at the theatre's own resolution.)
+		if (h6.key === ROW) {
+			const hres = await p6.evaluate((h) => window[h].res, H);
+			if (hres === st.res) {
+				check(rbFull.sha === rb0.sha, `overlay: theatre frame-0 sha == the stock baseline sha at the same res ${hres} (layer is chrome, never pixels)`);
+			} else {
+				const want = rb0.bytes * (hres / st.res) ** 2;
+				check(rbFull.bytes === want, `overlay: theatre renders at res ${hres} vs the row's ${st.res}, so its readback is ${rbFull.bytes} B (= baseline ${rb0.bytes} × (${hres}/${st.res})²); pixel equality at res ${hres} is the --l3 check`);
+				check(rbFull.sha !== rb0.sha, `overlay: and it is genuinely a different target, not the same buffer relabelled`);
+			}
+		}
 		check(await p6.evaluate((s) => !document.querySelector(`${s} .ovl`) || getComputedStyle(document.querySelector(`${s} .ovl`)).display === 'none', SEL), 'overlay: off = the layer is gone');
 
 		// (2)/(3) inline geometry, full form, on a fight frame
@@ -376,8 +392,22 @@ try {
 		await p6.waitForFunction((h) => window[h].frame === 900, { timeout: 60000 }, H);
 		await sleep(300);
 		let g = await geom(SEL);
-		check(near(g.k, Math.min(1, g.canvas.w / 640), 0.01), `overlay: inline k = ${g.k.toFixed(4)} (canvas ${g.canvas.w.toFixed(0)} px wide)`);
+		// k is the 640-space overlay scaled onto the canvas, so it is canvas.w / 640 at ANY width. The old
+		// assertion clamped it with Math.min(1, ...) because the inline picture could never exceed 640 — that
+		// cap is now the `maxPicture` prop and THE THEATRE passes 700 (LIVE-TAB-V2-SPEC §1.3), so the clamp
+		// would fail a correct layer. Dropping it also makes this STRICTER: above 640 the clamped form accepted
+		// any k >= 1, this form pins it to the exact ratio.
+		check(near(g.k, g.canvas.w / 640, 0.01), `overlay: inline k = ${g.k.toFixed(4)} = canvas ${g.canvas.w.toFixed(0)} / 640`);
 		placement(g, 'inline');
+		{
+			// LIVE-TAB-V2-SPEC P0 gate: a 700 px picture must climb the quality ladder rather than upscale a
+			// 640-wide render — res 4 at dpr 1 (2560×1920 internal). Nothing asserted this before.
+			const d = await p6.evaluate((h) => ({ res: window[h].res, taps: window[h].taps, backing: window[h].backing, info: window[h].tape ?? null }), H);
+			log('display plan (theatre inline)', JSON.stringify(d));
+			const want = g.canvas.w > 640 ? 4 : 2;
+			check(d.res === want, `theatre: ${g.canvas.w.toFixed(0)} px picture @ dpr 1 renders at res ${d.res} (want ${want}) — the ladder, not an upscale`);
+			check(!!d.info && d.info.world !== null && typeof d.info.agent === 'string' && d.info.agent !== '', `theatre: the hook exposes the tape's own info — world ${d.info?.world}, agent ${d.info?.agent} (P0: p.info is read, not ignored)`);
+		}
 		{
 			const from = await p6.evaluate((h) => window[h].template, H);
 			const name = await p6.evaluate((s) => document.querySelector(`${s} .ovl`)?.getAttribute('data-template'), SEL);
@@ -840,7 +870,7 @@ try {
 		await pl.click(limSel);
 		const stL = await waitEmbed(pl, '__rrEmbed', ['ready', 'playing', 'paused', 'error', 'nopack', 'unavailable']);
 		check(stL.state !== 'error' && stL.state !== 'nopack', `limited: the old-client tape still plays (state ${stL.state})`);
-		const qL = await pl.evaluate(() => window.__rrEmbed.quality2);
+		const qL = await pl.evaluate(() => window.__rrEmbed.tape);
 		log('limited tape quality', JSON.stringify(qL));
 		check(qL.world === false, `limited: the feed reports world:false for the stripped tape (${qL.world})`);
 		check(qL.agent === '0.3.31' && qL.limited === true && qL.oldClient === true, `limited: agent ${qL.agent} → limited ${qL.limited}, oldClient ${qL.oldClient}`);
@@ -877,7 +907,7 @@ try {
 		await pfull.waitForSelector(rowSel, { timeout: 60000 });
 		await pfull.click(rowSel);
 		await waitEmbed(pfull, '__rrEmbed');
-		const qF = await pfull.evaluate(() => window.__rrEmbed.quality2);
+		const qF = await pfull.evaluate(() => window.__rrEmbed.tape);
 		await pfull.evaluate(() => window.__rrEmbed.setOverlay('full'));
 		await sleep(300);
 		const uiF = await pfull.evaluate(() => ({
@@ -982,6 +1012,73 @@ try {
 		}
 	}
 } finally {
+	// ═══ ★ MATCH OF THE DAY (LIVE-TAB-V2-SPEC §1.6, P1b gate) ═══════════════════════════════════════════
+	// Drives the REAL scorer out of the REAL bundle via window.__rrMotd (dev-only hook in motd.svelte.ts).
+	// A re-implementation here would be free to agree with itself while disagreeing with the page.
+	if (has('--motd')) {
+		const pm = await newPage(1280, 1600);
+		await pm.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+		await pm.waitForFunction(() => !!window.__rrMotd, { timeout: 60000 });
+
+		const R = await pm.evaluate(() => {
+			const M = window.__rrMotd;
+			const noon = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d.getTime(); })();
+			const row = (i, o) => ({
+				key: `k${i}`, match_key: `k${i}`, winner: 'W', loser: 'L',
+				winner_name: `W${i}`, loser_name: `L${i}`, verified: false,
+				ts: noon - i * 60000, mode: 'ranked', replay: { state: 'ready' }, ...o
+			});
+			// a hand-computable set. Expected scores from the §1.6 weights:
+			//   a: comeback 40 + combo48 30 + elo22 25            = 95   (3 reasons, in that order)
+			//   b: ocv 35 + perfect 25 + both>=1200 20 + verified 10 = 90
+			//   c: money 15 + elo13 12                             = 27
+			const a = row(1, { comeback: true, combo: 48, elo: 22 });
+			const b = row(2, { ocv: true, perfect: true, winner_rating: 1300, loser_rating: 1250, verified: true });
+			const c = row(3, { mode: 'money', elo: 13 });
+			const filler = [4, 5, 6].map((i) => row(i, {}));            // score 0 each
+            const yesterday = row(9, { comeback: true, ts: noon - 36 * 3600 * 1000 });
+			const unplayable = row(8, { comeback: true, ocv: true, replay: { state: 'pending' } });
+
+			const six = [a, b, c, ...filler];
+			const p1 = M.pickMatchOfTheDay(six, noon);
+			const p2 = M.pickMatchOfTheDay(six.slice(), noon);         // reproducibility: same rows again
+			const five = [a, b, c, filler[0], filler[1]];
+			return {
+				sa: M.scoreMatch(a), sb: M.scoreMatch(b), sc: M.scoreMatch(c),
+				p1: { key: p1.pick?.key, score: p1.pick?.score, reasons: p1.pick?.reasons, pool: p1.pool, crowned: p1.crowned },
+				p2key: p2.pick?.key,
+				five: { key: M.pickMatchOfTheDay(five, noon).pick?.key, pool: M.pickMatchOfTheDay(five, noon).pool, crowned: M.pickMatchOfTheDay(five, noon).crowned },
+				none: M.pickMatchOfTheDay([unplayable, yesterday], noon),
+				// row(i).ts = noon - i minutes, so the SMALLER index is the NEWER match. Two identical scores,
+				// listed oldest-first, must resolve to k10.
+				tie: M.pickMatchOfTheDay([row(20, { comeback: true }), row(10, { comeback: true })], noon).pick?.key,
+				shout: M.shoutText(p1.pick),
+				limits: { pool: M.MIN_POOL, score: M.MIN_SCORE }
+			};
+		});
+		log('motd', JSON.stringify(R));
+
+		// hand-computed scores agree with the implementation, to the point
+		check(R.sa.score === 95, `motd: comeback+48combo+22elo scores 95 (got ${R.sa.score})`);
+		check(R.sb.score === 90, `motd: ocv+perfect+bothRated+verified scores 90 (got ${R.sb.score})`);
+		check(R.sc.score === 27, `motd: money+13elo scores 27 (got ${R.sc.score})`);
+		// reasons are in score order, max three, and name only EVENTS (never "verified"/"both rated")
+		check(JSON.stringify(R.sa.reasons) === JSON.stringify(['comeback', '48-hit combo', '+22 rating']), `motd: reasons in score order (${R.sa.reasons.join(' · ')})`);
+		check(R.sb.reasons.length === 2 && !R.sb.reasons.some((x) => /verified|rated/i.test(x)), `motd: context signals score but are never named (${R.sb.reasons.join(' · ')})`);
+		// pure + reproducible
+		check(R.p1.key === 'k1' && R.p2key === 'k1', `motd: the same rows give the same match_key twice (${R.p1.key} / ${R.p2key})`);
+		check(R.tie === 'k10', `motd: a tie goes to the NEWER match — k10 is 10 min old, k20 is 20 (got ${R.tie})`);
+		// the crown is earned
+		check(R.limits.pool === 6 && R.limits.score === 60, `motd: thresholds are ${R.limits.pool} replayable / score ${R.limits.score} (Tris Q8: unchanged)`);
+		check(R.p1.pool === 6 && R.p1.crowned === true, `motd: 6 replayable and a top score of ${R.p1.score} earns the crown`);
+		check(R.five.pool === 5 && R.five.crowned === false && R.five.key === 'k1', 'motd: a seeded day of FIVE replayable matches still picks the best one but is NOT crowned (▶ TODAY, no superlative)');
+		// nothing replayable today → no pick at all, so the page falls through to today's ▶ LATEST TAPE path
+		check(R.none.pick === null && R.none.pool === 0 && R.none.crowned === false, 'motd: a pending tape and a yesterday match leave NO pick — the ▶ LATEST TAPE path is untouched');
+		// the share text carries the shout-out the cached OG image cannot
+		check(/^Match of the day: W1 over L1 — comeback, 48-hit combo, \+22 rating\.$/.test(R.shout), `motd: share text (${R.shout})`);
+		await pm.close();
+	}
+
 	await browser.close();
 }
 log(failed ? `${failed} check(s) FAILED` : 'all checks passed');

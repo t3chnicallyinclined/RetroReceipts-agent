@@ -394,17 +394,31 @@ Not a sheet on phone: a sheet covers the 366×275 picture — the thing being di
 ticks, so "jump to 0:42" would need it dismissed first. Below keeps the picture in view while reading (picture
 + composer + two comments fit one viewport), and `position: sticky` buys the stable input a sheet was for.
 
-### 4.5 Safety — the four things a beta genuinely cannot ship without
+### 4.5 Safety — the four mechanisms that now carry the whole model
 
-This ships to a small, opinionated scene, commenting on matches they lost, sometimes with money on them. Each
-of these is one mechanism, each costs a good actor nothing, and none of them depends on a moderator being on
-duty.
+⚠ **Rewritten 2026-09-04.** With the play-gate removed (Q4), these are no longer "defence-in-depth behind a
+strong front door" — they ARE the door. Each is one mechanism, each costs a good actor nothing, and none of
+them depends on a moderator being on duty. All four ship in P5 and all four are gated in §8.
 
-**1 · You must have played here.** An account with **zero recorded matches cannot comment.** This platform can
-require that, and a general social app cannot: identity is Steam plus a real match record, so a throwaway
-account costs an actual game against a real opponent. It is the single strongest and fairest filter available,
-and it is why this beta does not need karma, account-age heuristics or a wordlist. Copy on a fresh account:
-`Play a match on Retro Receipts and you can comment.`
+This ships to a small, opinionated scene, commenting on matches they lost, sometimes with money on them —
+and, per Q6, the money matches are not exempt.
+
+**1 · A real Steam identity, and no anonymity.** ⚠ **AMENDED 2026-09-04 (Tris, Q4): there is NO play-gate.**
+This section previously required one recorded match before you could post, and argued from that requirement
+that the beta needed no karma, no account-age heuristics and no wordlist. **That argument is withdrawn**, and
+nothing here should be read as still resting on it: a spectator who has never played can comment.
+
+What remains is that a comment is never anonymous. Posting needs a signed-in Steam account (§4.2), and every
+comment carries that account's name, rank and rating (§4.6: `Posts as <name> · <RANK>. This is on their
+record.`). That is weaker than the play-gate it replaces — a Steam account is cheap next to a real match
+against a real opponent — so it does **not** carry this design on its own.
+
+**The safety model therefore rests on five mechanisms, and all five are load-bearing rather than
+defence-in-depth.** They are: (1) this signed-in identity; (2) the rate limits and same-match cooldown of item
+4; (3) participant `Hide` with the visible footer count, item 2; (4) auto-hide at three distinct reporters,
+item 3; (5) the admin queue as the backstop. Each must ship in P5 and each is gated in §8. Note especially
+that comments are **open on money matches** (Q6, answered) — the one place a dispute is most likely to turn
+nasty — so items 2–4 are doing real work there, not sitting in reserve.
 
 **2 · Both players can hide a comment on their own match, and hiding is never silent.** Either fighter can
 `⋯ → Hide` any comment on a match they played; it disappears for everyone except its author, who sees it
@@ -447,7 +461,6 @@ record.
 | composer placeholder (flat) | `Say something about this match…` |
 | under the composer, always | `Posts as <name> · <RANK>. This is on their record.` |
 | signed out | `Sign in with Steam to comment.` |
-| no matches played | `Play a match on Retro Receipts and you can comment.` |
 | empty, signed in | `No one's said anything yet. Tap the tape at the moment you mean.` |
 | empty, signed out | `No one's said anything yet.` |
 | no tape | `No tape for this one — comments here are about the match, not a moment.` |
@@ -505,7 +518,7 @@ server already sends.
 
 | # | Contract | Lane | Status |
 |---|---|---|---|
-| **C19** | Comments. `GET /rr/comments?key=&limit=&before=` · `POST /rr/comment {key, frame?, text}` · `DELETE /rr/comment/{id}` (author only) · `POST /rr/comment/{id}/hide {hidden}` (**participants only**) · `POST /rr/report {kind:'comment', id, reason}`. Record: `{id, key, session_id, frame|null, author_steamid, text, ts, hidden_by?}`. `clean_ml(text, 280)`; the played-here gate; the rate limits and same-match cooldown of §4.5, derived by scanning the store as `rail.rs:120-129` does; auto-hide at 3 distinct reporters | server | **PROPOSED** |
+| **C19** | Comments. `GET /rr/comments?key=&limit=&before=` · `POST /rr/comment {key, frame?, text}` · `DELETE /rr/comment/{id}` (author only) · `POST /rr/comment/{id}/hide {hidden}` (**participants only**) · `POST /rr/report {kind:'comment', id, reason}`. Record: `{id, key, session_id, frame|null, author_steamid, text, ts, hidden_by?}`. `clean_ml(text, 280)`; **no played-here gate** (Q4, answered — any signed-in account may post); the rate limits and same-match cooldown of §4.5, derived by scanning the store as `rail.rs:120-129` does; auto-hide at 3 distinct reporters | server | **PROPOSED** |
 | **C20** | Bus: `{type:'comment', key, session_id, id, frame, author, name, text, ts}` on the **existing `matches` channel** — never a new channel (`app.rs:1087-1089`) | server | **PROPOSED** |
 | **C16** | *(only if the browse-row marker is wanted)* `replay` gains `world: bool` + `agent: string` (`app.rs:1072-1085`). The server already keeps `TapeEntry.ver` and probes the envelope at ingest (`app.rs:2059-2074`); it needs one more probed field. **Not needed for the theatre marker** — that reads `info.world` client-side | server | **OPTIONAL** |
 
@@ -601,8 +614,8 @@ mechanisms and the §4.6 copy.
    not jump a scrolled list (the `▾ n new` pill appears instead);
 2. a comment anchored at 0:42 places a tick within 1 px of 42 s on the bar; clicking it seeks to **that exact
    frame** and pauses; on a 366 px phone bar, four comments within 3 s render as one cluster tick reading `4`;
-3. a signed-out visitor reads everything and gets the in-place prompt on focus; an account with zero recorded
-   matches gets the played-here copy and the POST is refused **server-side**, not just hidden;
+3. a signed-out visitor reads everything and gets the in-place prompt on focus; **an account with ZERO recorded
+   matches CAN post** (Q4, answered — there is no play-gate) and is still subject to every rate limit in item 4;
 4. a 281st character is refused client and server side; the 11th comment in 100 s and the 2nd on the same match
    within 30 s both return the in-voice 429;
 5. a participant's `Hide` removes it for a third browser, the footer count appears, and the author still sees
@@ -620,20 +633,16 @@ mechanisms and the §4.6 copy.
   PLAYING (a live game cannot be a picture yet). Keep that chip, or leave the marquee clean until live
   spectating actually renders?
 - **Q3** BROWSE is the newest 100 with the existing scopes and no search. Enough for beta?
-- **Q4** Comments require **one recorded match** before you can post. This blocks a genuine spectator who has
-  never played. Recommended ON — it is the strongest fair filter this platform has and it is why the beta needs
-  no wordlist. Confirm.
+- **Q4 — ANSWERED 2026-09-04: NO play-gate.** Any signed-in account may comment; a spectator who has never
+  played is not blocked. This reverses the recommendation above, so §4.5 has been rewritten: the five
+  mechanisms listed there now carry the whole safety model rather than backing up a gate.
 - **Q5** Player-hide is per-comment, and there is deliberately **no** per-match lock and **no** per-player
   "never allow comments on my matches" (a blanket opt-out hands the most-criticised players a mute button and
   makes the feature unreliable). Hiding is visible via the footer count. Comfortable with that, or do you want
   a per-match lock the two players can pull?
-- **Q6** Comments are ON for money matches in this beta, on the same terms as everything else. A wager dispute
-  is exactly where this turns nasty, and the alternative is to open the wall only after the money settles
-  (`rail.rs:329` already knows). Your call — it is a product decision, not a design one.
-- **Q7** Auto-hide at **three distinct reporters** (mirroring the existing `FLAG_MIN`). With a few dozen daily
-  players, is three the right number, or should it be two?
-- **Q8** MATCH OF THE DAY is crowned only at **≥ 6 replayable matches and a score ≥ 60** — below that the
-  theatre still opens on the best one but calls it `▶ TODAY` with no superlative. Are those the right two
-  numbers for the volume you actually see on a weekday?
-- **Q9** The scorer gives a money match **+15**. It is the shop window, but it is also the most contentious
-  match on the platform. Keep the nudge, or score money matches exactly like every other match?
+- **Q6 — ANSWERED 2026-09-04: comments are OPEN on money matches**, on the same terms as every other match.
+  No special-casing and no waiting for the wager to settle.
+- **Q7 — ANSWERED 2026-09-04: three distinct reporters**, mirroring the existing `FLAG_MIN`.
+- **Q8 — ANSWERED 2026-09-04: unchanged.** Crown only at **≥ 6 replayable matches and a score ≥ 60**; below
+  that the theatre opens on the best match and calls it `▶ TODAY`, with no superlative.
+- **Q9 — ANSWERED 2026-09-04: keep the money-match +15.**

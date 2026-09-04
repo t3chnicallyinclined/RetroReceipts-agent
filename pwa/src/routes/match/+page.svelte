@@ -9,6 +9,7 @@
 	import VersusCard from '$lib/components/VersusCard.svelte';
 	import PlayerPlate from '$lib/components/PlayerPlate.svelte';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
+	import { hosts } from '$lib/stores/hosts.svelte';
 	import MyMatch from '$lib/components/MyMatch.svelte';
 	import WagerRail from '$lib/components/WagerRail.svelte';
 	import Marquee from '$lib/components/Marquee.svelte';
@@ -20,6 +21,8 @@
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
 	import { shortSetLink } from '$lib/share';
+	import { timeAgo } from '$lib/format';
+	import { motd } from '$lib/stores/motd.svelte';
 	import {
 		availability,
 		gated,
@@ -38,6 +41,9 @@
 	// wager rail/marquee). onMount opens the streams and pauses them while the tab is hidden (CPU discipline).
 	onMount(() => {
 		matchfeed.connect();
+		// ONE un-scoped limit=100 read for the day's crown (§1.6). The tab's own feed store stays mode-scoped at
+		// 20 rows; the crown must consider matches the visitor's current scope filters out, so it reads wider.
+		void motd.load();
 		void wager.loadOpen();
 		if (auth.steamid) void wager.loadMine(auth.steamid);
 		const onVis = () => {
@@ -198,6 +204,9 @@
 	}
 	const openIsLive = $derived(!!openSession && nowPlaying.some((p) => p.session_id === openSession));
 
+	// §1.4 — the SAME predicate MyMatch renders its in-match branch on (MyMatch.svelte: `isHost`/`mine`), so the
+	// strip can never appear above the theatre in a state where it draws its idle body.
+	const inMatch = $derived(!!me && !hosts.byId(me) && nowPlaying.some((p) => p.a === me || p.b === me));
 	const isRanked = (m?: string) => m === 'ranked';
 	const involvesMe = (a: string, b: string) => !!me && (a === me || b === me);
 	const coldLoad = $derived(matchfeed.loading && results.length === 0);
@@ -288,84 +297,189 @@
 		};
 	}
 
-	// ── ▶ LATEST TAPE — the hero (Tris 2026-09-03: "NOW PLAYING becomes a render canvas showing our Retro Receipts
-	// overlay of the LAST MATCH PLAYED; put it higher up — it is the first thing they see; autostarts on load").
-	// The newest replayable result (resolver: newest row whose tape is `ready`; on the dev server the newest local
-	// test tape), rendered inline with the full overlay, autoplay on load (desktop, non-reduced-motion, no
-	// Save-Data). Phones sit `closed` on the poster with a tap-to-watch — a 20 MB pack + tape never auto-downloads
-	// on mobile data. No loop: plays once, ends on the KO frame with ▶ Watch again. When nothing is replayable
-	// (prod today: no tape read yet) the hero shows the newest match's poster + meta with the pending/none copy —
-	// never an empty box. When live-match spectating exists (mvc-live-match-spectate) the hero switches to the live
-	// game; NOW PLAYING (games in progress) stays its own section below.
-	interface Hero {
+	// ── ▓▓▓ THE THEATRE (LIVE-TAB-V2-SPEC §1) ─────────────────────────────────────────────────────────────
+	// The LIVE tab is "a room with a picture in it": the match most worth watching is ALREADY PLAYING when the
+	// page opens, a result row swaps it, and a share link picks it. This is the LATEST TAPE hero grown up —
+	// same resolver shape, same two guards, one priority list (§1.2):
+	//
+	//   1. the URL's pick — ?m=<match_key> (a share link, a row tapped here, or a row picked in BROWSE)
+	//   2. MATCH OF THE DAY — the best replayable match of today, when the day earns a crown (§1.6)
+	//   3. the latest tape — the newest row whose availability() is ready/saved (today's rule, unchanged)
+	//   4. the newest result, unplayable — the poster + the honest state copy (never an empty box, §2.1)
+	//   5. nothing at all
+	//
+	// The two guards outrank all of it and are UNCHANGED: a picture being watched is never yanked, and a share
+	// link's ?m= beats the automatic pick. Live games are deliberately NOT a picture — join_link/spectate_url are
+	// Steam host links, not frames (mvc-live-match-spectate is a TO-DO) — so games in progress get one quiet
+	// marquee chip that SCROLLS to NOW PLAYING. It does not pretend to be a broadcast.
+	//
+	// ⚠ `data-test="hero"` and hookName="rrHero" are the SMOKE HARNESS's stable handles for this slot
+	// (scripts/smoke-replay.mjs --hero/--overlay/--art). They are deliberately NOT renamed with the concept.
+	interface Theatre {
 		key: string;
 		meta: ReplayMeta;
 		sessionId?: string;
 		source: ReplaySource | null; // null while the resolver runs
 		poster: string;
 		playable: boolean; // a `ready` tape (or a local test tape) — else the state copy
+		/** the feed row behind the picture, when there is one — the marquee's sub-line reads it */
+		row: MatchResult | null;
 	}
-	let hero = $state<Hero | null>(null);
-	let heroEmbed = $state<ReplayEmbed | null>(null);
-	let heroSt = $state<EmbedState | ''>('');
-	let heroAutoload = $state(true);
-	let heroSeq = 0;
+	let theatre = $state<Theatre | null>(null);
+	let theatreEmbed = $state<ReplayEmbed | null>(null);
+	let theatreSt = $state<EmbedState | ''>('');
+	let theatreEl = $state<HTMLElement | null>(null);
+	let autoload = $state(true);
+	let theatreSeq = 0;
 	// phones / Save-Data: never auto-download a tape + pack (decided once, at mount)
 	onMount(() => {
 		const ua = navigator.userAgent;
 		const phone = /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || (matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 720);
 		const saveData = !!(navigator as { connection?: { saveData?: boolean } }).connection?.saveData;
-		heroAutoload = !phone && !saveData;
+		autoload = !phone && !saveData;
 	});
-	const heroWatching = () => heroSt === 'playing' || heroSt === 'paused' || heroSt === 'seeking';
-	function setHero(key: string, meta: ReplayMeta, sessionId: string | undefined, resolve: () => Promise<ReplaySource>, playable: boolean) {
-		if (hero?.key === key) return; // same tape — never remount a picture
-		const seq = ++heroSeq;
-		hero = { key, meta, sessionId, source: null, poster: posterFor(sessionId), playable };
+
+	const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+	// ?m=<match_key> — the share link's pick, and where a row tap records itself so the resolver's priority 1
+	// re-selects it instead of fighting it. Seeded from the URL at load; held in local $state rather than read
+	// back off `appPage.url` because we write it with raw history (no navigation, no remount).
+	let picked = $state(appPage.url.searchParams.get('m') ?? '');
+	function rememberPick(key: string) {
+		picked = key;
+		// replaceState, NOT pushState (§1.5): the theatre's content is a VIEW state — ten row taps must not cost
+		// ten back presses. The route stays /match, so every share link already in the wild keeps working.
+		const u = new URL(location.href);
+		u.searchParams.set('m', key);
+		history.replaceState(history.state, '', u);
+	}
+
+	const watching = () => theatreSt === 'playing' || theatreSt === 'paused' || theatreSt === 'seeking';
+	function setTheatre(
+		key: string,
+		meta: ReplayMeta,
+		sessionId: string | undefined,
+		resolve: () => Promise<ReplaySource>,
+		playable: boolean,
+		row: MatchResult | null = null
+	) {
+		if (theatre?.key === key) return; // same tape — never remount a picture
+		const seq = ++theatreSeq;
+		theatre = { key, meta, sessionId, source: null, poster: posterFor(sessionId), playable, row };
 		void resolve().then((src) => {
-			if (seq === heroSeq && hero?.key === key) hero = { ...hero, source: src };
+			if (seq === theatreSeq && theatre?.key === key) theatre = { ...theatre, source: src };
 		});
 	}
-	async function pickHero(rows: MatchResult[], tapes: [string, LocalTape][], isDev: boolean) {
+
+	/**
+	 * §1.5 — what tapping a LIVE RESULTS row does now.
+	 *   ready / saved            → SWAP THE THEATRE (there is a picture to put up)
+	 *   pending / archived / none → open THE TAPE (the set receipt), as today — there is no picture to swap in
+	 * The in-place expansion panel is gone from this list: with a theatre on the page, expanding in place means
+	 * two pictures and a permanent question about which one is "the" picture. The DEV Test Tapes section below
+	 * keeps the panel — it is the render lane's bench, dev-only, and the smoke harness drives it.
+	 */
+	function rowTap(r: MatchResult) {
+		const a = avail[r.key];
+		if (a === 'ready' || a === 'saved') void showRow(r);
+		else if (r.session_id) openSet(r.session_id);
+	}
+
+	/** A result row became the picture: swap, remember it in ?m=, and bring the theatre into view (§1.5). */
+	async function showRow(r: MatchResult) {
+		const key = r.match_key ?? r.key;
+		rememberPick(key);
+		setTheatre(key, metaOf(r), r.session_id, () => resolveSource(r), true, r);
+		await tick();
+		theatreEl?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+	}
+
+	async function pickTheatre(rows: MatchResult[], tapes: [string, LocalTape][], isDev: boolean, pick: string) {
 		// never yank a picture that is being watched; a newer tape takes over when this one is idle/ended/unplayable
-		if (hero && heroWatching()) return;
-		// DEV: `?hero=<test tape id>` pins the hero to a LOCAL pack so a headless run is deterministic (a real prod row
-		// now resolves `ready` on the dev server and would legitimately open the art panel instead of playing)
+		if (theatre && watching()) return;
+		// 1 — the URL's pick. A share link must land on ITS match, so this outranks everything automatic.
+		if (pick) {
+			const r = rows.find((x) => (x.match_key ?? x.key) === pick);
+			if (r) {
+				const a = await availability(r);
+				setTheatre(pick, metaOf(r), r.session_id, () => resolveSource(r), a === 'ready' || a === 'saved', r);
+				return;
+			}
+		}
+		// DEV: `?hero=<test tape id>` pins the picture to a LOCAL pack so a headless run is deterministic (a real prod
+		// row now resolves `ready` on the dev server and would legitimately open the art panel instead of playing)
 		if (isDev) {
 			const pin = appPage.url.searchParams.get('hero');
 			const t = pin ? tapes.find(([id]) => id === pin) : null;
 			if (t) {
-				setHero(t[0], metaOfLocal(t[0], t[1]), t[1].sessionId, async () => sourceOfLocal(t[1]), true);
+				setTheatre(t[0], metaOfLocal(t[0], t[1]), t[1].sessionId, async () => sourceOfLocal(t[1]), true);
 				return;
 			}
 		}
+		// 2 — MATCH OF THE DAY (§1.6): the day's best replayable match. It is the DEFAULT PICK, not a badge on the
+		// latest match — "newest" was only ever a proxy for "most watchable". Falls through when the day has none.
+		const crown = motd.pick;
+		if (crown) {
+			const r = rows.find((x) => (x.match_key ?? x.key) === crown.key);
+			if (r) {
+				setTheatre(crown.key, metaOf(r), r.session_id, () => resolveSource(r), true, r);
+				return;
+			}
+		}
+		// 3 — the latest tape: the newest row that is actually playable.
 		for (const r of rows) {
 			const a = await availability(r);
 			if (a === 'ready' || a === 'saved') {
-				if (hero && heroWatching()) return;
-				setHero(r.match_key ?? r.key, metaOf(r), r.session_id, () => resolveSource(r), true);
+				if (theatre && watching()) return;
+				setTheatre(r.match_key ?? r.key, metaOf(r), r.session_id, () => resolveSource(r), true, r);
 				return;
 			}
 		}
 		if (isDev && tapes.length) {
 			const [id, t] = [...tapes].sort((x, y) => y[1].ts - x[1].ts)[0];
-			setHero(id, metaOfLocal(id, t), t.sessionId, async () => sourceOfLocal(t), true);
+			setTheatre(id, metaOfLocal(id, t), t.sessionId, async () => sourceOfLocal(t), true);
 			return;
 		}
+		// 4 — the newest result, unplayable: the poster and the honest state copy. Never an empty box.
 		const r = rows[0];
-		if (r) setHero(r.match_key ?? r.key, metaOf(r), r.session_id, () => resolveSource(r), false);
+		if (r) setTheatre(r.match_key ?? r.key, metaOf(r), r.session_id, () => resolveSource(r), false, r);
 	}
 	$effect(() => {
 		const rows = results;
 		const tapes = testTapes;
 		const isDev = dev;
+		const pick = picked;
 		if (matchfeed.loading && rows.length === 0) return;
-		void pickHero(rows, tapes, isDev);
+		void pickTheatre(rows, tapes, isDev, pick);
 	});
-	// one picture at a time: an expanded row pauses the hero
+	// one picture at a time: an expanded DEV row pauses the theatre
 	$effect(() => {
-		if (open) heroEmbed?.pause();
+		if (open) theatreEmbed?.pause();
 	});
+
+	// ── the marquee (§1.1, §1.6) ──────────────────────────────────────────────────────────────────────────
+	// Three labels, each literally true: MATCH OF THE DAY only when the day earned a crown, otherwise TODAY,
+	// otherwise today's LATEST TAPE wording unchanged. The shout-out REPLACES the sub-line, so the theatre
+	// gains no extra row.
+	const isPick = $derived(!!motd.pick && !!theatre?.row && (theatre.row.match_key ?? theatre.row.key) === motd.pick.key);
+	const theatreLabel = $derived(isPick ? (motd.crowned ? 'Match of the Day' : 'Today') : 'Latest Tape');
+	const theatreIcon = $derived(isPick && motd.crowned ? '★' : '▶');
+	/** the sub-line: the day's shout-out when this IS the pick, else the plain record line. */
+	const theatreSub = $derived.by(() => {
+		const r = theatre?.row;
+		if (!r) return '';
+		if (isPick && motd.pick && motd.pick.reasons.length) return `${r.winner_name} over ${r.loser_name} — ${motd.pick.reasons.join(' · ')}`;
+		return `${r.winner_name} vs ${r.loser_name} · ${(r.mode ?? 'ranked').toUpperCase()} · ${timeAgo(r.ts)}`;
+	});
+	/** a newer tape landed while this one is being watched — one marquee line, never a yank (§1.2) */
+	const newerTape = $derived.by(() => {
+		if (!theatre || !watching()) return null;
+		const cur = theatre.key;
+		return results.find((r) => r.replay?.state === 'ready' && (r.match_key ?? r.key) !== cur && r.ts > (theatre?.row?.ts ?? 0)) ?? null;
+	});
+	function scrollToNowPlaying() {
+		document.getElementById('now-playing')?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+	}
 </script>
 
 <svelte:head><title>Live · Retro Receipts</title></svelte:head>
@@ -438,38 +552,74 @@
 	</section>
 {/if}
 
-<!-- ▬ YOUR MATCH strip — the small VS (§3). Renders only signed-in; host nodes render nothing. -->
-<MyMatch onTape={openSet} />
+<!-- ▬ YOUR MATCH strip (§1.4). A replay is never more urgent than the game you are in the middle of, and an
+     idle strip is never more urgent than the picture — so this sits ABOVE the theatre only while you are
+     actually in a match; the idle / no-agent / signed-out states render below it. Same component either way. -->
+{#if inMatch}<MyMatch onTape={openSet} />{/if}
 
-<!-- ▶ LATEST TAPE — the hero: the last match played, rendered from its tape with the overlay (autoplays on desktop).
-     First thing on the tab after your own match. Switches to the live game once spectating exists. -->
-<section class="sec hero" data-test="hero" aria-label="Latest tape">
+<!-- ▓▓▓ THE THEATRE (LIVE-TAB-V2-SPEC §1) — the match most worth watching, already playing when the page opens.
+     A result row swaps the picture; ?m= picks it; the three sections below keep their order and their internals.
+     ⚠ data-test="hero" is the smoke harness's stable handle for this slot (scripts/smoke-replay.mjs). -->
+<section class="sec theatre" data-test="hero" bind:this={theatreEl} aria-label="The theatre">
 	<div class="sechd">
-		<h2 class="shead"><span class="ic tape" aria-hidden="true">▶</span> Latest Tape <span class="devnote">the last match played, off its tape</span></h2>
-		{#if hero}
-			<div class="hacts">
-				{#if hero.sessionId}
-					<button type="button" class="a" onclick={() => openSet(hero?.sessionId ?? '')} title="THE TAPE — the set receipt"><span class="ico">🧾</span><span class="txt">THE TAPE ›</span></button>
-					<button type="button" class="a" onclick={() => copyLink(hero?.sessionId ?? '')} title="Copy link"><span class="ico">⧉</span><span class="txt">{copied === hero.sessionId ? 'Copied' : 'Copy link'}</span></button>
-				{/if}
-				{#if hero.playable}
-					<button type="button" class="a" onclick={() => void heroEmbed?.enterFullscreen()} title="Full screen (F)"><span class="ico">⛶</span><span class="txt">Full screen</span></button>
-				{/if}
-			</div>
-		{/if}
+		<h2 class="shead">
+			<span class="ic tape" aria-hidden="true">{theatreIcon}</span> {theatreLabel}
+			{#if theatreSub}<span class="devnote shout">{theatreSub}</span>{/if}
+		</h2>
+		<div class="hacts">
+			<!-- games in progress cannot be a picture yet (join_link is a Steam host link, not frames), so this
+			     chip is honest about what it does: it SCROLLS to NOW PLAYING. -->
+			{#if nowPlaying.length}
+				<button type="button" class="onchip" onclick={scrollToNowPlaying}>
+					<span class="dot" aria-hidden="true"></span>{nowPlaying.length} GAME{nowPlaying.length === 1 ? '' : 'S'} ON NOW ›
+				</button>
+			{/if}
+		</div>
 	</div>
-	{#if hero}
-		{#if hero.source}
-			<ReplayEmbed bind:this={heroEmbed} source={hero.source} poster={hero.poster} meta={hero.meta} autoload={heroAutoload} autoart={heroAutoload} hookName="rrHero" onstate={(s) => (heroSt = s)} />
+
+	<!-- a newer tape landed mid-watch: ONE line, never a yank (§1.2) -->
+	{#if newerTape}
+		<div class="newer" role="status">
+			A newer match landed ·
+			<button type="button" onclick={() => newerTape && showRow(newerTape)}>play it ›</button>
+		</div>
+	{/if}
+
+	{#if theatre}
+		{#if theatre.source}
+			<ReplayEmbed
+				bind:this={theatreEmbed}
+				source={theatre.source}
+				poster={theatre.poster}
+				meta={theatre.meta}
+				maxPicture={700}
+				{autoload}
+				autoart={autoload}
+				hookName="rrHero"
+				onstate={(st) => (theatreSt = st)}
+			/>
 		{:else}
 			<div class="resolving"><span class="rail">Finding the tape</span></div>
 		{/if}
+		<!-- the actions live in the CHROME, never on the picture (§6 amendment 4) — so they still work in every
+		     state the picture cannot play: no tape, no WebGPU, art not acknowledged, phone `closed`. -->
+		<div class="acts">
+			{#if theatre.sessionId}
+				<button type="button" class="a" onclick={() => openSet(theatre?.sessionId ?? '')} title="THE TAPE — the set receipt"><span class="ico">🧾</span><span class="txt">THE TAPE ›</span></button>
+				<button type="button" class="a" onclick={() => copyLink(theatre?.sessionId ?? '')} title="Copy link"><span class="ico">⧉</span><span class="txt">{copied === theatre.sessionId ? 'Copied' : 'Copy link'}</span></button>
+			{/if}
+			{#if theatre.playable}
+				<button type="button" class="a" onclick={() => void theatreEmbed?.enterFullscreen()} title="Full screen (F)"><span class="ico">⛶</span><span class="txt">Full screen</span></button>
+			{/if}
+		</div>
 	{:else if coldLoad}
 		<div class="resolving"><span class="rail">Finding the last match</span></div>
 	{:else}
 		<div class="empty">No tapes yet — the next finished set lands here.</div>
 	{/if}
 </section>
+
+{#if !inMatch}<MyMatch onTape={openSet} />{/if}
 
 <!-- 🪙 LIVE MONEY (§5): your wager first (WagerRail self-manages: state rail or the quarter-up CTA), then one
      MoneyCard per locked wager on the rail board (RailPanel verbatim inside), then the arcade's open
@@ -509,7 +659,7 @@
 </section>
 
 <!-- 🟢 NOW PLAYING (§4) — VersusCards unchanged, yours first via `mine`; THE ARCADE watch strip -->
-<section class="sec">
+<section class="sec" id="now-playing">
 	<h2 class="shead"><span class="ic on"><span class="dot" aria-hidden="true"></span></span> Now Playing {#if nowPlaying.length}<span class="cnt">{nowPlaying.length}</span>{/if}</h2>
 	{#if nowPlaying.length === 0}
 		<div class="empty">No games in progress right now.</div>
@@ -595,7 +745,7 @@
 		<div class="panel">
 			{#each pageResults as r (r.key)}
 				{@const ranked = isRanked(r.mode)}
-				<div class="rrow" class:open={open?.key === r.key}>
+				<div class="rrow">
 					<MatchBanner
 						a={{ steamid: r.winner, name: r.winner_name, rating: ranked ? (r.winner_rating ?? null) : null, team: r.winner_team ?? null }}
 						b={{ steamid: r.loser, name: r.loser_name, rating: ranked ? (r.loser_rating ?? null) : null, team: r.loser_team ?? null }}
@@ -609,11 +759,8 @@
 						comeback={r.comeback ?? false}
 						verified={r.verified}
 						replay={avail[r.key] ? gated(avail[r.key]) : null}
-						expanded={open?.key === r.key}
-						controls="replay-{slug(r.key)}"
-						onOpen={() => toggleRow(r.key, metaOf(r), r.session_id, () => resolveSource(r))}
+						onOpen={() => rowTap(r)}
 					/>
-					{#if open?.key === r.key}{@render replayPanel(open)}{/if}
 				</div>
 			{/each}
 		</div>
@@ -1046,8 +1193,9 @@
 		from { grid-template-rows: 0fr; }
 		to { grid-template-rows: 1fr; }
 	}
-	/* ▶ LATEST TAPE hero: the embed is its own card (640 px, centred); the actions ride the section header */
-	.hero .ic.tape {
+	/* ▓▓▓ THE THEATRE (§1.1, §1.3): the embed is the page's subject, so its picture is capped at 700 rather than
+	   640 (`maxPicture`) and the chrome — marquee above, actions below — never sits ON the picture (§6 amendment 4). */
+	.theatre .ic.tape {
 		display: inline-grid;
 		place-items: center;
 		width: 16px;
@@ -1062,7 +1210,12 @@
 		align-items: center;
 		gap: 8px;
 	}
-	.hacts .a {
+	/* the shout-out REPLACES the marquee's sub-line, so the theatre gains no extra row (§1.6) */
+	.shout {
+		color: var(--dim);
+	}
+	/* games in progress are not a picture (§1.2) — this chip only SCROLLS to NOW PLAYING, and says so with › */
+	.onchip {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -1076,13 +1229,38 @@
 		border-radius: 8px;
 		background: var(--panel-2);
 		cursor: pointer;
+		white-space: nowrap;
 	}
-	.hacts .a:hover {
+	.onchip:hover {
 		color: var(--ink);
-		border-color: color-mix(in srgb, var(--gold) 35%, var(--line));
+		border-color: color-mix(in srgb, var(--live) 45%, var(--line));
 	}
-	.hacts .ico {
-		display: none;
+	.onchip .dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--live);
+		flex: none;
+	}
+	/* a newer tape landed mid-watch — one line, never a yank (§1.2) */
+	.newer {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 0 0 8px;
+		font-size: 12px;
+		color: var(--dim);
+	}
+	.newer button {
+		font: inherit;
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--stream);
+		background: none;
+		border: 0;
+		padding: 0;
+		cursor: pointer;
+		text-decoration: underline dotted;
 	}
 	.resolving {
 		aspect-ratio: 4 / 3;
@@ -1094,11 +1272,21 @@
 		border: 1px solid color-mix(in srgb, var(--stream) 30%, var(--line));
 		border-radius: 12px;
 	}
+	.theatre .resolving,
+	.theatre .empty {
+		max-width: 702px;
+		margin-inline: auto;
+	}
 	.acts {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		margin-top: 10px;
+	}
+	/* the theatre's actions sit under its picture and share its width, so they read as one block */
+	.theatre .acts {
+		max-width: 702px;
+		margin-inline: auto;
 	}
 	.acts .a {
 		display: inline-flex;
