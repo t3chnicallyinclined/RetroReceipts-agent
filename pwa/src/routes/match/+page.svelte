@@ -22,7 +22,7 @@
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
 	import { canShare, copyText, shareLink, theatreLink, COPIED_MS } from '$lib/share';
-	import { shoutText } from '$lib/stores/motd.svelte';
+	import { shoutText, type Scored } from '$lib/stores/motd.svelte';
 	import { timeAgo } from '$lib/format';
 	import { motd } from '$lib/stores/motd.svelte';
 	import {
@@ -427,7 +427,14 @@
 		theatreEl?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
 	}
 
-	async function pickTheatre(rows: MatchResult[], tapes: [string, LocalTape][], isDev: boolean, pick: string) {
+	async function pickTheatre(
+		rows: MatchResult[],
+		tapes: [string, LocalTape][],
+		isDev: boolean,
+		pick: string,
+		crown: Scored | null,
+		crownSettled: boolean
+	) {
 		// never yank a picture that is being watched; a newer tape takes over when this one is idle/ended/unplayable
 		if (theatre && watching()) return;
 		// 1 — the URL's pick. A share link must land on ITS match, so this outranks everything automatic.
@@ -457,13 +464,21 @@
 		}
 		// 2 — MATCH OF THE DAY (§1.6): the day's best replayable match. It is the DEFAULT PICK, not a badge on the
 		// latest match — "newest" was only ever a proxy for "most watchable". Falls through when the day has none.
-		const crown = motd.pick;
+		//
+		// WAIT for the crown's own read before falling through. The feed store and this read race, and the feed
+		// usually wins — so without this the theatre picks "latest tape", the crown lands a moment later, and
+		// nothing re-picks. `settled` is set even when the read FAILS, so a dead endpoint costs a crown, never
+		// the picture.
+		if (!crownSettled) return;
 		if (crown) {
-			const r = rows.find((x) => (x.match_key ?? x.key) === crown.key);
-			if (r) {
-				setTheatre(crown.key, metaOf(r), r.session_id, () => resolveSource(r), true, r);
-				return;
-			}
+			// use the crown's OWN row. Looking it up in `rows` looked tidier and was wrong: `rows` is the current
+			// scope's newest 20, while the crown is scored over the un-scoped newest 100 — so the day's best match
+			// is very often NOT in it (measured: 54 replayable today, the top-scoring one well outside the newest
+			// 20 ranked). The lookup then found nothing and fell through to "latest tape", which is precisely the
+			// crown never appearing.
+			const r = crown.row;
+			setTheatre(crown.key, metaOf(r), r.session_id, () => resolveSource(r), true, r);
+			return;
 		}
 		// 3 — the latest tape: the newest row that is actually playable.
 		for (const r of rows) {
@@ -488,8 +503,12 @@
 		const tapes = testTapes;
 		const isDev = dev;
 		const pick = picked;
+		// read SYNCHRONOUSLY: `pickTheatre` is async, and anything it touches after its first `await` is invisible
+		// to this effect's dependency tracking. That is exactly how the crown got lost.
+		const crown = motd.pick;
+		const crownSettled = motd.settled;
 		if (matchfeed.loading && rows.length === 0) return;
-		void pickTheatre(rows, tapes, isDev, pick);
+		void pickTheatre(rows, tapes, isDev, pick, crown, crownSettled);
 	});
 	// one picture at a time: an expanded DEV row pauses the theatre
 	$effect(() => {

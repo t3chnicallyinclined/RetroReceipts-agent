@@ -129,6 +129,9 @@ class MotdStore {
 	crowned = $state(false);
 	pool = $state(0);
 	loaded = $state(false);
+	/** the read has finished, SUCCESSFULLY OR NOT. The theatre waits for this before falling through to the
+	 *  "latest tape" rule, so the crown is not lost to a race — and a failed read still releases the page. */
+	settled = $state(false);
 	#inflight: Promise<void> | null = null;
 
 	/** Newest-first rows across every mode; kept so BROWSE's "all" scope can reuse the same read. */
@@ -154,6 +157,7 @@ class MotdStore {
 			} catch {
 				/* keep-last-good */
 			} finally {
+				this.settled = true;
 				this.#inflight = null;
 			}
 		})();
@@ -167,5 +171,5 @@ export const motd = new MotdStore();
 // --motd), rather than a re-implementation in the test — a second copy of these weights would be free to agree
 // with itself while disagreeing with the page.
 if (import.meta.env.DEV && typeof window !== 'undefined') {
-	(window as unknown as Record<string, unknown>).__rrMotd = { scoreMatch, pickMatchOfTheDay, shoutText, startOfDay, MIN_POOL, MIN_SCORE };
+	(window as unknown as Record<string, unknown>).__rrMotd = { scoreMatch, pickMatchOfTheDay, shoutText, startOfDay, MIN_POOL, MIN_SCORE, store: motd };
 }

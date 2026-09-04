@@ -1241,6 +1241,39 @@ try {
 		check(R.none.pick === null && R.none.pool === 0 && R.none.crowned === false, 'motd: a pending tape and a yesterday match leave NO pick — the ▶ LATEST TAPE path is untouched');
 		// the share text carries the shout-out the cached OG image cannot
 		check(/^Match of the day: W1 over L1 — comeback, 48-hit combo, \+22 rating\.$/.test(R.shout), `motd: share text (${R.shout})`);
+
+		// ── INTEGRATION: the crown must actually REACH THE MARQUEE ────────────────────────────────────────
+		// The checks above only prove the scorer. They passed while the crown never appeared on the page, twice:
+		// once because `pickTheatre` read `motd.pick` after an `await` (invisible to the effect's dependency
+		// tracking), and once because it looked the crown up in the current scope's newest 20 rows, where the
+		// day's best match usually is not. Both were caught by loading the real page, so the gate now does that.
+		// Loaded WITHOUT the `?hero=` dev pin, which deliberately bypasses the crown to keep other runs
+		// deterministic.
+		const pi = await newPage(1280, 1600);
+		await pi.goto(`${arg('--url', 'http://localhost:5173/match?dev=1')}`, { waitUntil: 'load', timeout: 120000 });
+		await pi.waitForFunction(() => window.__rrMotd?.store?.settled === true, { timeout: 60000 });
+		await sleep(2500);
+		const I = await pi.evaluate(() => {
+			const st = window.__rrMotd.store;
+			return {
+				crowned: st.crowned,
+				pool: st.pool,
+				pickKey: st.pick?.key ?? null,
+				reasons: [...(st.pick?.reasons ?? [])], // a $state proxy serialises as an OBJECT, not an array
+				label: (document.querySelector('[data-test="hero"] .shead')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+				theatreKey: window.__rrHero?.key ?? null
+			};
+		});
+		log('motd integration', JSON.stringify(I));
+		const wantLabel = I.crowned ? 'Match of the Day' : I.pickKey ? 'Today' : 'Latest Tape';
+		check(I.label.includes(wantLabel), `motd: the marquee says "${wantLabel}" for pool ${I.pool} / crowned ${I.crowned} (got "${I.label.slice(0, 90)}")`);
+		if (I.pickKey) {
+			check(I.theatreKey === I.pickKey, `motd: the crown is the DEFAULT PICK — the theatre is showing it (${I.theatreKey})`);
+			for (const why of I.reasons) check(I.label.includes(why), `motd: the shout-out names "${why}"`);
+		} else {
+			log('motd: nothing replayable today — the ▶ LATEST TAPE path is the one under test');
+		}
+		await pi.close();
 		await pm.close();
 	}
 
