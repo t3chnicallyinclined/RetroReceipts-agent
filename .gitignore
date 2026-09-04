@@ -98,3 +98,5 @@ rr-render/target/
 # ── Replay packs (ROM-derived game pixels) — served in dev from a local folder/junction, NEVER committed ──
 pwa/static/replay/packs/
 pwa/smoke-out/
+# the smoke test's generated server-pack fixture manifest (names + hashes of ROM-derived art)
+pwa/static/replay/packfix/

@@ -5,6 +5,9 @@
 //
 // Tape side (lane 1 — the archive contract, built against docs/HANDOFF-LANE1-TAPE-ARCHIVE.md):
 //   GET  /rr/tape?key=<match_key>  → {ok, state:'ready'|'pending'|'archived'|'none', tape_url?, frames?, ts?, session_id?,
+//                                      pack?: {manifest_url:'/rr/packs/manifest?key=…', attested:bool}  (2026-09-04: the
+//                                      art is served BY US to owners — GET /rr/packs/manifest?key= (authed + attested)
+//                                      lists {name,url,bytes,sha256}; files at /rr/packs/<part>/<file>. lib/replay/pack.ts),
 //                                      overlay?: {template, version, meta}}   (STEP 4b, HANDOFF-LANE1-REPLAY-DATA.md: the
 //                                      overlay ships WITH the tape read — `template` = a versioned static file (404 → the
 //                                      built-in), `meta` = the binding schema in lib/replay/overlay.ts, bound VERBATIM)
@@ -20,9 +23,10 @@ import { base } from '$app/paths';
 import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
 import type { TapeOverlay } from './overlay';
+import type { TapePackRef } from './pack';
 
 export type ReplaySource =
-	| { kind: 'tape'; tapeUrl: string; packUrl: string; start?: number; count?: number; frames?: number; overlay?: TapeOverlay | null }
+	| { kind: 'tape'; tapeUrl: string; packUrl: string; start?: number; count?: number; frames?: number; overlay?: TapeOverlay | null; pack?: TapePackRef | null }
 	| { kind: 'stream'; url: string; frames: number } // phones, M-interim keyed frames — C9, not built
 	| { kind: 'none'; reason: NoneReason };
 export type NoneReason = 'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'signin';
@@ -56,6 +60,8 @@ export interface LocalTape {
 	ts: number;
 	/** the overlay block as the server will ship it with a tape read (STEP 4b) — dev fixtures only */
 	overlay?: TapeOverlay;
+	/** a server-SHAPED pack ref (a manifest of URLs) instead of this row's directory — dev fixtures only */
+	packSrv?: TapePackRef;
 }
 
 let manifest: Promise<Record<string, LocalTape>> | null = null;
@@ -78,7 +84,9 @@ function withBase(u: string): string {
 
 /** The ReplayEmbed source for a local manifest entry. */
 export function sourceOfLocal(t: LocalTape): ReplaySource {
-	return { kind: 'tape', tapeUrl: withBase(t.tape), packUrl: withBase(t.pack), frames: t.frames, overlay: t.overlay ?? null };
+	// a fixture row may point at a server-SHAPED manifest (mirrors GET /rr/packs/manifest) instead of the directory
+	const srv = t.packSrv?.manifest_url ? { ...t.packSrv, manifest_url: withBase(t.packSrv.manifest_url) } : null;
+	return { kind: 'tape', tapeUrl: withBase(t.tape), packUrl: srv ? '' : withBase(t.pack), frames: t.frames, overlay: t.overlay ?? null, pack: srv };
 }
 
 export interface RowLike {
@@ -115,6 +123,8 @@ export interface TapeProbe {
 	session_id?: string;
 	/** STEP 4b: the overlay template + metadata resolved server-side at request time */
 	overlay?: TapeOverlay;
+	/** 2026-09-04: where this tape's art lives on the server, and whether this viewer has attested ownership */
+	pack?: TapePackRef;
 	/** true when the endpoint answered; false = 404/network → the caller infers from the row */
 	known: boolean;
 }
@@ -134,7 +144,7 @@ export function probeServer(matchKey: string, force = false): Promise<TapeProbe>
 			const j = (await res.json()) as Partial<TapeProbe> & { ok?: boolean };
 			if (j?.ok === false || !j.state) return { state: 'none', known: false };
 			const state = (['ready', 'pending', 'archived', 'none'] as const).includes(j.state) ? j.state : 'none';
-			return { state, tape_url: j.tape_url, frames: j.frames, ts: j.ts, session_id: j.session_id, overlay: j.overlay, known: true };
+			return { state, tape_url: j.tape_url, frames: j.frames, ts: j.ts, session_id: j.session_id, overlay: j.overlay, pack: j.pack, known: true };
 		} catch {
 			return { state: 'none', known: false };
 		}
@@ -189,7 +199,7 @@ export async function resolveSource(row: RowLike): Promise<ReplaySource> {
 	const pr = await probeServer(row.match_key);
 	if (!pr.known) return { kind: 'none', reason: Date.now() - row.ts < PENDING_WINDOW_MS ? 'pending' : 'none' };
 	if (pr.state === 'ready' && pr.tape_url) {
-		return { kind: 'tape', tapeUrl: pr.tape_url, packUrl: await packFor(row.match_key), frames: pr.frames, overlay: pr.overlay ?? null };
+		return { kind: 'tape', tapeUrl: pr.tape_url, packUrl: await packFor(row.match_key), frames: pr.frames, overlay: pr.overlay ?? null, pack: pr.pack ?? null };
 	}
 	return { kind: 'none', reason: pr.state === 'ready' ? 'none' : pr.state };
 }

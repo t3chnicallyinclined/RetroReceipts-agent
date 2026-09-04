@@ -50,7 +50,8 @@ export function hasWebGPU(): boolean {
 export interface TapePlayerLike {
 	load(
 		tapeUrl: string,
-		packUrl: string,
+		/** a pack directory URL (dev) or an already-assembled pack (lib/replay/pack.ts — the server path) */
+		pack: string | { packIndex: { name: string; off: number; len: number }[]; packBlob: Uint8Array },
 		o: {
 			start?: number;
 			count?: number;

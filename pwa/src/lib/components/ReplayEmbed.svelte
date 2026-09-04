@@ -19,6 +19,7 @@
 		type GpuDeviceLike
 	} from '$lib/replay/engine';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
+	import { assemblePack, getAttest, isDevFixture, loadPackManifest, mbText, PackError, postAttest, type AssembledPack, type PackManifest, type PackSource } from '$lib/replay/pack';
 	import type { Credit } from './SkinCredit.svelte';
 
 	// ▶ REPLAYEMBED (LIVE-TAB-SPEC §7 + REPLAY-OVERLAY-SPEC) — a rendered media element: the game's OWN pixels,
@@ -168,6 +169,16 @@
 	let fsScale = $state(1);
 	let fsBy = $state(0); // fullscreen landscape: the letterbox band under the picture, px (the HUD anchors to the picture)
 	let loadAsked = false; // `closed` → a tap asked for the load
+	// ── the art (asset pack): local directory in dev, our server for everyone else (lib/replay/pack.ts).
+	// The art is ROM-derived, so it is served only to signed-in viewers who have ATTESTED they own the game.
+	let attested = $state(false);
+	let ownsChecked = $state(false); // the checkbox in the nopack panel
+	let packBusy = $state(false);
+	let packMan = $state<PackManifest | null>(null);
+	let packNote = $state('');
+	let packMissing = $state('');
+	let assembled: AssembledPack | null = null; // survives a quality retry: never download the art twice
+	let packWanted = false; // the viewer asked for the art (or already had it) → skip the panel on the next start()
 	let liveText = $state('');
 	let ttff = $state(0);
 	let openMs = $state(0);
@@ -222,6 +233,15 @@
 	// ── sides (REPLAY-OVERLAY-SPEC §1.1-1.2): the game's sides when seats are known — P1's plate LEFT, P2's RIGHT,
 	// the same sides as the health bars in the picture; unknown seats = the row's order (a left, b right), unlabelled,
 	// the picture plays stock and the record line says `stock colors` (§5a). Sides never re-sort; gold marks the winner.
+	/** where this tape's art comes from: the dev directory when the manifest has one, else our server (manifest of URLs) */
+	const packSrc = $derived.by((): PackSource | null => {
+		if (source.kind !== 'tape') return null;
+		if (source.packUrl) return { kind: 'local', packUrl: source.packUrl };
+		const m = source.pack?.manifest_url;
+		return m ? { kind: 'server', manifestUrl: m, attested: !!source.pack?.attested } : null;
+	});
+	const packSizeText = $derived(packMan ? `~${mbText(packMan.total_bytes)} MB` : '');
+	const needsAttest = $derived(packSrc?.kind === 'server' && !attested);
 	const seatsKnown = $derived(!!(meta.p1 || meta.p2));
 	const leftIsB = $derived(
 		seatsKnown &&
@@ -397,8 +417,14 @@
 			st = 'unavailable';
 			return;
 		}
-		if (!source.packUrl) {
-			// the tape is hosted but this device has no asset pack for it (packs are ROM-derived, agent-side derivation pending)
+		if (!packSrc) {
+			// the tape is hosted but there is no art for it anywhere (no local pack, no server manifest)
+			st = 'nopack';
+			return;
+		}
+		if (packSrc.kind === 'server' && !assembled && !packWanted) {
+			// the art is ours to serve, but only to owners who asked: the panel takes the attestation + the tap
+			attested = packSrc.attested || (await getAttest(false, isDevFixture(packSrc)));
 			st = 'nopack';
 			return;
 		}
@@ -447,7 +473,15 @@
 				}
 				orig(m);
 			};
-			await p.load(tapeBlobUrl, source.packUrl, {
+			// the art: assembled ONCE per embed (a quality retry reuses it), from the dev directory or our server
+			if (!assembled && packSrc.kind === 'server') {
+				const man = packMan ?? (await loadPackManifest(packSrc));
+				packMan = man;
+				if (disposed) return;
+				assembled = await assemblePack(man, (g, t) => report('pack', g, t));
+				if (disposed) return;
+			}
+			await p.load(tapeBlobUrl, assembled ?? source.packUrl, {
 				start: source.start ?? 0,
 				count: source.count ?? Infinity,
 				onProgress: (got, total, what) => {
@@ -473,6 +507,25 @@
 			if (autoplay === 'auto' && !reducedMotion() && !saveData()) play();
 		} catch (e) {
 			clearTimeout(slowTimer);
+			if (e instanceof PackError) {
+				// the art failed on its own terms: sign in · attest · a missing part · a broken file
+				clearTimeout(slowTimer);
+				packMissing = e.part ?? '';
+				if (e.code === 'signin') {
+					reason = 'signin';
+					st = 'unavailable';
+					return;
+				}
+				packWanted = false;
+				attested = e.code === 'attest' ? false : attested;
+				packNote =
+					e.code === 'attest' ? 'Tick the box first — the art is only for owners.'
+					: e.code === 'missing' ? `No art for ${e.part || 'this stage/character'} yet.`
+					: e.code === 'sha' ? `That file arrived damaged (${e.part}). Try again.`
+					: 'The art did not load — try again.';
+				st = 'nopack';
+				return;
+			}
 			const code = ((e as { code?: string })?.code ?? 'open') as 'webgpu' | 'fetch' | 'open' | 'decode' | 'gpu';
 			// any WebGPU trouble at high quality → one retry at base (res 2, nearest)
 			if (!retried && q === 'high' && (code === 'gpu' || code === 'open')) {
@@ -492,6 +545,47 @@
 		loadAsked = true;
 		st = 'checking';
 		void start();
+	}
+
+	/**
+	 * "Load the art": POST the ownership attestation once (the checkbox), then fetch the manifest and the files and
+	 * play. On phones this is the SAME flow — the download starts on this tap, never automatically.
+	 */
+	async function loadArt() {
+		if (packBusy || !packSrc) return;
+		packNote = '';
+		packMissing = '';
+		packBusy = true;
+		try {
+			const devFix = isDevFixture(packSrc);
+			if (packSrc.kind === 'server' && !attested) {
+				if (!ownsChecked) {
+					packNote = 'Tick the box first — the art is only for owners.';
+					return;
+				}
+				if (!auth.authed && !devFix) {
+					reason = 'signin';
+					st = 'unavailable';
+					return;
+				}
+				const r = await postAttest(devFix);
+				if (!r.ok) {
+					if (r.error === 'signin') {
+						reason = 'signin';
+						st = 'unavailable';
+						return;
+					}
+					packNote = 'Could not record that — try again.';
+					return;
+				}
+				attested = true;
+			}
+			packWanted = true;
+			loadAsked = true;
+			await start(); // the loading panel takes over: PACK bytes → TAPE → play
+		} finally {
+			packBusy = false;
+		}
 	}
 
 	async function requestPull() {
@@ -924,6 +1018,22 @@
 		get scale() {
 			return k;
 		},
+		/** the art: where it comes from, whether ownership is attested, and what the last assembly cost */
+		get pack() {
+			return {
+				kind: packSrc?.kind ?? 'none',
+				attested,
+				totalBytes: packMan?.total_bytes ?? 0,
+				files: packMan?.files.length ?? 0,
+				networkBytes: assembled?.networkBytes ?? -1,
+				cachedFiles: assembled?.cachedFiles ?? -1
+			};
+		},
+		/** the assembled pack's index (name/off/len per file) — the smoke proves it matches the local directory pack */
+		get packIndex() {
+			return assembled ? assembled.packIndex.map((e) => ({ ...e })) : null;
+		},
+		loadArt: () => loadArt(),
 		/** the overlay template in use: `<from>:<name>` (preview | tape | server | builtin | inline) */
 		get template() {
 			return tpl ? `${tplFrom}:${tpl.name}` : '';
@@ -1113,8 +1223,27 @@
 				{/if}
 			</div>
 		{:else if st === 'nopack'}
-			<!-- §5c: the tape exists, this device has no ROM-derived pack. No agent action until C12 exists. -->
-			<div class="ov"><span class="big">📦</span><span class="h">Tape's in. Art isn't.</span><span class="s">Replays draw with the game's own art, packed from a copy of MvC2. This browser has no pack for this one.</span><span class="s">Watch on a PC with MvC2 and Retro Receipts</span></div>
+			<!-- the art is ours to serve — to owners who ask for it (Tris 2026-09-04). Same flow on phones: the download
+			     starts on THIS tap, never automatically, and the size is on the button. -->
+			<div class="ov art">
+				{#if packSrc?.kind === 'server'}
+					<span class="big">🎨</span><span class="h">Tape's in. Art loads from us.</span>
+					<span class="s">Replays draw with the game's own art. We load it for you — it stays in this browser.</span>
+					{#if needsAttest}
+						<label class="own"><input type="checkbox" bind:checked={ownsChecked} onclick={(e) => e.stopPropagation()} />
+							<span>I own Marvel vs. Capcom 2 (Steam Collection) and I understand the art is loaded for my personal replay</span></label>
+					{/if}
+					<button type="button" class="signin" disabled={packBusy || (needsAttest && !ownsChecked)} onclick={(e) => { e.stopPropagation(); void loadArt(); }}>
+						{packBusy ? 'Loading…' : `Load the art${packSizeText ? ` (${packSizeText})` : ''}`}
+					</button>
+					{#if packNote}<span class="s note-e">{packNote}</span>{/if}
+					{#if packMissing}<span class="s mono">{packMissing}</span>{/if}
+				{:else}
+					<span class="big">📦</span><span class="h">Tape's in. Art isn't.</span>
+					<span class="s">Replays draw with the game's own art, packed from a copy of MvC2. This browser has no pack for this one.</span>
+					<span class="s">Watch on a PC with MvC2 and Retro Receipts</span>
+				{/if}
+			</div>
 		{:else if st === 'unsupported'}
 			<div class="ov"><span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span></div>
 		{:else if st === 'error'}
@@ -1254,6 +1383,33 @@
 	.ov .big {
 		font-size: 26px;
 		line-height: 1;
+	}
+	/* the ownership gate: a real checkbox with a real label — never a pre-ticked box, never a bare button */
+	.ov.art .own {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		max-width: 40ch;
+		text-align: left;
+		font-size: 11px;
+		line-height: 1.35;
+		color: var(--dim);
+		cursor: pointer;
+	}
+	.ov.art .own input {
+		margin: 1px 0 0;
+		accent-color: var(--gold);
+		width: 15px;
+		height: 15px;
+		flex: none;
+		cursor: pointer;
+	}
+	.ov.art .signin:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.ov .note-e {
+		color: var(--gold);
 	}
 	.again {
 		font: inherit;
