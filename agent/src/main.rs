@@ -288,7 +288,18 @@ fn main() {
                     }
                     None => eprintln!("[updater] up to date (v{})", config::VERSION),
                 }
-                std::thread::sleep(RECHECK_EVERY);
+                // 0.3.51: a tape the server refused as too large is almost always waiting on a SERVER-side
+                // cap change, which ships as a new agent build alongside it. While a rejection is fresh,
+                // poll every 5 min instead of hourly so the fix lands in minutes -- and because applying an
+                // update restarts the agent, that restart is also what clears the 413 park markers and
+                // re-uploads the parked recordings.
+                const REJECT_RECHECK: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+                const REJECT_FRESH_MS: u64 = 6 * 60 * 60 * 1000; // stop hurrying 6 h after the last rejection
+                let rejected = reader::GS_REJECTED_AT_MS.load(std::sync::atomic::Ordering::SeqCst);
+                let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64).unwrap_or(0);
+                let hurry = rejected > 0 && now_ms.saturating_sub(rejected) < REJECT_FRESH_MS;
+                std::thread::sleep(if hurry { REJECT_RECHECK } else { RECHECK_EVERY });
             }
         })
         .ok();

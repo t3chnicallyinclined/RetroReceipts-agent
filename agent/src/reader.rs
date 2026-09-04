@@ -935,6 +935,15 @@ static SHARE_GAMEPLAY: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 // TRUE while a live match is actively being recorded. The uploader NEVER runs while this is set, so a big
 // spooled upload can never compete with the game for CPU/IO — recordings are drained only between matches.
 static GS_IN_MATCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// 0.3.51: how long a 413'd tape sits before we retry it. Was 6 h, which cost a Galactus-rank player a whole
+/// session's replays on 2026-09-04: the server's body cap rejected every game, and even after the cap was
+/// raised server-side the fleet sat on the parked tapes for six hours. 20 min still kills the CPU burn the
+/// park was added for (the drain runs every 20 s, so this is 60x fewer retries, not one per cycle).
+const TOOLARGE_PARK_SECS: u64 = 20 * 60;
+/// ms of the last 413. The updater loop polls this and re-checks for a new build every 5 min instead of
+/// hourly while it is fresh: a body-limit rejection is almost always waiting on a SERVER-side fix, and the
+/// agent should pick up the matching release fast rather than on the next hourly tick.
+pub static GS_REJECTED_AT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn share_file() -> std::path::PathBuf { crate::runtime_dir().join("share_gameplay.txt") }
 // ⚠ The spool cap is a DISK BUDGET, not a file count — deliberately.
 // It used to be `300 pending recordings`. That was chosen when a tape was ~188 KB (≈54 MB). The
@@ -1769,6 +1778,21 @@ fn gs_exists_on_server(match_key: &str) -> bool {
 
 // Drain the local spool: for each finished recording, dedup-check then POST. Runs ONLY between matches
 // (GS_IN_MATCH is false) so it never competes with the game. Returns after the first match that starts.
+/// 0.3.51: remove every `.toolarge` 413 park marker so the next drain retries those tapes immediately.
+/// Called once per launch -- and since a self-update restarts the agent, publishing a release re-tries the
+/// whole fleet's parked recordings without asking anyone to do anything.
+fn clear_toolarge_markers() {
+    let dir = gs_cache_dir();
+    let rd = match std::fs::read_dir(&dir) { Ok(r) => r, Err(_) => return };
+    let mut n = 0usize;
+    for e in rd.flatten() {
+        if e.file_name().to_string_lossy().ends_with(".toolarge") {
+            if std::fs::remove_file(e.path()).is_ok() { n += 1; }
+        }
+    }
+    if n > 0 { trace(&format!("[gamestate] cleared {n} parked 413 marker(s) — those tapes retry on this drain")); }
+}
+
 fn drain_gs_cache() {
     use std::sync::atomic::Ordering::SeqCst;
     let dir = gs_cache_dir();
@@ -1788,7 +1812,7 @@ fn drain_gs_cache() {
         let big_marker = dir.join(format!("{base}.toolarge"));
         if let Ok(md) = std::fs::metadata(&big_marker) {
             let age = md.modified().ok().and_then(|m| m.elapsed().ok()).map(|d| d.as_secs()).unwrap_or(0);
-            if age < 6 * 3600 { continue; }
+            if age < TOOLARGE_PARK_SECS { continue; }
             let _ = std::fs::remove_file(&big_marker);
         }
         // ⭐ RR_KEEP_TAPES=1: never delete the local spool after upload. For testing a tape format
@@ -1822,7 +1846,9 @@ fn drain_gs_cache() {
             Ok(_) => { trace(&format!("[gamestate] uploaded {base} ({} bytes gz)", gz.len())); cleanup(); }
             Err(ureq::Error::Status(413, _)) => {
                 let _ = std::fs::write(&big_marker, gz.len().to_string());
-                trace(&format!("[gamestate] upload {base} REJECTED 413 ({} bytes gz) -- server body limit; parked 6 h, tape kept", gz.len()));
+                GS_REJECTED_AT_MS.store(gs_now_ms(), std::sync::atomic::Ordering::SeqCst);
+                trace(&format!("[gamestate] upload {base} REJECTED 413 ({} bytes gz) -- server body limit; parked {} min, tape kept",
+                               gz.len(), TOOLARGE_PARK_SECS / 60));
             }
             Err(e) => { trace(&format!("[gamestate] upload {base} failed ({e}) — retry next cycle")); }
         }
@@ -1835,6 +1861,10 @@ fn start_gamestate_uploader() {
     let _ = std::thread::Builder::new().name("gs-uploader".into()).spawn(|| {
         use std::sync::atomic::Ordering::SeqCst;
         std::thread::sleep(std::time::Duration::from_secs(6)); // let the app settle before the first drain
+        // 0.3.51: drop every 413 park marker on startup. A self-update restarts the agent, so PUBLISHING a
+        // release is the fleet-wide "retry the parked tapes now" button -- no user action, no waiting out the
+        // park. If the server still refuses the tape it is simply re-parked one drain later.
+        clear_toolarge_markers();
         loop {
             // P0.3: guard each drain so a panicking upload/parse can't kill the uploader thread.
             let guard = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
