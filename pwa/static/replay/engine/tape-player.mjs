@@ -125,7 +125,12 @@ export class TapePlayer extends SequencePlayer {
         const tape = await fetchBytes(tapeUrl);
         onProgress?.(total, total, 'tape');
 
-        this.worker = new Worker(new URL('./tape-worker.mjs', import.meta.url), { type: 'module' });
+        // Carry our own ?v= onto the worker: `new URL(rel, base)` DROPS the base's query, so without this the
+        // worker (and through it the wasm glue) would resolve to the unversioned URL and could still come from
+        // a cache entry stored under a wrong Content-Type. The version is a cache key, not a parameter.
+        const wurl = new URL('./tape-worker.mjs', import.meta.url);
+        wurl.search = new URL(import.meta.url).search;
+        this.worker = new Worker(wurl, { type: 'module' });
         this.worker.onmessage = (e) => this._onMessage(e.data);
         this.info = await new Promise((resolve, reject) => {
             this._opened = [resolve, reject];

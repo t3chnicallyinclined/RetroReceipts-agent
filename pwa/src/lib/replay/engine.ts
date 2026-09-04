@@ -90,12 +90,20 @@ interface EngineModule {
 	) => TapePlayerLike;
 }
 
+/** Bumped by the release: the engine files are static, so their URL must change when they do. */
+const ENGINE_BUILD = '20260904a';
+
 let mod: Promise<EngineModule> | null = null;
 
 /** Import the engine once per session. Throws (code 'open') when the module URL can't load. */
 export function loadEngine(): Promise<EngineModule> {
 	if (!mod) {
-		const url = `${base}/replay/engine/tape-player.mjs`;
+		// ?v=<build> is a CACHE KEY, not decoration: a browser that once cached these modules under a wrong
+		// Content-Type (rise3 had no .mjs MIME mapping until 2026-09-04) keeps refusing them as module scripts
+		// forever, and no server header fixes an entry that is already stored. A new query per release makes a
+		// stale entry unreachable. The worker and the wasm glue resolve relative to this URL, so the query rides
+		// along to every engine file (import.meta.url carries the search string).
+		const url = `${base}/replay/engine/tape-player.mjs?v=${ENGINE_BUILD}`;
 		mod = import(/* @vite-ignore */ url).catch((e) => {
 			mod = null;
 			throw Object.assign(new Error(`engine: ${e?.message ?? e}`), { code: 'open' });
