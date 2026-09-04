@@ -46,7 +46,7 @@ export class WebFeed {
     }
     /**
      * `pack_index_json` = `[{"name": "chars/PL2A_idx.png", "off": 0, "len": 123}, ...]` into `pack_blob`;
-     * `opts_json` = a subset of EmitOpts fields ({"no_world": bool, "no_preamble": bool, "pal_lag": n, "bank": n}).
+     * `opts_json` = a subset of EmitOpts fields ({"no_world": bool, "no_preamble": bool, "pal_lag": n, "bank": n, "no_palrow_resolve": bool}).
      * @param {Uint8Array} tape
      * @param {string} pack_index_json
      * @param {Uint8Array} pack_blob
