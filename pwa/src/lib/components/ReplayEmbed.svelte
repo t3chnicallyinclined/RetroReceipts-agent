@@ -92,6 +92,7 @@
 		autoload = true,
 		autoart = false,
 		quality = 'high',
+		maxPicture = 640,
 		hookName = 'rrEmbed',
 		onready = null,
 		onerror = null,
@@ -116,6 +117,14 @@
 		/** true = fetch the ART automatically (no click) once ownership is acknowledged — the LATEST TAPE hero only.
 		 *  A row embed leaves this false: expanding a row shows the art panel and the viewer asks for the download. */
 		autoart?: boolean;
+		/**
+		 * The widest the INLINE picture may be drawn, in CSS px (fullscreen ignores it). 640 = the capture's own
+		 * width, k = 1, which is what every list/receipt surface wants: an embed inside a row stays a card.
+		 * THE THEATRE passes 700 (LIVE-TAB-V2-SPEC §1.3) because it is the page's subject, not an attachment —
+		 * `displayPlan()` already climbs the internal resolution to match (res 4 at dpr 1, res 6 at dpr 2), so a
+		 * wider box is a sharper picture, never a stretched one.
+		 */
+		maxPicture?: number;
 		/** the window global the test hook registers under (`window.__<hookName>`); the LIVE hero uses 'rrHero' so the
 		 *  smoke test can drive it and an expanded row (default 'rrEmbed') at the same time */
 		hookName?: string;
@@ -1282,7 +1291,7 @@
 	tabindex="-1"
 	use:surface
 	data-hook={hookName}
-	style="--fsw:{Math.round(640 * fsScale)}px;--fsby:{fsBy}px"
+	style="--fsw:{Math.round(640 * fsScale)}px;--fsby:{fsBy}px;--pic-max:{maxPicture}px"
 >
 	<!-- inline chrome-top = ONE 28 px record row (mockup rev 2 §1); the plates live on the picture now. Hidden in fullscreen. -->
 	<div class="metarow" aria-label="Match record">
@@ -1404,9 +1413,11 @@
 		overflow: hidden;
 		background: var(--board);
 		outline: none;
-		/* inline: the card IS the picture + its transport — COMPACT (Tris 2026-09-03): capped at 1× (640 px) and centred,
-		   so an expanded result row stays a card, not a screen; fullscreen is where it gets big */
-		max-width: calc(640px + 2px); /* the picture is exactly 640 inside the 1 px border → k = 1 inline */
+		/* inline: the card IS the picture + its transport — COMPACT (Tris 2026-09-03): capped and centred, so an
+		   embed inside a list row stays a card, not a screen; fullscreen is where it gets big. The cap is the
+		   `maxPicture` prop (--pic-max), 640 everywhere except THE THEATRE (LIVE-TAB-V2-SPEC §1.3, which passes
+		   700); the +2px is the 1 px border on each side, so the PICTURE is exactly --pic-max wide. */
+		max-width: calc(var(--pic-max, 640px) + 2px);
 		margin: 0 auto;
 	}
 	.emb:focus-visible {
@@ -1428,11 +1439,11 @@
 		font-size: 11px;
 		padding: 4px 10px;
 	}
-	/* the picture — 640×480 CSS-scaled, pixelated */
+	/* the picture — the capture's 640×480 CSS-scaled, pixelated (never stretched: .pic is 4:3 by aspect-ratio) */
 	.pic {
 		position: relative;
 		width: 100%;
-		max-width: 640px;
+		max-width: var(--pic-max, 640px);
 		margin: 0 auto;
 		aspect-ratio: 4 / 3;
 		background: #000;

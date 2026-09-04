@@ -45,6 +45,17 @@ export interface MatchResult {
 	/** the reporter's physical seat (1 = P1) + who reported — seats for the skins feed; absent today (UNKNOWN server-side) */
 	side?: number;
 	reporter?: string;
+	/** The SteamID in each PHYSICAL seat, resolved SERVER-side (`seat_sid`, app.rs match_result_delta) - "" when
+	 *  unknown or clashing. Carried on every match_result (the feed seed AND both bus publishes), so skins paint on
+	 *  the correct side with no client probe and no reporter arithmetic (LIVE-TAB-V2-SPEC section 3, P0). */
+	p1?: string;
+	p2?: string;
+	/** The server's replay-availability projection (`replay_avail`, app.rs) - O(1) index lookups, carried on every
+	 *  match_result row. Its `state` vocabulary is the server's own: ready | pending | archived | none. The row
+	 *  knowing this is what lets a LIVE list render its affordance with ZERO `GET /rr/tape?key=` probes
+	 *  (LIVE-TAB-V2-SPEC section 0 and 6); the probe stays the one source of `pack`/`overlay`, so OPENING a
+	 *  replay still reads the tape. */
+	replay?: { state: 'ready' | 'pending' | 'archived' | 'none'; tape_url?: string; bytes?: number; frames?: number };
 	/** ranked ELO for each player at match time — drives the rank badge (client-derived tier). */
 	winner_rating?: number;
 	loser_rating?: number;
@@ -102,6 +113,9 @@ type MatchFrame = SseFrame & {
 	key?: unknown;
 	side?: unknown;
 	reporter?: unknown;
+	p1?: unknown;
+	p2?: unknown;
+	replay?: unknown;
 	winner_rating?: unknown;
 	loser_rating?: unknown;
 	winner_team?: unknown;
@@ -118,6 +132,93 @@ function normTs(x: unknown): number {
 	const n = Number(x);
 	if (!n || !isFinite(n)) return Date.now();
 	return n < 1e12 ? n * 1000 : n;
+}
+
+/**
+ * Normalize ONE `match_result` frame (a live delta or a `/rr/matches/feed` seed row) into a MatchResult.
+ * Module-level on purpose: the store, MATCH OF THE DAY and BROWSE MATCHES all read the same endpoint, and a
+ * second hand-rolled parser is how two surfaces start disagreeing about the same match.
+ */
+export function toResultRow(d: MatchFrame): MatchResult | null {
+	const winner = String(d.winner ?? '');
+	const loser = String(d.loser ?? '');
+	if (!winner || !loser) return null;
+	const ts = normTs(d.ts);
+	const winner_name = String(d.winner_name ?? '') || winner;
+	const loser_name = String(d.loser_name ?? '') || loser;
+	const mode = typeof d.mode === 'string' && d.mode ? d.mode : undefined;
+	const duration_s = Number((d as { duration_s?: unknown }).duration_s) || undefined;
+	// elo = the winner's rating gain; 0/absent for non-ranked → treat as "no delta" (undefined).
+	const eloN = Number(d.elo);
+	const elo = Number.isFinite(eloN) && eloN !== 0 ? Math.abs(eloN) : undefined;
+	const comboN = Number(d.combo);
+	const combo = Number.isFinite(comboN) && comboN > 1 ? Math.round(comboN) : undefined;
+	const session_id = typeof d.session_id === 'string' && d.session_id ? d.session_id : undefined;
+	// the server's tape handle — was dropped here before the LIVE tab (LIVE-TAB-SPEC §0, §11)
+	const match_key = typeof d.key === 'string' && d.key ? d.key : undefined;
+	const sideN = Number(d.side);
+	const side = sideN === 1 || sideN === 2 ? sideN : undefined;
+	const reporter = typeof d.reporter === 'string' && d.reporter ? d.reporter : undefined;
+	// seats + replay availability, straight off the payload the server already sends (app.rs match_result_delta).
+	// `seat_sid` answers "" for unknown/clashing, which must stay undefined here so `seatsOf` can fall back.
+	const p1 = typeof d.p1 === 'string' && d.p1 ? d.p1 : undefined;
+	const p2 = typeof d.p2 === 'string' && d.p2 ? d.p2 : undefined;
+	const replay = toReplay(d.replay);
+	return {
+		key: `${winner}_${loser}_${ts}`,
+		winner,
+		loser,
+		winner_name,
+		loser_name,
+		verified: d.verified === true,
+		ts,
+		mode,
+		duration_s,
+		elo,
+		session_id,
+		match_key,
+		side,
+		reporter,
+		p1,
+		p2,
+		replay,
+		winner_rating: toRating(d.winner_rating),
+		loser_rating: toRating(d.loser_rating),
+		winner_team: toTeam(d.winner_team),
+		loser_team: toTeam(d.loser_team),
+		combo,
+		ocv: d.ocv === true,
+		perfect: d.perfect === true,
+		comeback: d.comeback === true
+	};
+}
+
+/** Coerce the payload's `replay` projection; anything off-vocabulary is dropped rather than guessed. */
+function toReplay(x: unknown): MatchResult['replay'] {
+	if (!x || typeof x !== 'object') return undefined;
+	const o = x as { state?: unknown; tape_url?: unknown; bytes?: unknown; frames?: unknown };
+	const st = String(o.state ?? '');
+	if (st !== 'ready' && st !== 'pending' && st !== 'archived' && st !== 'none') return undefined;
+	return {
+		state: st,
+		tape_url: typeof o.tape_url === 'string' && o.tape_url ? o.tape_url : undefined,
+		bytes: Number(o.bytes) || undefined,
+		frames: Number(o.frames) || undefined
+	};
+}
+
+/**
+ * Merge rule for `replay` across re-publishes of the same match: a resolved tape never un-resolves (the agent
+ * uploads AFTER the result, so a row legitimately climbs none -> pending -> ready), and an identical re-publish
+ * returns the SAME OBJECT so the "nothing changed" guard can still short-circuit on `===`.
+ */
+const REPLAY_RANK: Record<string, number> = { none: 0, archived: 1, pending: 2, ready: 3 };
+function bestReplay(cur: MatchResult['replay'], next: MatchResult['replay']): MatchResult['replay'] {
+	if (!next) return cur;
+	if (!cur) return next;
+	if ((REPLAY_RANK[next.state] ?? 0) < (REPLAY_RANK[cur.state] ?? 0)) return cur;
+	const same = next.state === cur.state && next.tape_url === cur.tape_url && next.frames === cur.frames && next.bytes === cur.bytes;
+	return same ? cur : next;
 }
 
 /** Coerce a payload team field into a clean char-id array (or undefined when absent/empty). */
@@ -349,53 +450,11 @@ export class MatchFeedStore {
 
 	/** Normalize a match_result frame (stream OR seed) into a row — including the richer detail fields. */
 	#toResult(d: MatchFrame): MatchResult | null {
-		const winner = String(d.winner ?? '');
-		const loser = String(d.loser ?? '');
-		if (!winner || !loser) return null;
-		const ts = normTs(d.ts);
-		const winner_name = String(d.winner_name ?? '') || winner;
-		const loser_name = String(d.loser_name ?? '') || loser;
-		const mode = typeof d.mode === 'string' && d.mode ? d.mode : undefined;
-		const duration_s = Number((d as { duration_s?: unknown }).duration_s) || undefined;
-		// elo = the winner's rating gain; 0/absent for non-ranked → treat as "no delta" (undefined).
-		const eloN = Number(d.elo);
-		const elo = Number.isFinite(eloN) && eloN !== 0 ? Math.abs(eloN) : undefined;
-		const comboN = Number(d.combo);
-		const combo = Number.isFinite(comboN) && comboN > 1 ? Math.round(comboN) : undefined;
-		const session_id = typeof d.session_id === 'string' && d.session_id ? d.session_id : undefined;
-		// the server's tape handle — was dropped here before the LIVE tab (LIVE-TAB-SPEC §0, §11)
-		const match_key = typeof d.key === 'string' && d.key ? d.key : undefined;
-		const sideN = Number(d.side);
-		const side = sideN === 1 || sideN === 2 ? sideN : undefined;
-		const reporter = typeof d.reporter === 'string' && d.reporter ? d.reporter : undefined;
-		return {
-			key: `${winner}_${loser}_${ts}`,
-			winner,
-			loser,
-			winner_name,
-			loser_name,
-			verified: d.verified === true,
-			ts,
-			mode,
-			duration_s,
-			elo,
-			session_id,
-			match_key,
-			side,
-			reporter,
-			winner_rating: toRating(d.winner_rating),
-			loser_rating: toRating(d.loser_rating),
-			winner_team: toTeam(d.winner_team),
-			loser_team: toTeam(d.loser_team),
-			combo,
-			ocv: d.ocv === true,
-			perfect: d.perfect === true,
-			comeback: d.comeback === true
-		};
+		return toResultRow(d);
 	}
 
 	#onResult(d: MatchFrame) {
-		const row = this.#toResult(d);
+		const row = toResultRow(d);
 		if (!row) return;
 
 		// A finished result ends any "now playing" row for that pair — regardless of the active filter.
@@ -433,6 +492,11 @@ export class MatchFeedStore {
 				elo: row.elo ?? cur.elo,
 				session_id: row.session_id ?? cur.session_id,
 				match_key: row.match_key ?? cur.match_key,
+				p1: row.p1 ?? cur.p1,
+				p2: row.p2 ?? cur.p2,
+				// a later delta for the same match may carry a BETTER replay state (none -> pending -> ready as the
+				// agent uploads). Never let a re-publish downgrade a row that already resolved `ready`.
+				replay: bestReplay(cur.replay, row.replay),
 				winner_rating: row.winner_rating ?? cur.winner_rating,
 				loser_rating: row.loser_rating ?? cur.loser_rating,
 				winner_team: row.winner_team ?? cur.winner_team,
@@ -450,6 +514,11 @@ export class MatchFeedStore {
 				next.elo === cur.elo &&
 				next.session_id === cur.session_id &&
 				next.match_key === cur.match_key &&
+				// `replay` is why a row is allowed to change at all after the agent uploads: without it here a
+				// pending -> ready upgrade would be merged and then discarded by this very guard.
+				next.replay === cur.replay &&
+				next.p1 === cur.p1 &&
+				next.p2 === cur.p2 &&
 				next.winner_rating === cur.winner_rating &&
 				next.loser_rating === cur.loser_rating &&
 				next.winner_team === cur.winner_team &&

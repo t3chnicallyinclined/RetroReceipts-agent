@@ -98,6 +98,13 @@ export interface RowLike {
 	match_key?: string;
 	session_id?: string;
 	ts: number;
+	/** The server's own availability projection, carried on every `match_result` row (app.rs `replay_avail`).
+	 *  When present it is AUTHORITATIVE and `availability()` answers from it with no network at all — that is the
+	 *  whole point of LIVE-TAB-V2-SPEC P0: a list of 100 rows costs 0 probes instead of 100. */
+	replay?: { state: 'ready' | 'pending' | 'archived' | 'none'; tape_url?: string; bytes?: number; frames?: number };
+	/** server-resolved physical seats (app.rs `seat_sid`) — skins paint the right side with no reporter arithmetic */
+	p1?: string;
+	p2?: string;
 }
 
 /** Which local manifest entry a row maps to: by its tape handle (`match_key`), else by manifest id. */
@@ -190,20 +197,39 @@ export function gated(a: ReplayAvail): ReplayAvail {
 	return a;
 }
 
-/** Row availability, UNGATED (see `gated`). Never `ready` unless a tape is actually resolvable (§7.11). */
+/**
+ * Row availability, UNGATED (see `gated`). Never `ready` unless a tape is actually resolvable (§7.11).
+ *
+ * Order: a LOCAL pack wins (dev test tapes are always playable), then the row's OWN `replay.state` if the server
+ * put one there — no request, because the server already answered this question when it built the row. Only a row
+ * that predates that projection (an older cached delta) falls through to the per-key probe and, failing that, to
+ * the post-result pending-window inference.
+ */
 export async function availability(row: RowLike): Promise<ReplayAvail> {
 	if (await localFor(row)) return 'ready';
+	if (row.replay) return row.replay.state;
 	if (!row.match_key) return 'none';
 	const pr = await probeServer(row.match_key);
 	if (pr.known) return pr.state;
 	return Date.now() - row.ts < PENDING_WINDOW_MS ? 'pending' : 'none';
 }
 
-/** Resolve a row into an embed source: local manifest first, then the archive contract. */
+/**
+ * Resolve a row into an embed source: local manifest first, then the archive contract.
+ *
+ * This one still probes even when the row carries `replay.state === 'ready'`, and that is deliberate: `tape_url`
+ * alone does not make a playable source. The PACK location (`pack.manifest_url`, whether this viewer has attested)
+ * and the OVERLAY block (template + server-resolved meta, HANDOFF-LANE1-REPLAY-DATA step 4b) exist ONLY on the tape
+ * read. So the saving from P0 is per-LIST (availability, once per row, now free) — not per-OPEN, which is one
+ * request for one thing the viewer explicitly asked to watch. A row the server already called unplayable is
+ * short-circuited below, so an un-openable row costs nothing either.
+ */
 export async function resolveSource(row: RowLike): Promise<ReplaySource> {
 	const loc = await localFor(row);
 	if (loc) return sourceOfLocal(loc.tape);
 	if (!row.match_key) return { kind: 'none', reason: 'none' };
+	// the server already said there is nothing to open — don't ask it again to hear the same answer
+	if (row.replay && row.replay.state !== 'ready') return { kind: 'none', reason: row.replay.state };
 	const pr = await probeServer(row.match_key);
 	if (!pr.known) return { kind: 'none', reason: Date.now() - row.ts < PENDING_WINDOW_MS ? 'pending' : 'none' };
 	if (pr.state === 'ready' && pr.tape_url) {
@@ -216,7 +242,11 @@ export async function resolveSource(row: RowLike): Promise<ReplaySource> {
  * Physical seats for the skins feed (opts.skins = {p1:[…], p2:[…]}): from a result row's reporter side
  * (`side` 1 = the reporter was P1) plus reporter/winner/loser; unknown → null (stock for both).
  */
-export function seatsOf(r: { side?: number; reporter?: string; winner?: string; loser?: string }): { p1: string; p2: string } | null {
+export function seatsOf(r: { side?: number; reporter?: string; winner?: string; loser?: string; p1?: string; p2?: string }): { p1: string; p2: string } | null {
+	// The server resolves the seats itself (`seat_sid`, app.rs match_result_delta) and answers "" for unknown or
+	// clashing claims. When it gave us both, that is the answer — the reporter arithmetic below is the fallback
+	// for rows that predate the field.
+	if (r.p1 && r.p2) return { p1: r.p1, p2: r.p2 };
 	if (!r.side || !r.reporter || !r.winner || !r.loser) return null;
 	const other = r.reporter === r.winner ? r.loser : r.winner;
 	return r.side === 1 ? { p1: r.reporter, p2: other } : { p1: other, p2: r.reporter };
