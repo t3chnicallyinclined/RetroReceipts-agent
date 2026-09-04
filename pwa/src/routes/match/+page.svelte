@@ -329,6 +329,16 @@
 	async function pickHero(rows: MatchResult[], tapes: [string, LocalTape][], isDev: boolean) {
 		// never yank a picture that is being watched; a newer tape takes over when this one is idle/ended/unplayable
 		if (hero && heroWatching()) return;
+		// DEV: `?hero=<test tape id>` pins the hero to a LOCAL pack so a headless run is deterministic (a real prod row
+		// now resolves `ready` on the dev server and would legitimately open the art panel instead of playing)
+		if (isDev) {
+			const pin = appPage.url.searchParams.get('hero');
+			const t = pin ? tapes.find(([id]) => id === pin) : null;
+			if (t) {
+				setHero(t[0], metaOfLocal(t[0], t[1]), t[1].sessionId, async () => sourceOfLocal(t[1]), true);
+				return;
+			}
+		}
 		for (const r of rows) {
 			const a = await availability(r);
 			if (a === 'ready' || a === 'saved') {

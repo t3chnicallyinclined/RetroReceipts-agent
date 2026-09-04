@@ -15,10 +15,16 @@
 //
 // Ownership, WITHOUT an account (Tris 2026-09-04: "you can keep the checkbox there, but just not have the sign in
 // needed"): the art is the game's own assets, so the viewer still acknowledges they own the game — but watching needs
-// no sign-in. Signed out, the tick is recorded in localStorage (versioned {owns_game, ts}) and every pack request
-// carries `X-RR-Owns-Game: 1`; signed in, it is `POST /rr/attest` as before. The server accepts either and reports
-// `pack.attested`, so someone who already acknowledged sees only the button. A 429 (anti-scrape limit) is one honest
-// line, never an automatic retry.
+// no sign-in. Signed out, the tick is recorded in localStorage (versioned {owns_game, ts}) and `X-RR-Owns-Game: 1`
+// rides EVERY pack request; signed in, it is `POST /rr/attest` as before. The server accepts either and reports
+// `pack.attested`, so someone who already acknowledged sees only the button.
+//
+// ⚠ SERVER CONTRACT (35c70ae): the header is the gate on EACH route and the server keeps no session for an anonymous
+// viewer — the manifest AND every single file request must carry it, or each file 403s. Accepted values: 1 / true /
+// yes. A signed-in viewer with a stored attestation needs no header (the bearer token is the gate). `packHeaders()`
+// is therefore the ONE header builder and both fetch sites below use it — never inline `auth.headers()` here again.
+// Rate limits are per connection per hour: 1,200 pack files / 200 MB and 150 tape files / 1.2 GB — a normal session
+// is nowhere near them, so a 429 is genuinely exceptional: one honest line, never an automatic retry.
 import { api } from '$lib/config';
 import { auth } from '$lib/stores/auth.svelte';
 
@@ -93,7 +99,10 @@ function setOwnsLocal(): OwnsRecord {
 	}
 	return rec;
 }
-/** every pack request: the bearer token when signed in, and the account-free ownership header once acknowledged */
+/**
+ * The headers for EVERY pack request — the manifest and each file alike (the server gates per route, 35c70ae):
+ * the bearer token when signed in, plus `X-RR-Owns-Game: 1` once the account-free acknowledgement is on this device.
+ */
 export function packHeaders(): Record<string, string> {
 	return { ...auth.headers(), ...(ownsLocal() ? { 'X-RR-Owns-Game': '1' } : {}) };
 }

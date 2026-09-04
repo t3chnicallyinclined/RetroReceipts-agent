@@ -50,9 +50,11 @@ const arg = (k, d) => {
 	return i > 0 ? process.argv[i + 1] : d;
 };
 const has = (k) => process.argv.includes(k);
-const URL_ = arg('--url', 'http://localhost:5173/match?dev=1');
-const ORIGIN = new URL(URL_).origin;
 const ROW = arg('--row', 'local_stage9');
+// pin the LATEST TAPE hero to the local test pack: with the server live, a real prod row resolves `ready` and would
+// legitimately open the art panel instead of autoplaying (that is the product; this keeps the gate deterministic)
+const URL_ = `${arg('--url', 'http://localhost:5173/match?dev=1')}&hero=${ROW}`;
+const ORIGIN = new URL(URL_).origin;
 const OUT = arg('--out', path.resolve('smoke-out'));
 const L3 = arg('--l3', '');
 const STOCK_SHA = arg('--stock-sha', '');
@@ -631,9 +633,11 @@ try {
 		// every /rr/attest call and every pack request header (the signed-out path must post nothing and send the header)
 		const attestCalls = [];
 		const packHeaders = [];
+		const manifestHeaders = [];
 		pa.on('request', (r) => {
 			if (r.url().includes('/rr/attest')) attestCalls.push(`${r.method()} ${r.url()}`);
 			if (r.url().includes('art=1')) packHeaders.push(r.headers()['x-rr-owns-game'] ?? '(none)');
+			if (r.url().includes('/replay/packfix/manifest.json')) manifestHeaders.push(r.headers()['x-rr-owns-game'] ?? '(none)');
 		});
 
 		// tick + load
@@ -646,12 +650,25 @@ try {
 		log('art pack', JSON.stringify(packA));
 		check(packA.kind === 'server' && packA.attested === true, 'art: the embed used the server pack path with the attestation recorded');
 		check(packA.files === fixture.files.length && packA.totalBytes === fixture.total_bytes, `art: the manifest drove the load (${packA.files} files, ${packA.totalBytes} B)`);
-		check(packA.networkBytes === fixture.total_bytes, `art: every file came off the network on the first load (${packA.networkBytes} B)`);
+		// A pack can list the same file twice (a shared asset: 148 entries / 146 unique URLs here). A duplicate is a
+		// Cache-Storage hit — UNLESS both copies are in flight at once (6-wide concurrency), so the first load fetches
+		// between the unique bytes and the full total. Both ends are correct behaviour; anything outside is not.
+		const uniq = [...new Map(fixture.files.map((f) => [f.url, f])).values()];
+		const uniqBytes = uniq.reduce((a, f) => a + f.bytes, 0);
+		check(
+			packA.networkBytes >= uniqBytes && packA.networkBytes <= fixture.total_bytes,
+			`art: the first load fetched every distinct file (${packA.networkBytes} B, expected ${uniqBytes}–${fixture.total_bytes} for ${uniq.length}/${fixture.files.length} unique)`
+		);
 		check(attestCalls.length === 0, `open: signed out, the tick posted nothing to /rr/attest (${attestCalls.length} calls)`);
-		check(packHeaders.length > 0 && packHeaders.every((h) => h === '1'), `open: X-RR-Owns-Game: 1 on every pack request (${packHeaders.filter((h) => h === '1').length}/${packHeaders.length})`);
+		check(packHeaders.length > 0 && packHeaders.every((h) => h === '1'), `open: X-RR-Owns-Game: 1 on every pack FILE request (${packHeaders.filter((h) => h === '1').length}/${packHeaders.length})`);
+		// the server gates per route with no session for an anonymous viewer: a manifest-only header would 403 every file
+		check(manifestHeaders.length > 0 && manifestHeaders.every((h) => h === '1'), `open: X-RR-Owns-Game: 1 on the MANIFEST request too (${manifestHeaders.join(',') || 'none seen'})`);
 		const owns = await pa.evaluate(() => localStorage.getItem('rr.owns.v1'));
 		check(!!owns && JSON.parse(owns).owns_game === true && typeof JSON.parse(owns).ts === 'number', `open: the acknowledgement is a versioned local record (${owns})`);
-		check(reqsA.length === fixture.files.length, `art: exactly the manifest's files were requested (${reqsA.length})`);
+		check(
+			reqsA.length >= uniq.length && reqsA.length <= fixture.files.length,
+			`art: only the manifest's files were requested (${reqsA.length}, expected ${uniq.length}–${fixture.files.length})`
+		);
 
 		// (2) byte-identical to the local directory pack: same names/offsets/lengths + the same frame-0 pixels
 		const rbArt = await frame0sha(pa, '__rrEmbed');
@@ -689,7 +706,7 @@ try {
 		}
 		const packB = await pb.evaluate(() => window.__rrEmbed.pack);
 		log('art pack (second load)', JSON.stringify(packB));
-		check(packB.networkBytes === 0 && packB.cachedFiles === fixture.files.length, `art: the second load is 100% Cache Storage — 0 network bytes, ${packB.cachedFiles} cached files`);
+		check(packB.networkBytes === 0 && packB.cachedFiles === fixture.files.length, `art: the second load is 100% Cache Storage — 0 network bytes, ${packB.cachedFiles}/${fixture.files.length} cached files`);
 		check(reqsB.length === 0, `art: no pack file hit the network on the second load (${reqsB.length} requests)`);
 		// the acknowledgement survived the reload with no account, so the second visit skipped the checkbox
 		check(await pb.evaluate(() => !!localStorage.getItem('rr.owns.v1')), 'open: the acknowledgement survives a reload without an account');
