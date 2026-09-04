@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIVE v2 — THE THEATRE · mobile mockup · Retro Receipts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Barlow+Condensed:ital,wght@1,800;1,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── THE ARENA tokens (pwa/src/app.css:6-33, dark) ── */
+:root{
+  --bg:#0a0c12;--panel:#12151f;--panel-2:#191d2b;--card:#161a28;--line:#272d3e;--line-soft:#1d2231;
+  --ink:#eef1f8;--dim:#8a91a8;--faint:#5a6178;--gold:#ffb020;--gold-ink:#241700;--gold-soft:rgba(255,176,32,.13);
+  --p1:#ff6a3d;--p2:#3fb1ff;--good:#35d07f;--live:#ff3d68;--molten:#ff5c2c;--stream:#8b6dff;--board:#0d1017;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#05060a;color:var(--ink);font:14px/1.45 Inter,'Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+h1,h2,h3,h4,p{margin:0}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:var(--ink);cursor:pointer}
+.mark{font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.rail{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;border:1px solid var(--line)}
+.pill.live{color:var(--live);background:color-mix(in srgb,var(--live) 12%,transparent);border-color:color-mix(in srgb,var(--live) 34%,var(--line))}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--live);flex:none}
+@media (prefers-reduced-motion:no-preference){.dot{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.ph{background:repeating-linear-gradient(135deg,var(--panel-2) 0 6px,#1e2333 6px 12px);border:1px dashed color-mix(in srgb,var(--faint) 55%,transparent);border-radius:8px;color:var(--faint);font:9px/1.25 'JetBrains Mono',monospace;display:grid;place-items:center;text-align:center;padding:2px;overflow:hidden}
+.ph.av{border-radius:50%;padding:0;font-size:7px}
+
+/* mockup scaffolding */
+.note{position:sticky;top:0;z-index:80;background:#1b1500;color:#ffd77a;border-bottom:1px solid #4a3a00;font:12px/1.4 'JetBrains Mono',monospace;padding:7px 14px;display:flex;gap:18px;flex-wrap:wrap}
+.note b{color:#ffb020}
+.frames{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;padding:26px 18px 70px;justify-content:center}
+.frame{flex:none;width:390px}
+.frame .cap{font:11px/1.4 'JetBrains Mono',monospace;color:#8a91a8;letter-spacing:.05em;margin-bottom:9px;min-height:44px}
+.frame .cap b{color:#ffd77a}
+.phone{width:390px;height:844px;border-radius:38px;border:8px solid #1c1f29;background:var(--bg);overflow:hidden;position:relative;box-shadow:0 30px 80px -30px rgba(0,0,0,.9)}
+.screen{position:absolute;inset:0;overflow:hidden;background:radial-gradient(120% 60% at 50% -10%,color-mix(in srgb,var(--gold) 8%,transparent),transparent 55%),var(--bg)}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:118px;height:26px;background:#05060a;border-radius:0 0 16px 16px;z-index:20}
+.wrap{padding:34px 12px 84px;height:100%;overflow:hidden}
+.annot{color:#ffd77a;font:10.5px/1.4 'JetBrains Mono',monospace;background:#1b1500;border:1px dashed #6a5200;border-radius:6px;padding:6px 9px;margin-top:10px}
+
+/* top bar + TabBar */
+.bar{display:flex;align-items:center;gap:9px;padding:6px 2px 9px;border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:900;font-size:13.5px}
+.cab{width:19px;height:19px;background:linear-gradient(135deg,#ffb020,#ff5c2c);clip-path:polygon(6% 0,94% 0,100% 100%,0 100%);border-radius:3px}
+.authslot{margin-left:auto;display:flex;gap:7px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:4px 8px;background:var(--panel)}
+.chip .g{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.tabbar{position:absolute;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:6px 6px 22px;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:var(--faint);font-size:10px;font-weight:700}
+.tab.on{color:var(--gold)}
+.tab i{width:20px;height:20px;border:2px solid currentColor;border-radius:6px;display:block;opacity:.8}
+
+/* masthead compact */
+.mast{position:relative;overflow:hidden;padding:9px 2px 6px}
+.ghost{position:absolute;right:0;top:-4px;font-size:52px;color:var(--ink);opacity:.05;text-transform:uppercase}
+.mrow{display:flex;align-items:center;gap:9px}
+.mtitle{font-size:21px;text-transform:uppercase}
+.seam{height:2px;width:84px;margin:6px 0 6px;background:linear-gradient(90deg,var(--live),transparent)}
+.mdesc{color:var(--dim);font-size:11.5px;line-height:1.4}
+
+/* ═══ theatre ═══ */
+.marq{display:flex;align-items:center;gap:7px;height:30px;margin-top:8px}
+.mtab{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800}
+.mtab .ic{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;font-size:8px;color:#fff;background:color-mix(in srgb,var(--stream) 78%,#000)}
+.onnow{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:var(--live);border:1px solid color-mix(in srgb,var(--live) 34%,var(--line));background:color-mix(in srgb,var(--live) 10%,transparent);border-radius:999px;padding:3px 7px}
+.browse{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--ink);border:1px solid color-mix(in srgb,var(--gold) 40%,var(--line));background:var(--panel-2);border-radius:8px;padding:7px 10px;min-height:34px}
+.msub{font:10px/1 'JetBrains Mono',monospace;color:var(--dim)}
+
+.pic{position:relative;width:366px;height:274.5px;background:#000;border:1px solid color-mix(in srgb,var(--stream) 30%,var(--line));border-radius:11px;overflow:hidden}
+.pic .art{position:absolute;inset:0;background:repeating-linear-gradient(135deg,#0f1320 0 8px,#141a2b 8px 16px);display:grid;place-items:center;text-align:center}
+.pic .artlbl{font:9.5px/1.6 'JetBrains Mono',monospace;color:#4a5470;letter-spacing:.04em}
+.pic .artlbl b{color:#6c7899}
+.ovl{position:absolute;inset:0;pointer-events:none;font-family:'JetBrains Mono',monospace}
+.ovl .pid{position:absolute;top:1px;display:flex;flex-direction:column;gap:1px}
+.ovl .pid.p1{left:5px;align-items:flex-start}
+.ovl .pid.p2{right:5px;align-items:flex-end}
+.ovl .nm{font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900;font-size:9px;line-height:9px;color:var(--ink);text-shadow:0 0 2px #000,1px 1px 0 #000,-1px 1px 0 #000}
+.ovl .nm.won{color:var(--gold)}
+.ovl .sk{font-size:6px;color:#c9cedd;text-shadow:0 0 2px #000}
+.ovl .sk i{font-style:normal;color:var(--stream)}
+.ovl .wm{position:absolute;left:50%;transform:translateX(-50%);bottom:17px;background:rgba(0,0,0,.5);border-radius:2px;padding:0 5px;font-size:6.5px;letter-spacing:.06em;color:rgba(255,255,255,.7)}
+
+.tr{display:flex;align-items:center;gap:7px;min-height:48px;padding:12px 8px 0;background:var(--panel);border:1px solid var(--line);border-top:0;border-radius:0 0 11px 11px;margin-top:-11px;padding-bottom:8px}
+.tbtn{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--dim);display:grid;place-items:center;font-size:13px;flex:none}
+.tbtn.pri{color:var(--ink);border-color:color-mix(in srgb,var(--stream) 45%,var(--line))}
+.scrub{position:relative;flex:1;height:10px;border-radius:999px;background:var(--line-soft)}
+.scrub .fill{position:absolute;left:0;top:0;bottom:0;width:36%;border-radius:999px;background:color-mix(in srgb,var(--stream) 70%,#fff)}
+.scrub .knob{position:absolute;left:36%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px color-mix(in srgb,var(--stream) 60%,transparent)}
+.tick{position:absolute;top:-3px;width:3px;height:16px;border-radius:1px;background:var(--stream);box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.tick.cl{width:5px;height:20px;top:-5px}
+.tick.cl::after{content:attr(data-n);position:absolute;left:50%;transform:translateX(-50%);top:-12px;font:8px/1 'JetBrains Mono',monospace;color:var(--stream)}
+.ro{font:10px/1 'JetBrains Mono',monospace;color:var(--dim);flex:none}
+.ro b{color:var(--ink)}
+
+.rec{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;font:9.5px/1.6 'JetBrains Mono',monospace;color:var(--dim);letter-spacing:.04em}
+.rec .mp{color:var(--ink);font-weight:700}
+.rec .fo{display:inline-flex;align-items:center;gap:3px;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.acts{display:flex;align-items:center;gap:8px;margin-top:9px}
+.abtn{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--dim);border:1px solid var(--line);background:var(--panel-2);border-radius:9px;padding:0 12px;min-height:44px}
+.abtn.on{color:var(--ink);border-color:color-mix(in srgb,var(--gold) 38%,var(--line))}
+.abtn.tape{margin-left:auto}
+
+/* comments below */
+.cm{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.cmhd{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1px solid var(--line-soft)}
+.cmhd h3{font-size:12.5px;font-weight:800}
+.cmhd .n{font:10.5px/1 'JetBrains Mono',monospace;color:var(--faint);border:1px solid var(--line);background:var(--panel-2);border-radius:999px;padding:2px 7px}
+.sortbtn{margin-left:auto;font:10px/1 'JetBrains Mono',monospace;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:5px 8px;background:var(--panel-2)}
+.c{display:grid;grid-template-columns:20px 1fr;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line-soft)}
+.c.new{border-left:2px solid var(--stream);padding-left:10px}
+.chd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
+.chd b{font-size:12.5px;font-weight:700}
+.chd .rk{width:13px;height:13px;border-radius:3px;background:linear-gradient(135deg,#8fa4c8,#4a5a7a);flex:none}
+.chd .rt{font:10px/1 'JetBrains Mono',monospace;color:var(--faint)}
+.fought{font:8.5px/1 'JetBrains Mono',monospace;font-weight:700;letter-spacing:.1em;color:var(--gold);border:1px solid color-mix(in srgb,var(--gold) 40%,var(--line));background:var(--gold-soft);border-radius:5px;padding:2px 5px}
+.jump{font:10px/1 'JetBrains Mono',monospace;font-weight:700;color:var(--stream);border:1px solid color-mix(in srgb,var(--stream) 45%,var(--line));background:color-mix(in srgb,var(--stream) 10%,transparent);border-radius:5px;padding:3px 7px}
+.cwhen{font:10px/1 'JetBrains Mono',monospace;color:var(--faint);margin-left:auto}
+.cbody{font-size:13px;line-height:1.45}
+.cbody.gen{color:var(--dim)}
+.cmfoot{padding:9px 12px;font-size:11px;color:var(--faint);background:var(--panel-2)}
+
+/* sticky composer at the foot of the comments block */
+.comp{position:sticky;bottom:0;z-index:12;padding:10px 12px 12px;background:color-mix(in srgb,var(--panel-2) 96%,transparent);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
+.anch{display:inline-flex;align-items:center;gap:6px;font:10px/1 'JetBrains Mono',monospace;color:var(--stream);border:1px solid color-mix(in srgb,var(--stream) 45%,var(--line));background:color-mix(in srgb,var(--stream) 12%,transparent);border-radius:6px;padding:5px 8px;margin-bottom:7px}
+.anch x{font-style:normal;color:var(--faint)}
+.crow{display:flex;gap:8px;align-items:flex-end}
+.ta{flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:13px/1.4 Inter,sans-serif;padding:11px 12px;resize:none}
+.ta::placeholder{color:var(--faint)}
+.post{font-size:12.5px;font-weight:900;font-style:italic;color:var(--gold-ink);background:linear-gradient(180deg,#ffe084,#c98f0e);border:0;border-radius:10px;padding:0 15px;min-height:44px;flex:none}
+.own{display:block;font-size:10.5px;color:var(--faint);margin-top:7px}
+.own b{color:var(--dim)}
+
+/* browse sheet */
+.sheet{position:absolute;left:0;right:0;bottom:0;height:88%;z-index:60;background:var(--panel);border-top:1px solid var(--line);border-radius:20px 20px 0 0;box-shadow:0 -24px 60px -20px #000;display:flex;flex-direction:column;overflow:hidden}
+.grab{width:38px;height:4px;border-radius:999px;background:var(--line);margin:9px auto 4px;flex:none}
+.shd{display:flex;align-items:center;gap:9px;padding:6px 13px 10px;border-bottom:1px solid var(--line-soft);flex:none}
+.shd h3{font-size:13.5px;font-weight:800}
+.shd .sub{font:9.5px/1 'JetBrains Mono',monospace;color:var(--faint)}
+.sx{margin-left:auto;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--dim);display:grid;place-items:center}
+.sfilt{padding:9px 13px;border-bottom:1px solid var(--line-soft);flex:none;display:flex;flex-direction:column;gap:8px}
+.scopes{display:flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:999px;background:var(--panel-2)}
+.scope{flex:1;border:0;background:transparent;color:var(--dim);border-radius:999px;padding:8px 4px;font-size:12px;font-weight:700;text-align:center}
+.scope.on{background:linear-gradient(180deg,#ffe084,#c98f0e);color:var(--gold-ink);font-style:italic}
+.cbx{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--dim)}
+.cbx i{width:15px;height:15px;border-radius:4px;border:1px solid var(--line);background:var(--panel-2);display:inline-grid;place-items:center;font-style:normal;font-size:9px;color:var(--gold)}
+.srows{flex:1;overflow:auto}
+.dimbg{position:absolute;inset:0;z-index:50;background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:blur(2px)}
+
+/* mobile MatchBanner fold (MatchBanner.svelte:258-296) */
+.mbm{display:grid;grid-template-columns:22px 1fr auto;grid-template-areas:"wa pa meta" "wb pb meta";gap:5px 9px;align-items:center;padding:11px 13px;border-bottom:1px solid var(--line-soft);min-height:56px}
+.mbm.sel{background:color-mix(in srgb,var(--stream) 8%,transparent);border-left:3px solid var(--stream);padding-left:10px}
+.wl{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-family:'Barlow Condensed',Inter,sans-serif;font-style:italic;font-weight:900;font-size:12px;border:1px solid var(--line);color:var(--dim)}
+.wl.w{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,var(--line));background:color-mix(in srgb,var(--good) 12%,transparent)}
+.pa{grid-area:pa}.pb{grid-area:pb}
+.prow{display:flex;align-items:center;gap:6px;min-width:0}
+.prow .team{display:flex;gap:2px}
+.pnm{font-size:12.5px;font-weight:700;white-space:nowrap}
+.pnm.won{color:var(--gold)}
+.prt{font:9.5px/1 'JetBrains Mono',monospace;color:var(--faint)}
+.mmeta{grid-area:meta;display:flex;flex-direction:column;align-items:flex-end;gap:4px;width:88px;font:9px/1.3 'JetBrains Mono',monospace;color:var(--faint);text-align:right}
+.ra{font:8.5px/1.5 'JetBrains Mono',monospace;font-weight:700;letter-spacing:.1em;color:#fff;background:color-mix(in srgb,var(--stream) 78%,#000);border:1px solid var(--stream);border-radius:6px;padding:2px 6px;white-space:nowrap}
+.ra.pend{color:var(--dim);background:transparent;border-color:color-mix(in srgb,var(--stream) 30%,var(--line))}
+
+/* sections */
+.sec{margin-top:16px}
+.shead{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;margin-bottom:7px}
+.shead .ic{width:15px;height:15px;border-radius:50%;display:inline-grid;place-items:center;flex:none}
+.shead .ic.on{background:color-mix(in srgb,var(--good) 20%,transparent)}
+.shead .ic.on i{width:8px;height:8px;border-radius:50%;background:var(--good);display:block}
+.shead .ic.res{width:8px;height:8px;background:var(--live)}
+.cnt{font-size:10.5px;font-weight:800;color:var(--faint);background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.mc{border:1px solid color-mix(in srgb,var(--gold) 26%,var(--line));border-radius:12px;background:linear-gradient(120deg,var(--gold-soft),transparent 75%),var(--panel);padding:10px 12px}
+.mchd{display:flex;justify-content:space-between;align-items:baseline}
+.mlab{font:9px/1 'JetBrains Mono',monospace;letter-spacing:.14em;color:var(--faint)}
+.pot{font:9.5px/1 'JetBrains Mono',monospace;color:var(--gold);font-weight:700}
+
+/* overlay states */
+.ov{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:6px;text-align:center;padding:18px}
+.ov .g{font-size:22px}
+.ov h4{font-size:14px;font-weight:800}
+.ov p{font-size:11.5px;color:var(--dim);max-width:36ch;line-height:1.4}
+
+/* share sheet (OS) */
+.osheet{position:absolute;left:0;right:0;bottom:0;z-index:70;background:#1a1c22;border-top:1px solid #2c303a;border-radius:18px 18px 0 0;padding:14px 14px 26px}
+.osheet .oh{font-size:12px;color:#9aa1b2;margin-bottom:12px}
+.osheet .apps{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;text-align:center}
+.osheet .app{font-size:9.5px;color:#c7ccd8}
+.osheet .app i{display:block;width:48px;height:48px;border-radius:14px;margin:0 auto 6px;background:linear-gradient(135deg,#2b3040,#1e222d);border:1px solid #343a48}
+</style>
+</head>
+<body>
+
+<div class="note">
+  <span><b>MOCKUP</b> · LIVE v2 — THE THEATRE · mobile 390×844</span>
+  <span>spec: <b>docs/LIVE-TAB-V2-SPEC.md</b> §1–§5</span>
+  <span>game art = <b>dashed placeholder boxes</b></span>
+</div>
+
+<div class="frames">
+
+  <!-- ═══ A — top of LIVE ═══ -->
+  <div class="frame">
+    <div class="cap"><b>A</b> — top of LIVE. The picture is the first thing under the masthead: 366×275 (viewport − 24). Everything the theatre needs fits above the fold.</div>
+    <div class="phone"><div class="notch"></div><div class="screen"><div class="wrap">
+
+      <div class="bar">
+        <span class="brand"><span class="cab"></span> RETRO RECEIPTS</span>
+        <span class="authslot"><span class="chip"><span class="g"></span></span><span class="chip">🪙 240</span><span class="ph av" style="width:26px;height:26px">AV</span></span>
+      </div>
+
+      <div class="mast">
+        <span class="ghost mark">ON AIR</span>
+        <div class="mrow"><h1 class="mtitle mark">LIVE</h1><span class="pill live"><span class="dot"></span>LIVE</span></div>
+        <div class="seam"></div>
+        <p class="mdesc">Money on the line, games in progress, results as they land.</p>
+      </div>
+
+      <div class="marq">
+        <span class="mtab"><span class="ic">▶</span> LATEST TAPE</span>
+        <span class="onnow"><span class="dot"></span> 2 ON NOW ›</span>
+        <button class="browse">⌕ BROWSE</button>
+      </div>
+      <div class="msub" style="margin-bottom:7px">Duc vs JFRESH · RANKED · 12m ago</div>
+
+      <div class="pic">
+        <div class="art"><div class="artlbl"><b>GAME PICTURE</b><br>640×480 re-render · 366×275 displayed<br>internal res 4×, box-filtered</div></div>
+        <div class="ovl">
+          <div class="pid p1"><span class="nm won">Duc</span><span class="sk">Skin by: <i>Ruby</i></span></div>
+          <div class="pid p2"><span class="nm">JFRESH</span><span class="sk">Skin by: <i>Ruby, Bob</i></span></div>
+          <div class="wm">RETRO RECEIPTS · NOBD.NET/APP/RANKS</div>
+        </div>
+      </div>
+
+      <div class="tr">
+        <button class="tbtn pri">⏸</button>
+        <div class="scrub">
+          <div class="fill"></div>
+          <span class="tick" style="left:14%"></span>
+          <span class="tick cl" data-n="4" style="left:35%"></span>
+          <span class="tick" style="left:60%"></span>
+          <span class="tick" style="left:76%"></span>
+          <div class="knob"></div>
+        </div>
+        <span class="ro"><b>0:42</b>/1:58</span>
+        <button class="tbtn">⛶</button>
+      </div>
+
+      <div class="rec">
+        <span class="mp">RANKED</span> · FT3 · G3 · CLOCK TOWER · 1:58
+        <span class="fo">◍ FIGHTERS ONLY</span>
+      </div>
+
+      <div class="acts">
+        <button class="abtn on">⧉ Copy link</button>
+        <button class="abtn">↗ Share</button>
+        <button class="abtn tape">🧾</button>
+      </div>
+
+      <div class="cm">
+        <div class="cmhd"><h3>💬 Comments</h3><span class="n">8</span><button class="sortbtn">newest ▾</button></div>
+        <div class="c new">
+          <span class="ph av" style="width:20px;height:20px">AV</span>
+          <div>
+            <div class="chd"><b>Duc</b><span class="rk"></span><span class="rt">1188</span><span class="fought">FOUGHT THIS</span><span class="cwhen">now</span></div>
+            <div class="chd"><span class="jump">@ 1:12</span></div>
+            <div class="cbody">i had the mash and i took the throw</div>
+          </div>
+        </div>
+      </div>
+
+      </div>
+      <div class="tabbar"><span class="tab on"><i></i>Live</span><span class="tab"><i></i>Ranks</span><span class="tab"><i></i>Bracket</span><span class="tab"><i></i>Skins</span></div>
+    </div></div>
+    <div class="annot">±5 s and the speed select are already hidden below 720 px (ReplayEmbed.svelte:1736-1758), so the transport stays 48 px with 36 px targets. Ticks are 3 px wide with 44 px tap areas; anything under 4 px apart is one cluster tick with a count.</div>
+  </div>
+
+  <!-- ═══ B — scrolled to the comments ═══ -->
+  <div class="frame">
+    <div class="cap"><b>B</b> — scrolled down. Comments live BELOW the theatre, inline, with the composer sticky at the foot of the block. Not a sheet: a sheet would cover the 366×275 picture and hide the timeline ticks.</div>
+    <div class="phone"><div class="notch"></div><div class="screen"><div class="wrap" style="padding-top:16px">
+
+      <div class="pic" style="height:206px">
+        <div class="art"><div class="artlbl"><b>GAME PICTURE</b> — still in view while you read</div></div>
+        <div class="ovl"><div class="pid p1"><span class="nm won">Duc</span></div><div class="pid p2"><span class="nm">JFRESH</span></div></div>
+      </div>
+      <div class="tr">
+        <button class="tbtn pri">▶</button>
+        <div class="scrub"><div class="fill" style="width:36%"></div><span class="tick" style="left:14%"></span><span class="tick cl" data-n="4" style="left:35%"></span><span class="tick" style="left:60%"></span><span class="tick" style="left:76%"></span><div class="knob"></div></div>
+        <span class="ro"><b>0:42</b>/1:58</span>
+        <button class="tbtn">⛶</button>
+      </div>
+
+      <div class="cm" style="display:flex;flex-direction:column;max-height:452px">
+        <div class="cmhd"><h3>💬 Comments</h3><span class="n">8</span><button class="sortbtn">newest ▾</button></div>
+        <div style="flex:1;overflow:auto">
+          <div class="c">
+            <span class="ph av" style="width:20px;height:20px">AV</span>
+            <div><div class="chd"><b>LurKMan</b><span class="rk"></span><span class="rt">1147</span><span class="cwhen">4m</span></div>
+            <div class="chd"><span class="jump">@ 0:42</span></div>
+            <div class="cbody">that reset is filthy — meaty on the wake-up every time</div></div>
+          </div>
+          <div class="c">
+            <span class="ph av" style="width:20px;height:20px">AV</span>
+            <div><div class="chd"><b>saltmine</b><span class="rk"></span><span class="rt">1032</span><span class="cwhen">6m</span></div>
+            <div class="chd"><span class="jump">@ 0:41</span></div>
+            <div class="cbody">rolled it. free.</div></div>
+          </div>
+          <div class="c">
+            <span class="ph av" style="width:20px;height:20px">AV</span>
+            <div><div class="chd"><b>Bobby</b><span class="rk"></span><span class="rt">1210</span><span class="cwhen">11m</span></div>
+            <div class="cbody gen">good set. run it back friday</div></div>
+          </div>
+          <div class="cmfoot">2 comments hidden by the players</div>
+        </div>
+        <div class="comp">
+          <span class="anch">@ 0:42 <x>✕</x></span>
+          <div class="crow">
+            <textarea class="ta" placeholder="Say something about 0:42…"></textarea>
+            <button class="post">Post</button>
+          </div>
+          <span class="own">Posts as <b>Tris · VIBRANIUM</b>. This is on their record.</span>
+        </div>
+      </div>
+
+      </div>
+      <div class="tabbar"><span class="tab on"><i></i>Live</span><span class="tab"><i></i>Ranks</span><span class="tab"><i></i>Bracket</span><span class="tab"><i></i>Skins</span></div>
+    </div></div>
+    <div class="annot">Anchored is the default — the chip carries the playhead; ✕ posts flat. Tapping a tick seeks AND scrolls this list to that comment (no hover exists, so one tap has one outcome). Tapping @ 0:42 seeks to that exact frame and pauses.</div>
+  </div>
+
+  <!-- ═══ C — BROWSE sheet ═══ -->
+  <div class="frame">
+    <div class="cap"><b>C</b> — BROWSE MATCHES as a bottom sheet at 88 dvh. The picture stays visible above it — you are choosing what to replace it with. Back gesture closes (pushState / history.back).</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="wrap" style="padding-top:34px">
+        <div class="marq"><span class="mtab"><span class="ic">▶</span> LATEST TAPE</span></div>
+        <div class="pic" style="height:150px"><div class="art"><div class="artlbl"><b>GAME PICTURE</b></div></div></div>
+      </div>
+      <div class="dimbg"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="shd"><h3>⌕ Browse matches</h3><span class="sub">newest 100</span><button class="sx">✕</button></div>
+        <div class="sfilt">
+          <div class="scopes"><button class="scope on">⚔</button><button class="scope">🎮</button><button class="scope">🏆</button><button class="scope">🪙</button></div>
+          <label class="cbx"><i>✓</i> Replayable only</label>
+        </div>
+        <div class="srows">
+          <div class="mbm sel">
+            <span class="wl w" style="grid-area:wa">W</span>
+            <span class="prow pa"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm won">Duc</span><span class="prt">1188</span></span>
+            <span class="wl" style="grid-area:wb">L</span>
+            <span class="prow pb"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm">JFRESH</span><span class="prt">1147</span></span>
+            <span class="mmeta">RANKED · 1:58<br>12m ago<span class="ra">▶ REPLAY</span></span>
+          </div>
+          <div class="mbm">
+            <span class="wl w" style="grid-area:wa">W</span>
+            <span class="prow pa"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm won">saltmine</span><span class="prt">1032</span></span>
+            <span class="wl" style="grid-area:wb">L</span>
+            <span class="prow pb"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm">Bobby</span><span class="prt">1210</span></span>
+            <span class="mmeta">RANKED · 2:34<br>31m ago<span class="ra">▶ REPLAY</span></span>
+          </div>
+          <div class="mbm">
+            <span class="wl w" style="grid-area:wa">W</span>
+            <span class="prow pa"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm won">LurKMan</span><span class="prt">1147</span></span>
+            <span class="wl" style="grid-area:wb">L</span>
+            <span class="prow pb"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm">Tris</span><span class="prt">1147</span></span>
+            <span class="mmeta">RANKED · 1:12<br>48m ago<span class="ra">▶ REPLAY</span></span>
+          </div>
+          <div class="mbm">
+            <span class="wl w" style="grid-area:wa">W</span>
+            <span class="prow pa"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm won">Bobby</span><span class="prt">1210</span></span>
+            <span class="wl" style="grid-area:wb">L</span>
+            <span class="prow pb"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm">Duc</span><span class="prt">1188</span></span>
+            <span class="mmeta">RANKED · 3:02<br>1h ago<span class="ra pend">⏳ INCOMING</span></span>
+          </div>
+          <div class="mbm">
+            <span class="wl w" style="grid-area:wa">W</span>
+            <span class="prow pa"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm won">Tris</span><span class="prt">1147</span></span>
+            <span class="wl" style="grid-area:wb">L</span>
+            <span class="prow pb"><span class="team"><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span><span class="ph" style="width:24px;height:24px">S</span></span><span class="pnm">saltmine</span><span class="prt">1032</span></span>
+            <span class="mmeta">RANKED · 2:11<br>2h ago<span class="ra">▶ REPLAY</span></span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:14px;padding:10px 0 20px;border-top:1px solid var(--line-soft)">
+          <button class="abtn" style="min-height:38px">‹ Prev</button>
+          <span style="display:flex;gap:7px"><i style="width:8px;height:8px;border-radius:50%;background:linear-gradient(180deg,#ffe084,#c98f0e);transform:scale(1.25)"></i><i style="width:8px;height:8px;border-radius:50%;background:var(--line)"></i><i style="width:8px;height:8px;border-radius:50%;background:var(--line)"></i></span>
+          <button class="abtn" style="min-height:38px">Next ›</button>
+        </div>
+      </div>
+    </div></div>
+    <div class="annot">Rows use the existing MatchBanner phone fold (MatchBanner.svelte:258-296): W/L + plate stacked per side, meta in the right column. ≥56 px per row. Picking one closes the sheet, swaps the theatre and sets ?m= via replaceState — no route change.</div>
+  </div>
+
+  <!-- ═══ D — share sheet + no-tape + sign-in ═══ -->
+  <div class="frame">
+    <div class="cap"><b>D</b> — ↗ Share opens the OS sheet (navigator.share). One control reaches Discord, X, Facebook, Instagram and TikTok honestly; no per-network buttons, because two of those five cannot take a link at all.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="wrap" style="padding-top:34px">
+        <div class="marq"><span class="mtab"><span class="ic">▶</span> LATEST TAPE</span></div>
+        <div class="pic" style="height:206px"><div class="art"><div class="artlbl"><b>GAME PICTURE</b></div></div><div class="ovl"><div class="pid p1"><span class="nm won">Duc</span></div><div class="pid p2"><span class="nm">JFRESH</span></div></div></div>
+        <div class="rec"><span class="mp">RANKED</span> · FT3 · G3 · CLOCK TOWER · 1:58</div>
+        <div class="acts"><button class="abtn on">⧉ Copy link</button><button class="abtn" style="border-color:var(--gold)">↗ Share</button></div>
+        <p style="font-size:11px;color:var(--faint);margin-top:8px;line-height:1.4">Paste it anywhere — Discord, X and Facebook unfurl the fight card.</p>
+      </div>
+      <div class="dimbg"></div>
+      <div class="osheet">
+        <div class="oh">nobd.net/s/4f8a1c?m=…</div>
+        <div class="apps">
+          <span class="app"><i></i>Discord</span>
+          <span class="app"><i></i>X</span>
+          <span class="app"><i></i>Messages</span>
+          <span class="app"><i></i>Instagram</span>
+          <span class="app"><i></i>More</span>
+        </div>
+      </div>
+    </div></div>
+    <div class="annot">navigator.share is used NOWHERE in the PWA today (grep: zero matches). Adding it is the highest-value share change available. Desktop has no OS sheet, so the button is simply absent there and the link does the work.</div>
+  </div>
+
+  <!-- ═══ E — honest states ═══ -->
+  <div class="frame">
+    <div class="cap"><b>E</b> — nothing replayable, and signed out. The theatre is never an empty box, and never only a picture: copy-link, share and comments all still work.</div>
+    <div class="phone"><div class="notch"></div><div class="screen"><div class="wrap">
+
+      <div class="marq"><span class="mtab"><span class="ic">▶</span> LATEST TAPE</span><button class="browse">⌕ BROWSE</button></div>
+      <div class="msub" style="margin-bottom:7px">LurKMan vs Tris · RANKED · 3m ago</div>
+
+      <div class="pic">
+        <div class="art" style="opacity:.4"><div class="artlbl"><b>POSTER — OG fight card</b><br>/rr/ogimg/&lt;session&gt;.png</div></div>
+        <div class="ov"><span class="g">⏳</span><h4>Tape not in yet.</h4><p>The agent uploads it after the set — check back in a minute.</p></div>
+      </div>
+      <div class="tr" style="opacity:.45"><button class="tbtn">▶</button><div class="scrub"></div><span class="ro"><b>0:00</b>/—</span><button class="tbtn">⛶</button></div>
+      <div class="rec"><span class="mp">RANKED</span> · FT3 · G2 · 2026-09-03 09:41</div>
+      <div class="acts"><button class="abtn on">⧉ Copy link</button><button class="abtn">↗ Share</button><button class="abtn tape">🧾</button></div>
+
+      <div class="cm">
+        <div class="cmhd"><h3>💬 Comments</h3><span class="n">8</span></div>
+        <div class="c"><span class="ph av" style="width:20px;height:20px">AV</span><div><div class="chd"><b>LurKMan</b><span class="rk"></span><span class="rt">1147</span><span class="cwhen">4m</span></div><div class="cbody gen">gg, that last one was close</div></div></div>
+        <div class="comp">
+          <p style="font-size:12.5px;margin-bottom:9px">Sign in with Steam to comment.</p>
+          <button style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:800;border-radius:10px;padding:0 15px;min-height:44px;color:#dfe9f5;background:linear-gradient(180deg,#2a475e,#1b2838);border:1px solid rgba(102,192,244,.35)">◉ Sign in through Steam</button>
+        </div>
+      </div>
+
+      </div>
+      <div class="tabbar"><span class="tab on"><i></i>Live</span><span class="tab"><i></i>Ranks</span><span class="tab"><i></i>Bracket</span><span class="tab"><i></i>Skins</span></div>
+    </div></div>
+    <div class="annot">No tape ⇒ no timeline ⇒ the composer opens flat with no anchor chip, rather than offering an anchor it cannot honour. Reading the wall stays open to everyone; the sign-in prompt appears in place on focus, never as a modal.</div>
+  </div>
+
+</div>
+</body>
+</html>
