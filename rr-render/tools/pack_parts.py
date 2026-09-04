@@ -97,6 +97,10 @@ def build_common(root, a):
             src = os.path.join(a.tcw, fn)
             if os.path.exists(src):
                 p.put('tcw/' + fn, src)
+    # portraits/index.json names EVERY character's DAT pages; the per-character PNGs live in the char
+    # parts so they dedupe. Without this file rr_render::pack falls back to the capture library's
+    # (different-roster) portraits -- the "wrong character's portrait/name" bug.
+    p.put('portraits/index.json', os.path.join(a.portraits, 'index.json'))
     p.put('camera_block.json', a.camera)
     for fz in FROZEN_FILES:
         p.put('frozen/' + fz, os.path.join(a.frozen, fz))
@@ -114,6 +118,14 @@ def build_char(root, a, cid):
             p.put('chars/%s_%s' % (nm, suf), g[0])
         else:
             p.missing.append(('chars/%s_%s' % (nm, suf), os.path.join(a.dasm, nm + '_DAT')))
+    # this character's HUD portrait / name-plate DAT pages (pack_assets.py:107-113). Named by DECIMAL cid
+    # (pc_42_p0.png), unlike every other char file, which is PL<hex> -- rip_portraits.py's naming.
+    pidx = os.path.join(a.portraits, 'index.json')
+    if os.path.exists(pidx):
+        for pv in json.load(open(pidx)).get('chars', {}).get(str(cid), {}).get('pages', []):
+            p.put('portraits/' + pv['file'], os.path.join(a.portraits, pv['file']))
+    else:
+        p.missing.append(('portraits/index.json', pidx))
     return p
 
 
@@ -197,6 +209,7 @@ def main():
     ap.add_argument('--tcw', default=os.path.join(REPLAY, 'tcw_pages'))
     ap.add_argument('--camera', default=os.path.join(REPLAY, 'camera_block.json'))
     ap.add_argument('--frozen', default=FROZEN)
+    ap.add_argument('--portraits', default=os.path.join(REPLAY, 'portraits'))
     ap.add_argument('--chars', nargs='*', help='hex char ids (default: every PL<XX> the atlas has)')
     ap.add_argument('--stages-only', nargs='*', dest='stage_ids',
                     help='hex stage/disc-file ids (default: every STG<XX>.json)')

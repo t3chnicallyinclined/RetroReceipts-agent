@@ -1,216 +1,250 @@
 {
-  "_": "DEV/LOCAL replay manifest (LIVE-TAB-SPEC §11): match id → {tape, pack} until the server's C1/C2 contracts exist. URLs are relative to the app base. Packs are ROM-derived: pwa/static/replay/packs/ is gitignored; in dev vite.config.ts streams them from the render lane's d3dcap/replay/packs folder. matchKey = the server's tape handle for that game (feed/session/profile rows carry it as match_key) - the only way a row maps to a pack. p1/p2 = the SteamID in each physical seat (from the tape's reporter side), for skins.",
-  "tapes": {
-    "local_stage9": {
-      "tape": "/replay/packs/local_stage9/tape.json.gz",
-      "pack": "/replay/packs/local_stage9",
-      "frames": 5222,
-      "stageId": 9,
-      "agent": "0.3.48",
-      "a": {
-        "steamid": "76561197999665347",
-        "name": "Tris",
-        "team": [
-          42,
-          52,
-          44
-        ]
-      },
-      "b": {
-        "steamid": "",
-        "name": "local P2",
-        "team": [
-          23,
-          12,
-          46
-        ]
-      },
-      "winner": "a",
-      "mode": "lobby",
-      "ts": 1788462750766,
-      "p1": "76561197999665347",
-      "p2": ""
-    },
-    "59613662": {
-      "tape": "/replay/packs/59613662/tape.json.gz",
-      "pack": "/replay/packs/59613662",
-      "frames": 6272,
-      "stageId": 13,
-      "agent": "0.3.39",
-      "sessionId": "s_76561197999665347_76561199789482789_1a065872300",
-      "a": {
-        "steamid": "76561197999665347",
-        "name": "Tris",
-        "team": [
-          52,
-          44,
-          8
-        ]
-      },
-      "b": {
-        "steamid": "76561199789482789",
-        "name": "",
-        "team": [
-          42,
-          44,
-          50
-        ]
-      },
-      "winner": "b",
-      "mode": "ranked",
-      "ts": 1788409850210,
-      "matchKey": "76561197999665347_76561199789482789_76561199789482789_59613662",
-      "gameNo": 1,
-      "p1": "76561199789482789",
-      "p2": "76561197999665347"
-    },
-    "local_stage9_srv": {
-      "_": "DEV FIXTURE: the same pack as local_stage9 with an `overlay` block as the server will ship it with a tape read (HANDOFF-LANE1-REPLAY-DATA.md STEP 4b) -- the smoke asserts names/credits/watermark render from it VERBATIM (row names differ on purpose; ?devcredit is ignored)",
-      "tape": "/replay/packs/local_stage9/tape.json.gz",
-      "pack": "/replay/packs/local_stage9",
-      "frames": 5222,
-      "stageId": 9,
-      "agent": "0.3.48",
-      "a": {
-        "steamid": "76561197999665347",
-        "name": "Tris",
-        "team": [
-          42,
-          52,
-          44
-        ]
-      },
-      "b": {
-        "steamid": "",
-        "name": "local P2",
-        "team": [
-          23,
-          12,
-          46
-        ]
-      },
-      "winner": "a",
-      "mode": "lobby",
-      "ts": 1788400000000,
-      "p1": "76561197999665347",
-      "p2": "",
-      "overlay": {
-        "template": null,
-        "version": 1,
-        "meta": {
-          "mode": "ranked",
-          "ft": 3,
-          "game": 2,
-          "date_ms": 1788400000000,
-          "stage_id": 9,
-          "duration_s": 87,
-          "p1": {
-            "steamid": "76561197999665347",
-            "name": "Server P1",
-            "rank": "VIBRANIUM",
-            "rating": 1147,
-            "won": true,
-            "team": [
-              42,
-              52,
-              44
-            ],
-            "credits": [
-              {
-                "cid": 42,
-                "name": "NIGHTFALL",
-                "author_steamid": "76561198000000002",
-                "author_name": "Zed"
-              },
-              {
-                "cid": 52,
-                "name": "GOLDEN AGE",
-                "author_steamid": "76561198000000002",
-                "author_name": "Zed"
-              }
-            ]
-          },
-          "p2": {
-            "steamid": "76561198000000001",
-            "name": "Server P2",
-            "rating": 1180,
-            "won": false,
-            "team": [
-              23,
-              12,
-              46
-            ],
-            "credits": []
-          },
-          "watermark": "SERVER WATERMARK · nobd.net/app/ranks"
-        }
-      }
-    },
-    "local_stage9_art": {
-      "_": "DEV FIXTURE: the same tape, but its art comes from a SERVER-SHAPED pack manifest (mirrors GET /rr/packs/manifest?key=) instead of the local directory -- exercises the ownership checkbox, the manifest+files assembly, sha256 verification and the Cache Storage hit. scripts/smoke-replay.mjs writes static/replay/packfix/manifest.json (gitignored) from the real pack before the run.",
-      "tape": "/replay/packs/local_stage9/tape.json.gz",
-      "pack": "/replay/packs/local_stage9",
-      "frames": 5222,
-      "stageId": 9,
-      "agent": "0.3.48",
-      "a": {
-        "steamid": "76561197999665347",
-        "name": "Tris",
-        "team": [
-          42,
-          52,
-          44
-        ]
-      },
-      "b": {
-        "steamid": "",
-        "name": "local P2",
-        "team": [
-          23,
-          12,
-          46
-        ]
-      },
-      "winner": "a",
-      "mode": "lobby",
-      "ts": 1788300000000,
-      "p1": "76561197999665347",
-      "p2": "",
-      "packSrv": {
-        "manifest_url": "/replay/packfix/manifest.json",
-        "attested": false
-      }
-    },
-    "local_stage9_limited": {
-      "_": "DEV FIXTURE: local_stage9 with the four world sections (nodes/anodes/aobjs/palrows) stripped and ver forced to 0.3.31 -- i.e. exactly what an agent before 0.3.34 recorded: fighters only, no stage, no HUD. scripts/smoke-replay.mjs --limited generates the tape into static/replay/packfix/ (gitignored). Exercises the LIMITED marker + the update nudge against the SAME pack as the full row.",
-      "tape": "/replay/packfix/limited.json.gz",
-      "pack": "/replay/packs/local_stage9",
-      "frames": 5222,
-      "stageId": null,
-      "agent": "0.3.31",
-      "a": {
-        "steamid": "76561197999665347",
-        "name": "Tris",
-        "team": [
-          42,
-          52,
-          44
-        ]
-      },
-      "b": {
-        "steamid": "",
-        "name": "local P2",
-        "team": [
-          23,
-          12,
-          46
-        ]
-      },
-      "winner": "a",
-      "mode": "lobby",
-      "ts": 1788200000000,
-      "p1": "76561197999665347",
-      "p2": ""
+ "_": "DEV/LOCAL replay manifest (LIVE-TAB-SPEC §11): match id → {tape, pack} until the server's C1/C2 contracts exist. URLs are relative to the app base. Packs are ROM-derived: pwa/static/replay/packs/ is gitignored; in dev vite.config.ts streams them from the render lane's d3dcap/replay/packs folder. matchKey = the server's tape handle for that game (feed/session/profile rows carry it as match_key) - the only way a row maps to a pack. p1/p2 = the SteamID in each physical seat (from the tape's reporter side), for skins.",
+ "tapes": {
+  "local_stage9": {
+   "tape": "/replay/packs/local_stage9/tape.json.gz",
+   "pack": "/replay/packs/local_stage9",
+   "frames": 5222,
+   "stageId": 9,
+   "agent": "0.3.48",
+   "a": {
+    "steamid": "76561197999665347",
+    "name": "Tris",
+    "team": [
+     42,
+     52,
+     44
+    ]
+   },
+   "b": {
+    "steamid": "",
+    "name": "local P2",
+    "team": [
+     23,
+     12,
+     46
+    ]
+   },
+   "winner": "a",
+   "mode": "lobby",
+   "ts": 1788462750766,
+   "p1": "76561197999665347",
+   "p2": ""
+  },
+  "59613662": {
+   "tape": "/replay/packs/59613662/tape.json.gz",
+   "pack": "/replay/packs/59613662",
+   "frames": 6272,
+   "stageId": 13,
+   "agent": "0.3.39",
+   "sessionId": "s_76561197999665347_76561199789482789_1a065872300",
+   "a": {
+    "steamid": "76561197999665347",
+    "name": "Tris",
+    "team": [
+     52,
+     44,
+     8
+    ]
+   },
+   "b": {
+    "steamid": "76561199789482789",
+    "name": "",
+    "team": [
+     42,
+     44,
+     50
+    ]
+   },
+   "winner": "b",
+   "mode": "ranked",
+   "ts": 1788409850210,
+   "matchKey": "76561197999665347_76561199789482789_76561199789482789_59613662",
+   "gameNo": 1,
+   "p1": "76561199789482789",
+   "p2": "76561197999665347"
+  },
+  "local_stage9_srv": {
+   "_": "DEV FIXTURE: the same pack as local_stage9 with an `overlay` block as the server will ship it with a tape read (HANDOFF-LANE1-REPLAY-DATA.md STEP 4b) -- the smoke asserts names/credits/watermark render from it VERBATIM (row names differ on purpose; ?devcredit is ignored)",
+   "tape": "/replay/packs/local_stage9/tape.json.gz",
+   "pack": "/replay/packs/local_stage9",
+   "frames": 5222,
+   "stageId": 9,
+   "agent": "0.3.48",
+   "a": {
+    "steamid": "76561197999665347",
+    "name": "Tris",
+    "team": [
+     42,
+     52,
+     44
+    ]
+   },
+   "b": {
+    "steamid": "",
+    "name": "local P2",
+    "team": [
+     23,
+     12,
+     46
+    ]
+   },
+   "winner": "a",
+   "mode": "lobby",
+   "ts": 1788400000000,
+   "p1": "76561197999665347",
+   "p2": "",
+   "overlay": {
+    "template": null,
+    "version": 1,
+    "meta": {
+     "mode": "ranked",
+     "ft": 3,
+     "game": 2,
+     "date_ms": 1788400000000,
+     "stage_id": 9,
+     "duration_s": 87,
+     "p1": {
+      "steamid": "76561197999665347",
+      "name": "Server P1",
+      "rank": "VIBRANIUM",
+      "rating": 1147,
+      "won": true,
+      "team": [
+       42,
+       52,
+       44
+      ],
+      "credits": [
+       {
+        "cid": 42,
+        "name": "NIGHTFALL",
+        "author_steamid": "76561198000000002",
+        "author_name": "Zed"
+       },
+       {
+        "cid": 52,
+        "name": "GOLDEN AGE",
+        "author_steamid": "76561198000000002",
+        "author_name": "Zed"
+       }
+      ]
+     },
+     "p2": {
+      "steamid": "76561198000000001",
+      "name": "Server P2",
+      "rating": 1180,
+      "won": false,
+      "team": [
+       23,
+       12,
+       46
+      ],
+      "credits": []
+     },
+     "watermark": "SERVER WATERMARK · nobd.net/app/ranks"
     }
+   }
+  },
+  "local_stage9_art": {
+   "_": "DEV FIXTURE: the same tape, but its art comes from a SERVER-SHAPED pack manifest (mirrors GET /rr/packs/manifest?key=) instead of the local directory -- exercises the ownership checkbox, the manifest+files assembly, sha256 verification and the Cache Storage hit. scripts/smoke-replay.mjs writes static/replay/packfix/manifest.json (gitignored) from the real pack before the run.",
+   "tape": "/replay/packs/local_stage9/tape.json.gz",
+   "pack": "/replay/packs/local_stage9",
+   "frames": 5222,
+   "stageId": 9,
+   "agent": "0.3.48",
+   "a": {
+    "steamid": "76561197999665347",
+    "name": "Tris",
+    "team": [
+     42,
+     52,
+     44
+    ]
+   },
+   "b": {
+    "steamid": "",
+    "name": "local P2",
+    "team": [
+     23,
+     12,
+     46
+    ]
+   },
+   "winner": "a",
+   "mode": "lobby",
+   "ts": 1788300000000,
+   "p1": "76561197999665347",
+   "p2": "",
+   "packSrv": {
+    "manifest_url": "/replay/packfix/manifest.json",
+    "attested": false
+   }
+  },
+  "local_stage9_limited": {
+   "_": "DEV FIXTURE: local_stage9 with the four world sections (nodes/anodes/aobjs/palrows) stripped and ver forced to 0.3.31 -- i.e. exactly what an agent before 0.3.34 recorded: fighters only, no stage, no HUD. scripts/smoke-replay.mjs --limited generates the tape into static/replay/packfix/ (gitignored). Exercises the LIMITED marker + the update nudge against the SAME pack as the full row.",
+   "tape": "/replay/packfix/limited.json.gz",
+   "pack": "/replay/packs/local_stage9",
+   "frames": 5222,
+   "stageId": null,
+   "agent": "0.3.31",
+   "a": {
+    "steamid": "76561197999665347",
+    "name": "Tris",
+    "team": [
+     42,
+     52,
+     44
+    ]
+   },
+   "b": {
+    "steamid": "",
+    "name": "local P2",
+    "team": [
+     23,
+     12,
+     46
+    ]
+   },
+   "winner": "a",
+   "mode": "lobby",
+   "ts": 1788200000000,
+   "p1": "76561197999665347",
+   "p2": ""
+  },
+  "59616461": {
+   "_": "DEV FIXTURE (2026-09-04): the WRONG-HUD-CHARACTERS tape. Teams are Storm/Magneto/Colossus vs Storm/Magneto/Psylocke -- Sentinel (52) is in NEITHER, so any Sentinel portrait or name plate on screen is the frozen capture-library roster and the bug is back. The discriminating case: local_stage9 has Sentinel legitimately on the team and can never show it.",
+   "tape": "/replay/packs/59616461/tape.json.gz",
+   "pack": "/replay/packs/59616461",
+   "frames": 3400,
+   "stageId": 10,
+   "agent": "0.3.50",
+   "sessionId": "s_76561197999665347_76561198047120675_1a06a773a40",
+   "a": {
+    "steamid": "76561197999665347",
+    "name": "TRIS NOBDOG",
+    "team": [
+     42,
+     44,
+     50
+    ]
+   },
+   "b": {
+    "steamid": "76561198047120675",
+    "name": "if you lag im out",
+    "team": [
+     42,
+     44,
+     8
+    ]
+   },
+   "winner": "b",
+   "mode": "ranked",
+   "ts": 1788493840618,
+   "matchKey": "76561197999665347_76561198047120675_76561198047120675_59616461",
+   "gameNo": 10,
+   "p1": "76561197999665347",
+   "p2": "76561198047120675"
   }
+ }
 }
