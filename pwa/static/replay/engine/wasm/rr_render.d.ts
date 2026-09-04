@@ -12,7 +12,7 @@ export class WebFeed {
     info(): string;
     /**
      * `pack_index_json` = `[{"name": "chars/PL2A_idx.png", "off": 0, "len": 123}, ...]` into `pack_blob`;
-     * `opts_json` = a subset of EmitOpts fields ({"no_world": bool, "no_preamble": bool, "pal_lag": n, "bank": n, "no_palrow_resolve": bool}).
+     * `opts_json` = a subset of EmitOpts fields ({"no_world": bool, "no_preamble": bool, "pal_lag": n, "bank": n, "no_palrow_resolve": bool, "legacy_torn_guard": bool}).
      */
     constructor(tape: Uint8Array, pack_index_json: string, pack_blob: Uint8Array, opts_json: string);
 }
