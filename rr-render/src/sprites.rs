@@ -8,7 +8,7 @@ use crate::assets::Atlas;
 use crate::camera::{scene_p, sprite_vertex_z, CameraModel};
 use crate::state::WorldTemplate;
 use crate::tape::{Node, Page, Pal256, Tape};
-use crate::util::{sha8, OrderedMap};
+use crate::util::{sha8, BlobStore, IbSegs, OrderedMap, VbSegs};
 use crate::world::{self, WorldAssets, WorldState};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -51,13 +51,15 @@ pub type Texture = Page;
 pub struct Draw {
     pub first_index: u32, pub index_count: u32, pub stride: u32, pub voff: u32,
     pub tex: [Option<String>; 2],
-    pub state: Map<String, Value>,
+    /// the interned pipeline-state map (shared by every draw that selected it) and its content fingerprint --
+    /// `state_fp` is what the feed keys its state table on, so no draw re-walks the map
+    pub state: std::rc::Rc<Map<String, Value>>, pub state_fp: u64,
     pub vscb: Option<[Option<String>; 4]>, pub pscb: Option<[Option<String>; 4]>,
     pub cat: u8, pub key: Option<f64>, pub sub: (i64, i64, i64), pub inherit_cull: bool,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Frame { pub frame: i64, pub verts: Vec<u8>, pub idxs: Vec<u32>, pub draws: Vec<Draw> }
+pub struct Frame { pub frame: i64, pub verts: VbSegs, pub idxs: IbSegs, pub draws: Vec<Draw> }
 
 #[derive(Default, Debug)]
 pub struct Stats {
@@ -70,7 +72,9 @@ pub struct Stats {
 /// Per-frame buffers plus the cross-frame tables the passes append to (`textures`, `cb_recs`), the submission
 /// sequence counter (`next_sub`) and the ring cull state (`last_cull`).
 pub struct FrameCtx {
-    pub verts: Vec<u8>, pub idxs: Vec<u32>, pub draws: Vec<Draw>,
+    pub verts: VbSegs, pub idxs: IbSegs, pub draws: Vec<Draw>,
+    /// shared geometry blobs (the static stage deck), first-seen order -- see `util::BlobStore`
+    pub blobs: BlobStore,
     pub textures: OrderedMap<Texture>,
     /// constant buffers by hash (sha8 / pack hash) -> bytes, first-seen order
     pub cb_recs: OrderedMap<Vec<u8>>,
@@ -93,7 +97,7 @@ pub struct Emitter {
     pub wt: WorldTemplate,
     world_assets: Option<WorldAssets>,
     world_state: Option<WorldState>,
-    sprite_state: Map<String, Value>,
+    sprite_state: crate::state::StateRc,
     pub opts: EmitOpts,
     p1: Vec<u8>, p2: Vec<u8>,
     nodes: BTreeMap<u32, Vec<Node>>,
@@ -102,7 +106,9 @@ pub struct Emitter {
     unknown_slots: Vec<u8>,
     pub textures: OrderedMap<Texture>,
     pub cb_recs: OrderedMap<Vec<u8>>,
+    pub blobs: BlobStore,
     pub stats: Stats,
+    prof_rows: u64,
 }
 
 fn floor_mul(v: f64, k: f64) -> f64 { v.floor() * k }
@@ -127,8 +133,9 @@ impl Emitter {
         let world_assets = if !tape.anodes.is_empty() && !opts.no_world && camera.is_some() { world_assets } else { None };
         let world_state = world_assets.as_ref().map(|a| WorldState::new(a, &tape));
         let nodes = tape.nodes.clone();
+        let sprite_state = { let m = sprite_state; let fp = crate::util::state_fp(&m); (std::rc::Rc::new(m), fp) };
         Emitter { tape, atlases, camera, wt, world_assets, world_state, sprite_state, opts, p1, p2, nodes, last_nodes: None,
-                  bank_slot, unknown_slots, textures: OrderedMap::new(), cb_recs: OrderedMap::new(), stats: Stats::default() }
+                  bank_slot, unknown_slots, textures: OrderedMap::new(), cb_recs: OrderedMap::new(), blobs: BlobStore::default(), stats: Stats::default(), prof_rows: 0 }
     }
 
     pub fn world_enabled(&self) -> bool { self.world_assets.is_some() }
@@ -141,25 +148,19 @@ impl Emitter {
 
     /// One tape row -> one frame. Mirrors the body of `for r in rows:` in main().
     pub fn emit_row(&mut self, row: usize) -> Option<Frame> {
-        #[cfg(not(target_arch = "wasm32"))]
-        thread_local! { static PROF: std::cell::RefCell<std::collections::HashMap<String, (f64, u64)>> = std::cell::RefCell::new(std::collections::HashMap::new()); }
-        // RR_PROF=1 (native only): per-phase timing, printed every 60 rows
-        #[cfg(not(target_arch = "wasm32"))]
-        let prof = std::env::var("RR_PROF").is_ok();
-        #[cfg(not(target_arch = "wasm32"))]
-        let mut tick = std::time::Instant::now();
-        #[cfg(not(target_arch = "wasm32"))]
-        let lap = |name: &str, tick: &mut std::time::Instant| { if prof { let d = tick.elapsed().as_secs_f64() * 1000.0; PROF.with(|c| { let mut m = c.borrow_mut(); let e = m.entry(name.to_string()).or_insert((0.0, 0)); e.0 += d; e.1 += 1; }); *tick = std::time::Instant::now(); } };
+        use crate::util::prof;
+        let mut tick = prof::now();
         let r = self.tape.frames.get(row)?.clone();
         let fr_clock = self.tape.num(&r, "frame").unwrap_or(0.0) as i64;
         let frc = fr_clock as u32;
-        let mut ctx = FrameCtx { verts: Vec::new(), idxs: Vec::new(), draws: Vec::new(),
+        let mut ctx = FrameCtx { verts: VbSegs::default(), idxs: IbSegs::default(), draws: Vec::new(),
+                                 blobs: std::mem::take(&mut self.blobs),
                                  textures: std::mem::take(&mut self.textures), cb_recs: std::mem::take(&mut self.cb_recs),
                                  stats: std::mem::take(&mut self.stats), sub_seq: 0, last_cull: None };
 
         // ── FRAME PREAMBLE (three clear quads)
         if self.world_assets.is_some() && !self.opts.no_preamble { world::emit_preamble(&mut ctx, &self.wt, &self.tape, &r); }
-        #[cfg(not(target_arch = "wasm32"))] lap("preamble", &mut tick);
+        prof::lap("preamble", &mut tick);
 
         // ── the ordered items (bodies AND objects)
         let have_nodes = !self.nodes.is_empty();
@@ -234,34 +235,35 @@ impl Emitter {
         });
 
         // ── stage + world lists 5/6/12/13: behind the sprites
-        #[cfg(not(target_arch = "wasm32"))] lap("items", &mut tick);
+        prof::lap("items", &mut tick);
         if let (Some(assets), Some(cm), Some(ws)) = (&self.world_assets, &self.camera, self.world_state.as_mut()) {
             world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[5, 6, 12, 13]);
         }
-        #[cfg(not(target_arch = "wasm32"))] lap("world 5/6/12/13", &mut tick);
+        prof::lap("world 5/6/12/13", &mut tick);
         // ── the sprites
         emit_sprites(&self.tape, &self.opts, &self.sprite_state, have_nodes, &mut ctx, items, ps);
-        #[cfg(not(target_arch = "wasm32"))] lap("sprites", &mut tick);
+        prof::lap("sprites", &mut tick);
         // ── effects/shadows/markers after the sprites, the HUD last
         if let (Some(assets), Some(cm), Some(ws)) = (&self.world_assets, &self.camera, self.world_state.as_mut()) {
             world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[7, 8, 9]);
             world::emit_world(&mut ctx, &self.wt, cm, assets, ws, &self.tape, &r, frc, &[11]);
         }
-        #[cfg(not(target_arch = "wasm32"))] lap("world 7/8/9/11", &mut tick);
+        prof::lap("world 7/8/9/11", &mut tick);
         order_draws(&mut ctx.draws, self.opts.legacy_order, &mut ctx.stats.order);
-        #[cfg(not(target_arch = "wasm32"))] lap("order", &mut tick);
-        #[cfg(not(target_arch = "wasm32"))]
-        if prof { PROF.with(|c| { let m = c.borrow(); let n = m.values().map(|e| e.1).max().unwrap_or(0); if n > 0 && n % 60 == 0 { let mut v: Vec<_> = m.iter().collect(); v.sort_by(|a, b| b.1.0.partial_cmp(&a.1.0).unwrap()); eprintln!("[prof] {} rows: {}", n, v.iter().map(|(k, e)| format!("{} {:.2} ms", k, e.0 / e.1 as f64)).collect::<Vec<_>>().join(" | ")); } }); }
+        prof::lap("order", &mut tick);
+        self.prof_rows += 1;
+        if prof::on() && self.prof_rows % 60 == 0 { eprintln!("[prof] {} rows: {}", self.prof_rows, prof::report(self.prof_rows)); }
         world::fold_world_stats(&mut ctx);
+        prof::lap("row:fold", &mut tick);
         ctx.stats.drawn_total += ctx.draws.len() as u64;
         let fr = Frame { frame: fr_clock, verts: ctx.verts, idxs: ctx.idxs, draws: ctx.draws };
-        self.textures = ctx.textures; self.cb_recs = ctx.cb_recs; self.stats = ctx.stats;
+        self.textures = ctx.textures; self.cb_recs = ctx.cb_recs; self.blobs = ctx.blobs; self.stats = ctx.stats;
         Some(fr)
     }
 }
 
 /// The sprite quad loop of main() (`for lay, at, sid, tsx, tsy, mir, kind, cos, extra in items:`).
-fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &Map<String, Value>, have_nodes: bool, ctx: &mut FrameCtx, items: Vec<Item>, ps: Option<[[f32; 4]; 4]>) {
+fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &crate::state::StateRc, have_nodes: bool, ctx: &mut FrameCtx, items: Vec<Item>, ps: Option<[[f32; 4]; 4]>) {
     {
         let v3pals = &tape.pals;
         for it in items {
@@ -398,7 +400,7 @@ fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &Map<String, Value>,
                 let fi = ctx.idxs.len() as u32;
                 ctx.idxs.extend_from_slice(&[first, first + 1, first + 2, first + 2, first + 1, first + 3]);
                 ctx.draws.push(Draw { first_index: fi, index_count: 6, stride: STRIDE as u32, voff: 0, tex: [Some(key), Some(palkey)],
-                                      state: sprite_state.clone(), vscb: None, pscb: None,
+                                      state: sprite_state.0.clone(), state_fp: sprite_state.1, vscb: None, pscb: None,
                                       cat: 3, key: dkey, sub: (0, it.walk, ri as i64), inherit_cull: false });
             }
         }
@@ -430,7 +432,10 @@ pub fn order_draws(draws: &mut Vec<Draw>, legacy: bool, stats: &mut BTreeMap<Str
     out.extend(phase3);
     for i in 0..out.len() {
         if out[i].inherit_cull && i > 0 {
-            if let Some(rs) = out[i - 1].state.get("raster").cloned() { out[i].state.insert("raster".into(), rs); }
+            if let Some(rs) = out[i - 1].state.get("raster").cloned() {
+                std::rc::Rc::make_mut(&mut out[i].state).insert("raster".into(), rs);
+                out[i].state_fp = crate::util::state_fp(&out[i].state);
+            }
         }
         out[i].inherit_cull = false;
         *stats.entry(format!("cat {}", out[i].cat)).or_insert(0) += 1;

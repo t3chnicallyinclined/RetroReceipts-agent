@@ -8,7 +8,8 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PY=C:/Users/trist/projects/mvc-live-skins-quarters/d3dcap/replay
-GS="$LOCALAPPDATA/RetroReceipts/gs-cache"
+# gs-cache is a ring and rolls over; the four gate tapes live in replay-kit/tapes-kept (2026-09-04)
+GS=C:/Users/trist/projects/mvc-live-skins-quarters/replay-kit/tapes-kept
 KEPT=C:/Users/trist/projects/mvc-live-skins-quarters/replay-kit/tapes-kept
 OUT="${GATE_OUT:-$TEMP/rr-render-gate}"; mkdir -p "$OUT"
 EMIT="$HERE/../target/release/emit_seq.exe"

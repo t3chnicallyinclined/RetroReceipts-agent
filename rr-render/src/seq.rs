@@ -110,7 +110,7 @@ impl SeqWriter {
     }
 
     /// Intern this frame's NEW textures and constant buffers (first-seen order), then vb and ib; append the head.
-    pub fn push_frame(&mut self, tpl: &Template, textures: &OrderedMap<Texture>, cb_recs: &OrderedMap<Vec<u8>>, fr: &Frame) {
+    pub fn push_frame(&mut self, tpl: &Template, textures: &OrderedMap<Texture>, cb_recs: &OrderedMap<Vec<u8>>, blobs: &crate::util::BlobStore, fr: &Frame) {
         while self.tex_recs.len() < textures.len() {
             let i = self.tex_recs.len();
             let t = &textures.vals[i];
@@ -125,9 +125,12 @@ impl SeqWriter {
             if !self.cb_recs.contains_key(h) { let r = self.intern(b); self.cb_recs.insert(h.clone(), r); }   // setdefault
             self.cb_interned += 1;
         }
-        let vb = self.intern(&fr.verts);
-        let mut ib = Vec::with_capacity(fr.idxs.len() * 4);
-        for i in &fr.idxs { ib.extend_from_slice(&i.to_le_bytes()); }
+        // the `.seq` container carries whole buffers: flatten the segments (shared blobs inlined) so the
+        // gate output is byte-identical to the pre-sharing writer.
+        let vb = self.intern(&fr.verts.flatten(blobs));
+        let idxs = fr.idxs.flatten(blobs);
+        let mut ib = Vec::with_capacity(idxs.len() * 4);
+        for i in &idxs { ib.extend_from_slice(&i.to_le_bytes()); }
         let ib = self.intern(&ib);
         let mut used: OrderedMap<()> = OrderedMap::new();
         let mut draws = Vec::with_capacity(fr.draws.len());
@@ -175,7 +178,7 @@ impl SeqWriter {
 
 /// `d = dict(state); d.update({'i', 'firstIndex', 'indexCount', 'stride', 'voff', 'tex' [, 'vscbHash', 'pscbHash']})`
 fn draw_json(i: usize, d: &Draw) -> Value {
-    let mut m = d.state.clone();
+    let mut m = (*d.state).clone();
     m.insert("i".into(), json!(i));
     m.insert("firstIndex".into(), json!(d.first_index));
     m.insert("indexCount".into(), json!(d.index_count));

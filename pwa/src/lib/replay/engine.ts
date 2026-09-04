@@ -91,7 +91,7 @@ interface EngineModule {
 }
 
 /** Bumped by the release: the engine files are static, so their URL must change when they do. */
-const ENGINE_BUILD = '20260904a';
+const ENGINE_BUILD = '20260904c';
 
 let mod: Promise<EngineModule> | null = null;
 

@@ -12,7 +12,7 @@ use crate::camera::{scene_p, scene_v, CameraModel};
 use crate::sprites::{Draw, FrameCtx, STRIDE};
 use crate::state::{predict, WorldTemplate};
 use crate::tape::{ANode, ObjRec, Page, Tape};
-use crate::util::sha8;
+use crate::util::{sha8, Blob};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
@@ -196,17 +196,29 @@ pub struct WorldState {
     /// deck cache (2026-09-03): keyed by the deck colour bits; the deck's vertex bytes and per-mesh metadata do not
     /// depend on the frame, so they are built once and memcpy'd per frame (was 95% of the frame: 28 of 30 ms).
     pub deck_cache: Option<(u64, DeckCache)>,
+    /// (2026-09-03 perf) `deck_pscb` was called once per DRAW (~500/frame) and sha256'd the template's pixel
+    /// constant buffers every time. The buffers are frozen template data, so their hashes are computed -- and
+    /// registered in `cb_recs`, which `cb_setdefault` makes idempotent -- once per pixel-state variant, ever.
+    pub pscb_memo: HashMap<String, Vec<Option<String>>>,
+    /// `world_<key>` texture keys: one String per distinct record key instead of one per record per frame.
+    pub tkey_memo: HashMap<String, String>,
 }
 
 pub struct DeckGeo { pub first_rel: u32, pub nv: u32, pub tkey: String, pub page: Page, pub opaque: bool, pub centre: [f64; 3], pub radius: Option<f64>, pub hdr: (Option<i64>, Option<i64>, Option<i64>), pub centroid_note: bool }
-pub struct DeckCache { pub verts: Vec<u8>, pub geo: Vec<DeckGeo>, pub missing: Vec<(usize, i64)> }
+pub struct DeckCache {
+    pub verts: Vec<u8>, pub geo: Vec<DeckGeo>, pub missing: Vec<(usize, i64)>,
+    /// SHARED GEOMETRY (2026-09-03): the id of this deck's vertex blob in `FrameCtx.blobs`, and of its index blob
+    /// together with the vertex base it was built for. The deck's bytes are identical every frame, so a record
+    /// REFERENCES them (util::VbSegs) instead of carrying them -- ~464 KB of a ~706 KB record.
+    pub vb_blob: Option<u32>, pub ib_blob: Option<(u32, u32)>,
+}
 
 impl WorldState {
     pub fn new(assets: &WorldAssets, tape: &Tape) -> WorldState {
         let mut tape_pages = HashMap::new();
         for (k, p) in &assets.stage_preload { tape_pages.entry(k.clone()).or_insert_with(|| p.clone()); }
         for (k, p) in &tape.pages { tape_pages.insert(k.clone(), p.clone()); }
-        WorldState { deck_cache: None, tape_pages, arc: assets.stage_rip.as_ref().map(ArcModels::build), prop_cache: HashMap::new(), prop_stats: Default::default() }
+        WorldState { deck_cache: None, pscb_memo: HashMap::new(), tkey_memo: HashMap::new(), tape_pages, arc: assets.stage_rip.as_ref().map(ArcModels::build), prop_cache: HashMap::new(), prop_stats: Default::default() }
     }
 }
 
@@ -218,10 +230,14 @@ fn cb_setdefault(ctx: &mut FrameCtx, h: &str, b: &[u8]) {
     if !ctx.cb_recs.contains(h) { ctx.cb_recs.insert_new(h, b.to_vec()); }
 }
 
-fn deck_pscb(ctx: &mut FrameCtx, wt: &WorldTemplate, ps_variant: &str, hs: &str) -> [Option<String>; 4] {
-    let bufs = wt.pscb.get(ps_variant).cloned().unwrap_or_default();
-    let hashes: Vec<Option<String>> = bufs.iter().map(|b| b.as_ref().map(|x| sha8(x))).collect();
-    for b in bufs.iter().flatten() { cb_setdefault(ctx, &sha8(b), b); }
+fn deck_pscb(ctx: &mut FrameCtx, wt: &WorldTemplate, ws: &mut WorldState, ps_variant: &str, hs: &str) -> [Option<String>; 4] {
+    if !ws.pscb_memo.contains_key(ps_variant) {
+        let bufs = wt.pscb.get(ps_variant).cloned().unwrap_or_default();
+        let hashes: Vec<Option<String>> = bufs.iter().map(|b| b.as_ref().map(|x| sha8(x))).collect();
+        for (b, h) in bufs.iter().zip(hashes.iter()) { if let (Some(b), Some(h)) = (b, h) { cb_setdefault(ctx, h, b); } }
+        ws.pscb_memo.insert(ps_variant.to_string(), hashes);
+    }
+    let hashes = &ws.pscb_memo[ps_variant];
     [hashes.first().cloned().flatten(), Some(hs.to_string()), hashes.get(2).cloned().flatten(), None]
 }
 
@@ -254,13 +270,14 @@ pub fn emit_preamble(ctx: &mut FrameCtx, wt: &WorldTemplate, tape: &Tape, r: &Va
     ctx.verts.extend(std::iter::repeat(0u8).take(pad));
     for (k, d0) in wt.preamble.iter().enumerate() {
         if let Some(cbs) = wt.preamble_cb.get(k) { for (h, b) in cbs { cb_setdefault(ctx, h, b); } }
+        let pst = wt.preamble_state(k);
         let fi = ctx.idxs.len() as u32;
         ctx.idxs.extend_from_slice(&[0, 1, 2, 2, 1, 3]);
         let stride = d0.get("stride").and_then(|x| x.as_u64()).unwrap_or(28) as u32;
         ctx.draws.push(Draw {
             first_index: fi, index_count: 6, stride, voff: voffs[k],
             tex: [if k >= 1 { Some("bg_white".to_string()) } else { None }, None],
-            state: d0.clone(), vscb: None, pscb: None,
+            state: pst.0, state_fp: pst.1, vscb: None, pscb: None,
             cat: 0, key: None, sub: (-1, k as i64, 0), inherit_cull: false,
         });
     }
@@ -316,28 +333,45 @@ fn build_deck_cache(ws: &mut WorldState, rip: &StageRip, deck_col: (f64, f64, f6
         };
         geo.push(DeckGeo { first_rel, nv, tkey, page, opaque: mesh.is_opaque, centre, radius, hdr: (mesh.base_params, mesh.tex_instr, mesh.tsp), centroid_note });
     }
-    DeckCache { verts, geo, missing }
+    DeckCache { verts, geo, missing, vb_blob: None, ib_blob: None }
 }
 
 /// `emit_stage(cam, deck_col)`: the arc deck (model 0 at identity) through the world path.
 pub fn emit_stage(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, ws: &mut WorldState, rip: &StageRip, cam: (f64, f64), deck_col: (f64, f64, f64)) {
+    use crate::util::prof;
+    let mut tick = prof::now();
     struct Geo { fi: u32, nv: u32, tkey: String, opaque: bool, centre: [f64; 3], radius: Option<f64>, hdr: (Option<i64>, Option<i64>, Option<i64>) }
     let ckey = (deck_col.0.to_bits() ^ deck_col.1.to_bits().rotate_left(21) ^ deck_col.2.to_bits().rotate_left(42)) as u64;
     if ws.deck_cache.as_ref().map_or(true, |(k, _)| *k != ckey) {
         ws.deck_cache = Some((ckey, build_deck_cache(ws, rip, deck_col)));
     }
+    // SHARED GEOMETRY: register the deck's vertex bytes and its index run as blobs the first time this deck
+    // colour (and vertex base) is seen, then REFERENCE them. The per-mesh index runs are contiguous by
+    // construction (`first_rel` is the running vertex count), so the whole deck is one ascending run
+    // `base..base+total` -- exactly the words the old per-frame loop pushed.
+    let base = (ctx.verts.len() / STRIDE) as u32;
+    {
+        let cache = &mut ws.deck_cache.as_mut().unwrap().1;
+        if cache.vb_blob.is_none() { let v = cache.verts.clone(); cache.vb_blob = Some(ctx.blobs.push(Blob::Verts(v))); }
+        let total: u32 = cache.geo.iter().map(|g| g.nv).sum();
+        if cache.ib_blob.map_or(true, |(_, b)| b != base) {
+            let id = ctx.blobs.push(Blob::Idxs((base..base + total).collect()));
+            cache.ib_blob = Some((id, base));
+        }
+    }
     let cache = &ws.deck_cache.as_ref().unwrap().1;
     for (mi, ti) in &cache.missing { *ctx.stats.world_missing.entry(format!("stage mesh {}: no texture {}", mi, ti)).or_insert(0) += 1; }
-    let base = (ctx.verts.len() / STRIDE) as u32;
-    ctx.verts.extend_from_slice(&cache.verts);
+    let idx_base = ctx.idxs.len() as u32;
+    ctx.verts.push_blob(cache.vb_blob.unwrap(), cache.verts.len());
+    ctx.idxs.push_blob(cache.ib_blob.unwrap().0, cache.geo.iter().map(|g| g.nv as usize).sum());
     let mut stage_geo: Vec<Geo> = Vec::with_capacity(cache.geo.len());
     for g in &cache.geo {
         add_texture(ctx, &g.tkey, &g.page);
-        let fi = ctx.idxs.len() as u32;
-        ctx.idxs.extend(base + g.first_rel..base + g.first_rel + g.nv);
+        let fi = idx_base + g.first_rel;
         if g.centroid_note { *ctx.stats.world_missing.entry("deck mesh: sort centre from the vertex centroid (rip lacks the header sphere)".to_string()).or_insert(0) += 1; }
         stage_geo.push(Geo { fi, nv: g.nv, tkey: g.tkey.clone(), opaque: g.opaque, centre: g.centre, radius: g.radius, hdr: g.hdr });
     }
+    prof::lap("stage:geo", &mut tick);
     let mut ident = Vec::with_capacity(48);
     for f in [1.0f32, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0] { ident.extend_from_slice(&f.to_le_bytes()); }
     let scb = match cm.scene_block(cam, "list6") { Some(b) => b, None => return };
@@ -346,27 +380,27 @@ pub fn emit_stage(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, ws: 
     let (vd, pd) = (scene_v(&scb), scene_p(&scb));
     let ident16: [f32; 16] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
     for g in stage_geo {
-        let (mut d, ps_variant) = if g.hdr.2.is_some() {
+        let (d, ps_variant) = if g.hdr.2.is_some() {
             let mut pred = predict(g.hdr.0.unwrap_or(0) as u32, g.hdr.1.unwrap_or(0) as u32, g.hdr.2.unwrap_or(0) as u32, 0, 2, 1.0);
             pred.cull = None;
             wt.select(&pred, &mut ctx.stats.world_state)
         } else {
             let mut psv = if g.opaque { "opaque".to_string() } else { "texalpha".to_string() };
             if !wt.draw.contains(&psv) { psv = wt.draw.keys.first().cloned().unwrap_or_default(); }
-            (wt.draw.get(&psv).cloned().unwrap_or_default(), psv)
+            (wt.draw_state(&psv), psv)
         };
-        let pscb = deck_pscb(ctx, wt, &ps_variant, &hs);
+        let pscb = deck_pscb(ctx, wt, ws, &ps_variant, &hs);
         let ltype = match g.hdr.0 { Some(h) => (h >> 24) & 7, None => if g.opaque { 0 } else { 2 } };
         let cat = if ltype == 0 { 0 } else if ltype == 1 { 1 } else { 3 };
         let key = if cat == 3 { sort_key_record(Some(g.centre), g.radius, &ident16, &vd, &pd, false) } else { None };
         ctx.sub_seq += 1;
-        d.remove("i");
         ctx.draws.push(Draw {
             first_index: g.fi, index_count: g.nv, stride: STRIDE as u32, voff: 0, tex: [Some(g.tkey), None],
-            state: d, vscb: Some([Some(hw.clone()), Some(hs.clone()), None, None]), pscb: Some(pscb),
+            state: d.0, state_fp: d.1, vscb: Some([Some(hw.clone()), Some(hs.clone()), None, None]), pscb: Some(pscb),
             cat, key, sub: (1, ctx.sub_seq, 0), inherit_cull: false,
         });
     }
+    prof::lap("stage:draws", &mut tick);
 }
 
 /// `emit_world(lists)`: this frame's world nodes in `lists`, in list order (+ the deck when lists[0] == 5).
@@ -385,6 +419,7 @@ pub fn emit_world(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, asse
         }
     }
     if tape.has_col("blackout") && blackout != 0 && lists.contains(&5) { lists.retain(|&l| l != 5); }
+    let mut vp_memo: HashMap<&'static str, Option<([u8; 432], String, [[f32; 4]; 4], [[f32; 4]; 4])>> = HashMap::new();
     let rows_w: Vec<ANode> = tape.anodes.get(&fr_clock).cloned().unwrap_or_default();
     for nd in &rows_w {
         if !lists.contains(&nd.list) || nd.obj as usize >= tape.aobjs.len() {
@@ -395,10 +430,15 @@ pub fn emit_world(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, asse
         let m = &nd.matrix;
         let mut cbw = Vec::with_capacity(48);
         for f in [m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14]] { cbw.extend_from_slice(&f.to_le_bytes()); }
-        let scb = match cm.scene_block(cam, variant) { Some(b) => b, None => continue };
-        let (vn, pn) = (scene_v(&scb), scene_p(&scb));
+        // (2026-09-03 perf) the scene block, its sha8 and its V/P decomposition depend only on (cam, variant) and
+        // `cam` is fixed for the frame -- there are three variants, not one per node. Was recomputed per node.
+        if !vp_memo.contains_key(variant) {
+            let v = cm.scene_block(cam, variant).map(|b| { let h = sha8(&b); let (vn, pn) = (scene_v(&b), scene_p(&b)); (b, h, vn, pn) });
+            vp_memo.insert(variant, v);
+        }
+        let (scb, hs, vn, pn) = match vp_memo.get(variant).unwrap() { Some(t) => (t.0, t.1.clone(), t.2, t.3), None => continue };
         let rank: i64 = match nd.list { 5 => 2, 6 => 3, 7 => 4, 8 => 5, 9 => 5, 11 => 6, 12 => 7, 13 => 6, _ => 8 };
-        let (hw, hs) = (sha8(&cbw), sha8(&scb));
+        let hw = sha8(&cbw);
         cb_setdefault(ctx, &hw, &cbw); cb_setdefault(ctx, &hs, &scb);
         let own: Option<Vec<ObjRec>> = if nd.list == 5 {
             match (&assets.stage_rip, &ws.arc) {
@@ -410,7 +450,7 @@ pub fn emit_world(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, asse
         let objrecs: &[ObjRec] = match &own { Some(o) => o, None => &tape.aobjs[nd.obj as usize] };
         for rec in objrecs {
             let key = &rec.key;
-            let tkey = format!("world_{}", key);
+            let tkey = match ws.tkey_memo.get(key) { Some(t) => t.clone(), None => { let t = format!("world_{}", key); ws.tkey_memo.insert(key.clone(), t.clone()); t } };
             // (2026-09-03) look the page up ONLY when the texture is not registered yet: the old code cloned a full
             // 256 KB page per record per frame (~440 records/frame) before add_texture discarded it -- most of the frame.
             let mut page = if ctx.textures.contains(&tkey) { None } else { ws.tape_pages.get(key).cloned() };
@@ -444,7 +484,7 @@ pub fn emit_world(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, asse
                 let mut pred = predict(rec.pcw, rec.isp, rec.tsp, *gflags, kind, amult);
                 if nd.flags & 0x2000 != 0 { pred.cull = ctx.last_cull; }
                 else if pred.cull.is_some() { ctx.last_cull = pred.cull; }
-                let (mut tdraw_w, ps_variant) = wt.select(&pred, &mut ctx.stats.world_state);
+                let (tdraw_w, ps_variant) = wt.select(&pred, &mut ctx.stats.world_state);
                 let ltype = (rec.pcw >> 24) & 7;
                 let mut cat: u8 = if ltype == 0 { 0 } else if ltype == 1 { 1 } else { 3 };
                 if ltype == 0 && kind == 3 && amult < 1.0 { cat = 3; }
@@ -461,12 +501,11 @@ pub fn emit_world(ctx: &mut FrameCtx, wt: &WorldTemplate, cm: &CameraModel, asse
                 let nv = gverts.len() as u32;
                 let fi = ctx.idxs.len() as u32;
                 ctx.idxs.extend(first..first + nv);
-                let pscb = deck_pscb(ctx, wt, &ps_variant, &hs);
+                let pscb = deck_pscb(ctx, wt, ws, &ps_variant, &hs);
                 ctx.sub_seq += 1;
-                tdraw_w.remove("i");
                 ctx.draws.push(Draw {
                     first_index: fi, index_count: nv, stride: STRIDE as u32, voff: 0, tex: [Some(tkey.clone()), None],
-                    state: tdraw_w, vscb: Some([Some(hw.clone()), Some(hs.clone()), None, None]), pscb: Some(pscb),
+                    state: tdraw_w.0, state_fp: tdraw_w.1, vscb: Some([Some(hw.clone()), Some(hs.clone()), None, None]), pscb: Some(pscb),
                     cat, key: skey, sub: (rank, ctx.sub_seq, 0), inherit_cull: nd.flags & 0x2000 != 0,
                 });
             }

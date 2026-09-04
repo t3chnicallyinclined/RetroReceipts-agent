@@ -222,7 +222,7 @@ fn main() {
     let mut em = Emitter::new(tape, atlases, cam, tpl.draw.clone(), wt, assets, opts);
     let mut w = SeqWriter::new(&tpl, world_layouts.as_ref(), &base);
     for row in start..end {
-        if let Some(fr) = em.emit_row(row) { w.push_frame(&tpl, &em.textures, &em.cb_recs, &fr); }
+        if let Some(fr) = em.emit_row(row) { w.push_frame(&tpl, &em.textures, &em.cb_recs, &em.blobs, &fr); }
     }
     let out_path = out.unwrap_or_else(|| base.replace(".json.gz", "").replace(".json", "") + ".seq");
     let nframes = w.frames();

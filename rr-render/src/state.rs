@@ -79,6 +79,14 @@ fn state_key_of_json(k: &Value) -> Option<String> {
 fn hex(s: &str) -> Vec<u8> { (0..s.len() / 2).map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap_or(0)).collect() }
 
 /// `tape_to_seq.WorldTemplate` from the frozen constants.
+/// A pipeline-state map interned once and shared by every draw that selects it: `Rc` so a draw costs a refcount
+/// bump instead of a deep clone of a ~15-key nested JSON map, and `fp` so the feed can look its id up without
+/// re-walking the map. `select` was 2.4 ms of a 12 ms frame purely in those clones.
+pub type StateRc = (std::rc::Rc<Map<String, Value>>, u64);
+
+/// `select`'s inputs: the whole of `Pred` that the result depends on.
+type SelKey = (Option<String>, Option<(i64, i64, i64)>, Option<(i64, i64)>, Option<(i64, i64)>, Option<i64>);
+
 pub struct WorldTemplate {
     pub pack: String, pub pack_sha256: String,
     pub input_layouts: Value,
@@ -90,6 +98,9 @@ pub struct WorldTemplate {
     /// the three frame-preamble draws (KEYS + vscbHash + pscbHash) and their constant buffers
     pub preamble: Vec<Map<String, Value>>,
     pub preamble_cb: Vec<Vec<(String, Vec<u8>)>>,
+    /// memo of `select` (and of `draw_state`), keyed by everything the answer depends on
+    sel_memo: std::cell::RefCell<HashMap<SelKey, (StateRc, String, &'static str)>>,
+    preamble_rc: std::cell::RefCell<HashMap<usize, StateRc>>,
 }
 
 impl WorldTemplate {
@@ -125,19 +136,36 @@ impl WorldTemplate {
             pack_sha256: v.get("pack_sha256").and_then(|x| x.as_str()).unwrap_or("").to_string(),
             input_layouts: v.get("inputLayouts").cloned().unwrap_or(Value::Null),
             draw, pscb, by_state, preamble, preamble_cb,
+            sel_memo: Default::default(), preamble_rc: Default::default(),
         })
     }
 
     /// `WorldTemplate.select(pred, stats)`: the captured draw whose state equals the prediction exactly, else
-    /// the ps-variant fallback with the predicted fields patched in. Returns (draw KEYS dict, ps variant).
-    pub fn select(&self, pred: &Pred, stats: &mut BTreeMap<String, u64>) -> (Map<String, Value>, String) {
+    /// the ps-variant fallback with the predicted fields patched in. Returns (interned draw KEYS dict, ps variant).
+    ///
+    /// (2026-09-03 perf) MEMOISED on everything the answer depends on, and the result is interned as an `Rc` with
+    /// its fingerprint. The world lists call this once per draw (~500/frame) and it used to deep-clone the state
+    /// map every time -- 2.4 ms of a 12 ms frame. The `"i"` the callers all stripped straight afterwards is
+    /// stripped here instead, so the shared map needs no mutation. Pure memoisation: same inputs, same bytes.
+    pub fn select(&self, pred: &Pred, stats: &mut BTreeMap<String, u64>) -> (StateRc, String) {
+        let key: SelKey = (pred.ps.clone(), pred.samp, pred.blend, pred.depth, pred.cull);
+        if let Some((rc, ps, sk)) = self.sel_memo.borrow().get(&key) {
+            *stats.entry((*sk).to_string()).or_insert(0) += 1;
+            return (rc.clone(), ps.clone());
+        }
+        let (rc, ps, sk) = self.select_uncached(pred);
+        self.sel_memo.borrow_mut().insert(key, (rc.clone(), ps.clone(), sk));
+        *stats.entry(sk.to_string()).or_insert(0) += 1;
+        (rc, ps)
+    }
+
+    fn select_uncached(&self, pred: &Pred) -> (StateRc, String, &'static str) {
         let ps = match &pred.ps { Some(p) if self.draw.contains(p) => p.clone(), _ => self.draw.keys.first().cloned().unwrap_or_default() };
         let full = pred.full();
         if full {
             if let Some(k) = pred.state_key(&ps) {
                 if let Some(hit) = self.by_state.get(&k) {
-                    *stats.entry("exact captured state".into()).or_insert(0) += 1;
-                    return (hit.clone(), ps);
+                    return (Self::intern(hit.clone()), ps, "exact captured state");
                 }
             }
         }
@@ -159,7 +187,30 @@ impl WorldTemplate {
         if let Some(c) = pred.cull.filter(|&c| c != 0) {   // Python truthiness of `pred.get('cull')`
             if let Some(o) = d.get_mut("raster").and_then(|x| x.as_object_mut()) { o.insert("cull".into(), Value::from(c)); }
         }
-        *stats.entry(if full { "patched fallback".to_string() } else { "partial (unmapped code or no group)".to_string() }).or_insert(0) += 1;
-        (d, ps)
+        (Self::intern(d), ps, if full { "patched fallback" } else { "partial (unmapped code or no group)" })
+    }
+
+    /// Intern a state map: drop the per-draw `"i"` (every caller removed it), take the fingerprint, share the map.
+    fn intern(mut m: Map<String, Value>) -> StateRc {
+        m.remove("i");
+        let fp = crate::util::state_fp(&m);
+        (std::rc::Rc::new(m), fp)
+    }
+
+    /// The bare ps-variant draw dict, interned (the deck path's non-TSP branch).
+    pub fn draw_state(&self, psv: &str) -> StateRc {
+        let key: SelKey = (Some(psv.to_string()), None, None, None, None);
+        if let Some((rc, _, _)) = self.sel_memo.borrow().get(&key) { return rc.clone(); }
+        let rc = Self::intern(self.draw.get(psv).cloned().unwrap_or_default());
+        self.sel_memo.borrow_mut().insert(key, (rc.clone(), psv.to_string(), "deck ps variant"));
+        rc
+    }
+
+    /// One frame-preamble draw dict, interned.
+    pub fn preamble_state(&self, k: usize) -> StateRc {
+        if let Some(rc) = self.preamble_rc.borrow().get(&k) { return rc.clone(); }
+        let rc = Self::intern(self.preamble.get(k).cloned().unwrap_or_default());
+        self.preamble_rc.borrow_mut().insert(k, rc.clone());
+        rc
     }
 }
