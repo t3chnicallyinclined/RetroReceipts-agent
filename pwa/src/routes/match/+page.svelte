@@ -17,6 +17,7 @@
 	import { apiGet } from '$lib/net.svelte';
 	import { api } from '$lib/config';
 	import SessionModal from '$lib/components/SessionModal.svelte';
+	import BrowseMatches from '$lib/components/BrowseMatches.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
 	import HostBanner from '$lib/components/HostBanner.svelte';
 	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
@@ -345,8 +346,18 @@
 	// re-selects it instead of fighting it. Seeded from the URL at load; held in local $state rather than read
 	// back off `appPage.url` because we write it with raw history (no navigation, no remount).
 	let picked = $state(appPage.url.searchParams.get('m') ?? '');
-	function rememberPick(key: string) {
+	/**
+	 * The row behind the pick, kept alongside the key.
+	 *
+	 * The LIVE list holds 20 rows for ONE scope, so a picked match very often is not in it: a money match
+	 * picked while the tab shows ranked, a row chosen from BROWSE's newest-100, or a share link to anything
+	 * older than the current page. Without this, the resolver's priority 1 would fail to find the row and fall
+	 * through — quietly yanking the theatre back to the automatic pick a moment after the viewer chose.
+	 */
+	let pickedRow = $state<MatchResult | null>(null);
+	function rememberPick(key: string, row: MatchResult | null = null) {
 		picked = key;
+		pickedRow = row;
 		// replaceState, NOT pushState (§1.5): the theatre's content is a VIEW state — ten row taps must not cost
 		// ten back presses. The route stays /match, so every share link already in the wild keeps working.
 		const u = new URL(location.href);
@@ -388,7 +399,7 @@
 	/** A result row became the picture: swap, remember it in ?m=, and bring the theatre into view (§1.5). */
 	async function showRow(r: MatchResult) {
 		const key = r.match_key ?? r.key;
-		rememberPick(key);
+		rememberPick(key, r);
 		setTheatre(key, metaOf(r), r.session_id, () => resolveSource(r), true, r);
 		await tick();
 		theatreEl?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
@@ -398,8 +409,14 @@
 		// never yank a picture that is being watched; a newer tape takes over when this one is idle/ended/unplayable
 		if (theatre && watching()) return;
 		// 1 — the URL's pick. A share link must land on ITS match, so this outranks everything automatic.
+		// Look in three places, widest last: the row the viewer just picked, the current scope's live rows, and
+		// the un-scoped newest-100 the crown already loaded (which is how a share link to an out-of-scope or
+		// older match still resolves without a new endpoint).
 		if (pick) {
-			const r = rows.find((x) => (x.match_key ?? x.key) === pick);
+			const r =
+				(pickedRow && (pickedRow.match_key ?? pickedRow.key) === pick ? pickedRow : null) ??
+				rows.find((x) => (x.match_key ?? x.key) === pick) ??
+				motd.rows.find((x) => (x.match_key ?? x.key) === pick);
 			if (r) {
 				const a = await availability(r);
 				setTheatre(pick, metaOf(r), r.session_id, () => resolveSource(r), a === 'ready' || a === 'saved', r);
@@ -477,6 +494,28 @@
 		const cur = theatre.key;
 		return results.find((r) => r.replay?.state === 'ready' && (r.match_key ?? r.key) !== cur && r.ts > (theatre?.row?.ts ?? 0)) ?? null;
 	});
+	// ── ⌕ BROWSE MATCHES (§3) — a popup over the theatre, never a route ──────────────────────────────────
+	let browseOpen = $state(false);
+	function pickFromBrowse(r: MatchResult) {
+		browseOpen = false;
+		void showRow(r);
+	}
+	// `B` opens it. Ignored while typing, while a modifier is held, and while any dialog is already up — a
+	// shortcut that fires inside a text field is a bug, not a feature.
+	onMount(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'b' && e.key !== 'B') return;
+			if (e.ctrlKey || e.metaKey || e.altKey) return;
+			if (browseOpen || openSession) return;
+			const t = e.target as HTMLElement | null;
+			if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+			e.preventDefault();
+			browseOpen = true;
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
+
 	function scrollToNowPlaying() {
 		document.getElementById('now-playing')?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
 	}
@@ -574,6 +613,7 @@
 					<span class="dot" aria-hidden="true"></span>{nowPlaying.length} GAME{nowPlaying.length === 1 ? '' : 'S'} ON NOW ›
 				</button>
 			{/if}
+			<button type="button" class="browse" onclick={() => (browseOpen = true)} title="Browse matches (B)">⌕ BROWSE MATCHES</button>
 		</div>
 	</div>
 
@@ -722,6 +762,7 @@
 <section class="sec">
 	<div class="sechd">
 		<h2 class="shead"><span class="ic res" aria-hidden="true"></span> Live Results {#if results.length}<span class="cnt">{results.length}</span>{/if}</h2>
+		<button type="button" class="browseall" onclick={() => (browseOpen = true)}>Browse all ›</button>
 		<div class="scopes" role="tablist" aria-label="Results mode">
 			{#each MODES as m (m.id)}
 				<button
@@ -807,6 +848,10 @@
 
 {#if openSession}
 	<SessionModal sessionId={openSession} live={openIsLive} onClose={() => (openSession = null)} />
+{/if}
+
+{#if browseOpen}
+	<BrowseMatches {mode} onClose={() => (browseOpen = false)} onPick={pickFromBrowse} />
 {/if}
 
 <style>
@@ -1241,6 +1286,32 @@
 		border-radius: 50%;
 		background: var(--live);
 		flex: none;
+	}
+	.browse,
+	.browseall {
+		font: inherit;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: var(--dim);
+		padding: 4px 10px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--panel-2);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.browse:hover,
+	.browseall:hover {
+		color: var(--ink);
+		border-color: color-mix(in srgb, var(--gold) 35%, var(--line));
+	}
+	.browseall {
+		margin-left: auto;
+		margin-right: 8px;
+		border: 0;
+		background: none;
+		padding: 4px 2px;
 	}
 	/* a newer tape landed mid-watch — one line, never a yank (§1.2) */
 	.newer {

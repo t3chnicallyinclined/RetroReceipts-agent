@@ -1012,6 +1012,85 @@ try {
 		}
 	}
 } finally {
+	// ═══ ⌕ BROWSE MATCHES (LIVE-TAB-V2-SPEC §3, P3 gate) ═════════════════════════════════════════════════
+	if (has('--browse')) {
+		const pb = await newPage(1280, 1600);
+		await pb.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+		await waitEmbed(pb, '__rrHero', ['playing', 'ready', 'closed', 'nopack', 'unavailable', 'error']);
+		const navsBefore = await pb.evaluate(() => performance.getEntriesByType('navigation').length);
+
+		// `B` opens it — the keyboard route, not just the button
+		await pb.keyboard.press('KeyB');
+		await pb.waitForSelector('[role="dialog"][aria-label="Browse matches"]', { timeout: 30000 });
+		check(true, 'browse: `B` opens the popup');
+		check(
+			await pb.evaluate(() => {
+				const d = document.querySelector('[role="dialog"][aria-label="Browse matches"]');
+				return d?.getAttribute('aria-modal') === 'true';
+			}),
+			'browse: role=dialog aria-modal=true labelled "Browse matches"'
+		);
+		await pb.waitForFunction(() => document.querySelectorAll('[role="dialog"] .brow').length > 0, { timeout: 60000 });
+		const n0 = await pb.evaluate(() => document.querySelectorAll('[role="dialog"] .brow').length);
+		check(n0 > 0 && n0 <= 10, `browse: the newest 100 is paged 10 at a time (page shows ${n0})`);
+
+		// the scope tabs and the free client-side filter
+		const filt = await pb.evaluate(async () => {
+			const total = () => Number(/of (\d+)/.exec(document.querySelector('[role="dialog"] .pager .cnt')?.textContent || '')?.[1] ?? 0);
+			const before = total();
+			document.querySelector('[role="dialog"] .only input').click();
+			await new Promise((r) => setTimeout(r, 250));
+			const rows = [...document.querySelectorAll('[role="dialog"] .brow')];
+			return { before, after: total(), everyReplayable: rows.length > 0 && rows.every((r) => /REPLAY/.test(r.textContent || '')) };
+		});
+		log('browse: replayable-only', JSON.stringify(filt));
+		check(filt.everyReplayable, 'browse: "Replayable only" leaves ONLY rows that show ▶ REPLAY');
+		// the filter must actually REMOVE something, or it is not being exercised: the live feed carries both
+		// ready and none rows (measured 54/46 on prod), so a no-op here means the filter is not wired.
+		check(filt.after > 0 && filt.after < filt.before, `browse: the filter genuinely narrows the list (${filt.before} → ${filt.after})`);
+		await pb.evaluate(() => document.querySelector('[role="dialog"] .only input').click());
+		await sleep(200);
+
+		// ↑/↓ move the row cursor and take focus with it; Enter picks
+		await pb.keyboard.press('ArrowDown');
+		await sleep(150);
+		const onRow = await pb.evaluate(() => !!document.activeElement?.closest('.brow'));
+		check(onRow, 'browse: ↓ moves the row cursor and focus lands on a row');
+
+		const before = await pb.evaluate(() => window.__rrHero?.key ?? '');
+		await pb.keyboard.press('Enter');
+		await pb.waitForFunction(() => !document.querySelector('[role="dialog"][aria-label="Browse matches"]'), { timeout: 30000 });
+		check(true, 'browse: Enter picks the row and closes the popup');
+		await sleep(600);
+		const after = await pb.evaluate(() => ({ key: window.__rrHero?.key ?? '', m: new URL(location.href).searchParams.get('m'), navs: performance.getEntriesByType('navigation').length }));
+		log('browse: pick', JSON.stringify({ before, after }));
+		check(after.key !== before, `browse: picking a row SWAPPED the theatre (${before} → ${after.key})`);
+		check(!!after.m && after.m === after.key, `browse: the pick is recorded in ?m=${after.m}`);
+		check(after.navs === navsBefore, `browse: the swap is a content change, NOT a navigation (${after.navs} navigation entries, was ${navsBefore})`);
+
+		// Esc closes, and the end-of-list line tells the truth about how many there are
+		await pb.keyboard.press('KeyB');
+		await pb.waitForSelector('[role="dialog"][aria-label="Browse matches"]', { timeout: 30000 });
+		await pb.waitForFunction(() => document.querySelectorAll('[role="dialog"] .brow').length > 0, { timeout: 60000 });
+		const endTxt = await pb.evaluate(async () => {
+			const d = document.querySelector('[role="dialog"]');
+			let guard = 0;
+			while (guard++ < 30) {
+				const next = [...d.querySelectorAll('.pager .pg')].find((b) => /Next/.test(b.textContent));
+				if (!next || next.disabled) break;
+				next.click();
+				await new Promise((r) => setTimeout(r, 120));
+			}
+			return { end: d.querySelector('.end')?.textContent?.trim() ?? '', rows: d.querySelector('.pager .cnt')?.textContent ?? '' };
+		});
+		log('browse: last page', JSON.stringify(endTxt));
+		check(/^That's (the newest 100|all \d+ of them)\.$/.test(endTxt.end), `browse: the last page says where the list ends, truthfully ("${endTxt.end}")`);
+		await pb.keyboard.press('Escape');
+		await pb.waitForFunction(() => !document.querySelector('[role="dialog"][aria-label="Browse matches"]'), { timeout: 30000 });
+		check(true, 'browse: Esc closes the popup');
+		await pb.close();
+	}
+
 	// ═══ ★ MATCH OF THE DAY (LIVE-TAB-V2-SPEC §1.6, P1b gate) ═══════════════════════════════════════════
 	// Drives the REAL scorer out of the REAL bundle via window.__rrMotd (dev-only hook in motd.svelte.ts).
 	// A re-implementation here would be free to agree with itself while disagreeing with the page.
