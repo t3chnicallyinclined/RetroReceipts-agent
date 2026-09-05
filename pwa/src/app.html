@@ -17,18 +17,26 @@
 		<meta name="theme-color" content="#0a0c12" />
 		<meta name="description" content="Marvel vs Capcom 2 — live ranks, tournaments & stats." />
 		<!-- Link previews (Discord/Facebook/X). ⚠ Scrapers do NOT run JS, so these STATIC tags are what a
-		     shared link shows for every route; URLs must be ABSOLUTE (scrapers resolve nothing). Per-URL
-		     dynamic previews (a set's score in the title) come from nginx routing scraper user-agents to
-		     the server's OG endpoint — these are the site-wide default underneath that. -->
+		     shared link shows; URLs must be ABSOLUTE (scrapers resolve nothing).
+		     ⚠ THESE ARE THE FALLBACK, NOT THE MAIN PATH. nginx routes the known scraper user-agents
+		     (Facebook/Twitter/Discord/Slack/WhatsApp/Telegram/LinkedIn) for ALL of /app/* to the server's
+		     og_preview(), which emits PER-ROUTE title/description/image; those bots never see this file.
+		     What lands here is everything nginx does not match — reddit, iMessage/Safari-style fetchers —
+		     and since the PWA is an SPA with one shared shell for every route (svelte.config.js
+		     `fallback: index.html`), this can only ever say one generic thing.
+		     ⚠ So it MUST stay word-for-word identical to og_preview()'s DEFAULT branch in
+		     RetroReceipts-server/server/src/routes.rs — otherwise the same page tells two different
+		     stories depending on which scraper fetched it. Change one, change the other.
+		     No og:url here on purpose: it would be wrong on every route but one. -->
 		<meta property="og:site_name" content="Retro Receipts" />
 		<meta property="og:type" content="website" />
-		<meta property="og:title" content="Retro Receipts — MvC2 ranked, receipts & money matches" />
-		<meta property="og:description" content="Marvel vs Capcom 2 on Steam — live ranks, verified set receipts, tournaments and money matches. Get that receipt!" />
+		<meta property="og:title" content="Retro Receipts" />
+		<meta property="og:description" content="MvC2 ranked, receipts, and money matches — the arcade's live stats." />
 		<meta property="og:image" content="https://nobd.net/app/og-card.png" />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
 		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:title" content="Retro Receipts — MvC2 ranked, receipts & money matches" />
+		<meta name="twitter:title" content="Retro Receipts" />
 		<meta name="twitter:image" content="https://nobd.net/app/og-card.png" />
 		<script>
 			// Steam OpenID returns #token&steamid in the URL fragment. Capture it HERE — inline in the
