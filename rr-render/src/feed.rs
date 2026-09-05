@@ -217,4 +217,34 @@ impl FrameFeed {
     }
 
     pub fn stats(&self) -> &crate::sprites::Stats { &self.em.stats }
+    /// NATIVE RENDERER ACCESS (2026-09-05, SUPERGUN). STRICTLY ADDITIVE: nothing above is touched and
+    /// no existing caller reaches these.
+    ///
+    /// `frame(i)` serialises a FrameRecord so the draw list can cross a process or a socket. A renderer
+    /// living in the SAME process crosses nothing, so it takes the draw list directly and skips
+    /// serialisation, the first record's whole first-use table dump, and the per-frame geometry copy.
+    /// These accessors exist only to make that possible; the wire format is unchanged and still the
+    /// only thing the browser ever sees.
+    ///
+    /// Everything the renderer needs beyond the returned `Frame` hangs off the emitter and is already
+    /// public: `textures` (key -> Page), `cb_recs` (hash -> bytes) and `blobs` (shared geometry).
+    pub fn emit(&mut self, i: usize) -> Option<crate::sprites::Frame> { self.em.emit_row(i) }
+    pub fn emitter(&self) -> &Emitter { &self.em }
+    pub fn emitter_mut(&mut self) -> &mut Emitter { &mut self.em }
+    /// Viewport, scene render target and input layouts -- the per-session values the wire format sends
+    /// once in the session info and an in-process renderer can simply read.
+    pub fn template(&self) -> &Template { &self.tpl }
+    /// The input layouts a renderer must have, sprite template PLUS world template -- exactly the
+    /// merge  sends to the browser. Kept here as ONE implementation because getting it
+    /// wrong is silent: the world layouts are missing, every stage draw fails to build a layout, and
+    /// the renderer quietly draws the characters into an empty stage.
+    pub fn input_layouts_merged(&self) -> Value {
+        let mut il = self.tpl.input_layouts.as_object().cloned().unwrap_or_default();
+        if self.em.world_enabled() {
+            if let Some(w) = self.em.wt.input_layouts.as_object() {
+                for (k, v) in w { il.insert(k.clone(), v.clone()); }
+            }
+        }
+        Value::Object(il)
+    }
 }
