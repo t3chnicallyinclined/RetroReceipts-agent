@@ -837,8 +837,15 @@ try {
 		log('screenshot (phone, art loaded on tap)', shotM);
 		await pm.close();
 
-		// (5) AUTOPLAY ON LOAD for the LATEST TAPE hero when the art is a SERVER pack (Tris 2026-09-04).
-		//     A fresh viewer must not auto-download; the tick loads and plays; every later load autoplays with no click.
+		// (5) AUTOPLAY ON LOAD for the LATEST TAPE hero when the art is a SERVER pack.
+		//     ⚠ REVERSED 2026-09-05 (Tris: "lets remove the checkbox of the art/data from wifi, we want path least
+		//     resistance"). This used to assert that a first-time viewer WAITS on the art panel. On a good
+		//     connection they no longer do: the art loads and the match plays with no tap, and the ownership
+		//     acknowledgement is taken at the point of play instead of demanded first. Rewritten rather than
+		//     deleted — the behaviour genuinely reversed, and a deleted assertion guards nothing.
+		//     The EXPLICIT tick path is still gated, on the ROW embed above (`art: an unticked ownership
+		//     checkbox`, `art: NO pack file requested before the attestation`) — a row is not a request to
+		//     download 20 MB, so it keeps the panel.
 		const HERO_URL = `${arg('--url', 'http://localhost:5173/match?dev=1')}&hero=${ART}&devskin=none`;
 		const freshCtx = await browser.createBrowserContext(); // its own localStorage + Cache Storage = a first-time viewer
 		const pf = await freshCtx.newPage();
@@ -847,15 +854,18 @@ try {
 		await pf.goto(HERO_URL, { waitUntil: 'load', timeout: 120000 });
 		await pf.waitForFunction(() => !!window.__rrHero, { timeout: 60000, polling: 250 });
 		await sleep(4000);
-		const stF = await pf.evaluate(() => window.__rrHero.state);
-		check(stF === 'nopack', `autoplay: a first-time viewer's hero waits on the art panel (state ${stF})`);
-		check(reqsF.length === 0, `autoplay: a first-time viewer downloads no art on load (${reqsF.length} requests)`);
-		check(await pf.evaluate(() => !!document.querySelector('[data-test="hero"] .emb .ov.art .own input')), 'autoplay: the first-time hero shows the ownership checkbox');
-		await pf.click('[data-test="hero"] .emb .ov.art .own input');
-		await pf.click('[data-test="hero"] .emb .ov.art button');
 		const stF2 = await waitEmbed(pf, '__rrHero', ['playing', 'ready', 'paused', 'error', 'nopack', 'unavailable']);
-		check(stF2.state === 'playing', `autoplay: ticking the box loads the art and plays immediately (${stF2.state})`);
-		check(reqsF.length > 0, `autoplay: the download started on the tick (${reqsF.length} files)`);
+		check(stF2.state === 'playing', `autoplay: a FIRST-TIME viewer on a good connection plays with no tap (${stF2.state})`);
+		check(reqsF.length > 0, `autoplay: the art downloaded on arrival, unasked (${reqsF.length} files)`);
+		const firstOwn = await pf.evaluate(() => ({
+			blocked: !!document.querySelector('[data-test="hero"] .emb .ov.art .own input'),
+			stated: (document.querySelector('[data-test="owns-note"]')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+			rec: localStorage.getItem('rr.owns.v1')
+		}));
+		log('autoplay: first-visit ownership', JSON.stringify(firstOwn));
+		check(!firstOwn.blocked, 'autoplay: no blocking ownership checkbox stands between the visitor and the match');
+		check(/Marvel vs\. Capcom 2/.test(firstOwn.stated), `autoplay: but the acknowledgement is STATED at the point of play ("${firstOwn.stated}")`);
+		check(!!firstOwn.rec && JSON.parse(firstOwn.rec).implicit === true, `autoplay: and recorded as taken, not ticked (${firstOwn.rec})`);
 		await pf.close();
 
 		// the SAME context again: acknowledged + cached → plays with no click at all
@@ -1115,6 +1125,120 @@ try {
 		check(R.r120.distinct.length === 1 && R.r120.distinct[0] === 2, `pacer 120Hz: every frame held exactly 2 refreshes (${JSON.stringify(R.r120.distinct)})`);
 		check(R.r240.distinct.length === 1 && R.r240.distinct[0] === 4, `pacer 240Hz: every frame held exactly 4 refreshes (${JSON.stringify(R.r240.distinct)})`);
 		await pp.close();
+	}
+
+	// ═══ NO-FRICTION ART ON A GOOD CONNECTION ════════════════════════════════════════════════════════════
+	// Tris (2026-09-05): "lets remove the checkbox of the art/data from wifi, we want path least resistance."
+	//
+	// TWO things were tangled in that checkbox and only ONE was relaxed:
+	//   • the DATA-COST gate  — do not silently pull ~20 MB on cellular. Still enforced; asserted below.
+	//   • the OWNERSHIP claim — what makes serving ROM-derived art defensible. NOT relaxed: it is taken at the
+	//     point of play instead of demanded first, still recorded, still sent on every pack AND manifest
+	//     request, still withdrawable. The header assertions here are the compliance gate, not a nicety.
+	if (has('--nofriction')) {
+		await writePackFixture();
+		const ART = 'local_stage9_art';
+		const artUrl = `${arg('--url', 'http://localhost:5173/match?dev=1')}&hero=${ART}&devskin=none`;
+
+		// ── (1) a first-time visitor on a good connection: NO tap anywhere ──────────────────────────────
+		// ITS OWN BROWSER CONTEXT. Pages in the shared browser also share Cache Storage, so after the --art gate
+		// has run, the parts are already cached and the header assertion below sees ZERO requests and passes
+		// vacuously — which is exactly what happened the first time this ran in the full suite (148/148
+		// standalone, 0/0 in sequence). A fresh context is a genuinely first-time viewer, cold cache and all.
+		const nfCtx = await browser.createBrowserContext();
+		const pn = await nfCtx.newPage();
+		await pn.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 });
+		const hdrs = { manifest: [], files: [] };
+		pn.on('request', (r) => {
+			const h = r.headers()['x-rr-owns-game'] ?? '(none)';
+			if (r.url().includes('/replay/packfix/manifest.json')) hdrs.manifest.push(h);
+			else if (r.url().includes('art=1')) hdrs.files.push(h);
+		});
+		await pn.evaluateOnNewDocument(() => {
+			try { localStorage.removeItem('rr.owns.v1'); } catch { /* private */ }
+		});
+		await pn.goto(artUrl, { waitUntil: 'load', timeout: 120000 });
+		const stN = await waitEmbed(pn, '__rrHero', ['playing', 'nopack', 'error', 'ready']);
+		log('nofriction: first visit', JSON.stringify(stN));
+		check(stN.state === 'playing', `nofriction: a FIRST-TIME visitor on a good connection reaches playing with NO tap (${stN.state})`);
+
+		// the compliance gate — the header must ride the manifest AND every file, or we are serving art unattested
+		log('nofriction: headers', JSON.stringify({ manifest: hdrs.manifest, files: hdrs.files.length, ones: hdrs.files.filter((h) => h === '1').length }));
+		check(hdrs.manifest.length > 0 && hdrs.manifest.every((h) => h === '1'), `nofriction: X-RR-Owns-Game: 1 on the MANIFEST request (${hdrs.manifest.join(',') || 'none seen'})`);
+		// a COLD context, so this sample is real: an empty list here would mean the test checked nothing
+		check(hdrs.files.length > 10, `nofriction: the first visit genuinely downloaded the pack (${hdrs.files.length} file requests — a cached run would prove nothing)`);
+		check(hdrs.files.every((h) => h === '1'), `nofriction: X-RR-Owns-Game: 1 on EVERY pack file request (${hdrs.files.filter((h) => h === '1').length}/${hdrs.files.length})`);
+
+		// recorded, and marked as taken rather than ticked
+		const rec = await pn.evaluate(() => localStorage.getItem('rr.owns.v1'));
+		log('nofriction: record', String(rec));
+		const recJ = JSON.parse(rec || '{}');
+		check(recJ.owns_game === true && typeof recJ.ts === 'number', `nofriction: the acknowledgement is recorded (${rec})`);
+		check(recJ.implicit === true, 'nofriction: and marked implicit — taken at the point of play, not ticked');
+
+		// and the viewer is TOLD what they affirmed, below the picture, with a way out
+		const note = await pn.evaluate(() => {
+			const n = document.querySelector('[data-test="owns-note"]');
+			const cv = document.querySelector('[data-test="hero"] canvas');
+			if (!n || !cv) return null;
+			return {
+				text: (n.textContent || '').replace(/\s+/g, ' ').trim(),
+				belowPicture: n.getBoundingClientRect().top >= cv.getBoundingClientRect().top,
+				hasOut: !!n.querySelector('button')
+			};
+		});
+		log('nofriction: note', JSON.stringify(note));
+		check(!!note && /Marvel vs\. Capcom 2/.test(note.text), `nofriction: the acknowledgement is STATED and names the game ("${note?.text ?? 'missing'}")`);
+		check(!!note && note.belowPicture, 'nofriction: and it sits below the picture, never pushing the frame down');
+		check(!!note && note.hasOut, 'nofriction: with a way to withdraw it');
+
+		// ── (2) it survives a reload, and still needs no tap ────────────────────────────────────────────
+		hdrs.manifest.length = 0;
+		hdrs.files.length = 0;
+		await pn.reload({ waitUntil: 'load', timeout: 120000 });
+		const stR = await waitEmbed(pn, '__rrHero', ['playing', 'nopack', 'error', 'ready']);
+		const rec2 = await pn.evaluate(() => localStorage.getItem('rr.owns.v1'));
+		check(stR.state === 'playing', `nofriction: after a reload it still plays with no tap (${stR.state})`);
+		check(!!rec2 && JSON.parse(rec2).owns_game === true, 'nofriction: the acknowledgement survived the reload');
+		// ⚠ NOT a header assertion dressed up as one. On the second load Cache Storage serves the parts, so there
+		// are legitimately ZERO file requests to inspect — `every()` over an empty list is vacuously true, which
+		// is exactly the shape of a test that passes while checking nothing. Assert the case that actually
+		// happened, and in the cache-hit case assert the thing the header DEPENDS on: the record is still there,
+		// because `packHeaders()` reads it to decide whether to send X-RR-Owns-Game at all.
+		if (hdrs.files.length > 0) {
+			check(hdrs.files.every((h) => h === '1'), `nofriction: re-fetched parts still carry the header (${hdrs.files.filter((h) => h === '1').length}/${hdrs.files.length})`);
+		} else {
+			check(!!rec2 && JSON.parse(rec2).owns_game === true, 'nofriction: no parts re-fetched (Cache Storage hit) and the record that drives the header is still present');
+		}
+
+		// ── (3) withdrawing it actually withdraws it ────────────────────────────────────────────────────
+		await pn.evaluate(() => document.querySelector('[data-test="owns-note"] button').click());
+		await sleep(600);
+		const after = await pn.evaluate(() => ({ rec: localStorage.getItem('rr.owns.v1'), state: window.__rrHero?.state }));
+		log('nofriction: withdrawn', JSON.stringify(after));
+		check(!after.rec, 'nofriction: "I don\'t own it" clears the record, so the header stops being sent');
+		check(after.state === 'nopack', `nofriction: and the art goes back behind the gate (${after.state})`);
+		await pn.close();
+
+		// ── (4) THE PROTECTION THAT DID NOT MOVE: Save-Data pulls ZERO pack bytes before a tap ──────────
+		const sdCtx = await browser.createBrowserContext(); // cold too, so "zero bytes" means zero, not cached
+		const pd = await sdCtx.newPage();
+		await pd.setViewport({ width: 1280, height: 1600, deviceScaleFactor: 1 });
+		const heavy = [];
+		pd.on('request', (r) => { if (/art=1|packfix\/manifest\.json/.test(r.url())) heavy.push(r.url()); });
+		await pd.evaluateOnNewDocument(() => {
+			try { localStorage.removeItem('rr.owns.v1'); } catch { /* private */ }
+			Object.defineProperty(navigator, 'connection', { configurable: true, get: () => ({ saveData: true }) });
+		});
+		await pd.goto(artUrl, { waitUntil: 'load', timeout: 120000 });
+		const stS = await waitEmbed(pd, '__rrHero', ['nopack', 'closed', 'playing', 'ready', 'error']);
+		await sleep(1500);
+		log('nofriction: save-data', JSON.stringify({ state: stS.state, heavy: heavy.length }));
+		check(stS.state !== 'playing', `nofriction: Save-Data does NOT auto-play the art (${stS.state})`);
+		check(heavy.length === 0, `nofriction: and pulls ZERO pack bytes before a tap (${heavy.length} requests)`);
+		const recS = await pd.evaluate(() => localStorage.getItem('rr.owns.v1'));
+		check(!recS, 'nofriction: Save-Data takes no implicit acknowledgement either — nothing is claimed on the viewer\'s behalf');
+		await pd.close();
 	}
 
 	// ═══ THE PICTURE IS THE FIRST THING ON THE PAGE ══════════════════════════════════════════════════════

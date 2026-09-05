@@ -20,7 +20,7 @@
 		type GpuDeviceLike
 	} from '$lib/replay/engine';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
-	import { acknowledgeOwnership, assemblePack, hasOwnership, loadPackManifest, mbText, PackError, type AssembledPack, type PackManifest, type PackSource } from '$lib/replay/pack';
+	import { acknowledgeOwnership, assemblePack, hasOwnership, loadPackManifest, mbText, ownsLocal, PackError, revokeOwnership, type AssembledPack, type PackManifest, type PackSource } from '$lib/replay/pack';
 	import { agentWinUrl } from '$lib/agentUrl';
 	import type { Credit } from './SkinCredit.svelte';
 
@@ -200,6 +200,19 @@
 	// The art is ROM-derived, so it is served only to signed-in viewers who have ATTESTED they own the game.
 	let attested = $state(false);
 	let ownsChecked = $state(false); // the checkbox in the nopack panel
+	/** the acknowledgement was taken at the point of play rather than ticked → say so, and offer the way out */
+	let ownsImplicit = $state(false);
+	function refreshOwnsKind() {
+		ownsImplicit = ownsLocal()?.implicit === true;
+	}
+	function dropOwnership() {
+		revokeOwnership();
+		ownsImplicit = false;
+		attested = false;
+		packWanted = false;
+		assembled = null;
+		st = 'nopack';
+	}
 	let packBusy = $state(false);
 	let packMan = $state<PackManifest | null>(null);
 	let packNote = $state('');
@@ -497,6 +510,20 @@
 			// 20 MB download); phones returned at the `closed` gate above; reduced-motion / Save-Data do not auto-fetch
 			// either — we only download what we would play.
 			const wouldPlay = autoplay === 'auto' && !reducedMotion() && !saveData();
+			// THE GOOD-CONNECTION PATH (Tris 2026-09-05: "lets remove the checkbox of the art/data from wifi, we
+			// want path least resistance"). `autoload` is already false on phones and Save-Data, and `wouldPlay`
+			// already excludes reduced-motion, so reaching here means: a desktop-class connection, a slot that
+			// wants to play on arrival, and a viewer who has not been asked yet.
+			//
+			// The DATA-COST gate is what gets relaxed. The OWNERSHIP claim is not: it is TAKEN here rather than
+			// demanded first, recorded exactly as the tick records it (so `X-RR-Owns-Game` rides every pack and
+			// manifest request and survives a reload), and stated plainly under the picture with a way to
+			// withdraw it. Serving ROM-derived art unattested would be the one regression that matters.
+			if (!attested && autoart && autoload && wouldPlay) {
+				const r = await acknowledgeOwnership(true);
+				if (r.ok) attested = true;
+			}
+			refreshOwnsKind();
 			if (!autoart || !autoload || !attested || !wouldPlay) {
 				st = 'nopack';
 				return;
@@ -1451,6 +1478,15 @@
 	{#if noteText}<div class="note" class:toast={!!ovToast}>{noteText}</div>{/if}
 	<!-- the update nudge: a limited tape means the RECORDING client was old, so the fix is the next match, not this one.
 	     Shown to everyone (a signed-out viewer may still be one of the players); direct when we know they are. -->
+	<!-- THE ACKNOWLEDGEMENT, STATED. Shown when the art was taken on the good-connection path rather than ticked:
+	     the viewer is told what they affirmed and can withdraw it. Deliberately BELOW the picture, in the chrome —
+	     the frame is the first thing on the page and this must never push it down. -->
+	{#if ownsImplicit && isPlayable}
+		<div class="ownnote" data-test="owns-note">
+			<span class="ol">Art loaded for your personal replay — you own Marvel vs. Capcom 2 (Steam Collection).</span>
+			<button type="button" class="ob" onclick={dropOwnership}>I don't own it</button>
+		</div>
+	{/if}
 	{#if oldClient}
 		<div class="nudge" data-test="update-nudge">
 			<span class="nl">{viewerIsPlayer ? 'This is your match — update to record full-quality replays.' : 'Is this your match? Update Retro Receipts to record full-quality replays.'}</span>
@@ -1907,6 +1943,33 @@
 			position: absolute;
 			inset: -16px -14px;
 		}
+	}
+	/* the ownership line: quiet, under the picture, never over it and never above it */
+	.ownnote {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+		padding: 5px 9px;
+		font-size: 10.5px;
+		color: var(--faint);
+		border-top: 1px solid var(--line);
+	}
+	.ownnote .ob {
+		font: inherit;
+		font-size: 10.5px;
+		color: var(--dim);
+		background: none;
+		border: 0;
+		padding: 0;
+		cursor: pointer;
+		text-decoration: underline dotted;
+	}
+	.ownnote .ob:hover {
+		color: var(--ink);
+	}
+	.emb.fs .ownnote {
+		display: none; /* fullscreen is the picture */
 	}
 	.emb.fs .nudge {
 		display: none; /* fullscreen is the picture — the nudge waits for the card */

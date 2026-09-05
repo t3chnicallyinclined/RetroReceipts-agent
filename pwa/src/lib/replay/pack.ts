@@ -78,6 +78,18 @@ export const OWNS_KEY = 'rr.owns.v1';
 export interface OwnsRecord {
 	owns_game: boolean;
 	ts: number;
+	/**
+	 * How the acknowledgement was made. `false`/absent = the viewer ticked the box themselves. `true` = it was
+	 * taken IMPLICITLY at the point of play on a good connection (Tris 2026-09-05: "lets remove the checkbox of
+	 * the art/data from wifi, we want path least resistance").
+	 *
+	 * This flag is why removing the friction does not quietly remove the ATTESTATION with it: an implicit
+	 * acknowledgement is still a recorded acknowledgement, it still sends `X-RR-Owns-Game` on every pack
+	 * request, and the UI still states plainly what was affirmed and offers a way to withdraw it. Two different
+	 * things were tangled in that checkbox — the DATA-COST gate and the OWNERSHIP claim — and only the first
+	 * was relaxed.
+	 */
+	implicit?: boolean;
 }
 /** the local acknowledgement, or null — survives a reload with no account */
 export function ownsLocal(): OwnsRecord | null {
@@ -90,8 +102,8 @@ export function ownsLocal(): OwnsRecord | null {
 		return null;
 	}
 }
-function setOwnsLocal(): OwnsRecord {
-	const rec: OwnsRecord = { owns_game: true, ts: Date.now() };
+function setOwnsLocal(implicit = false): OwnsRecord {
+	const rec: OwnsRecord = { owns_game: true, ts: Date.now(), implicit };
 	try {
 		localStorage.setItem(OWNS_KEY, JSON.stringify(rec));
 	} catch {
@@ -157,14 +169,28 @@ export async function hasOwnership(): Promise<boolean> {
  * The tick: signed in → POST /rr/attest (plus the local record, the fallback the server also accepts); signed out →
  * the local record + the `X-RR-Owns-Game` header on every pack request. Never asks anyone to sign in.
  */
-export async function acknowledgeOwnership(): Promise<{ ok: boolean; error?: string }> {
-	setOwnsLocal();
+export async function acknowledgeOwnership(implicit = false): Promise<{ ok: boolean; error?: string }> {
+	setOwnsLocal(implicit);
 	if (auth.authed) {
 		const r = await postAttest();
 		if (!r.ok && r.error !== 'signin') return { ok: true, error: r.error }; // the header path still works
 	}
 	attestCache = { at: Date.now(), owns: true };
 	return { ok: true };
+}
+
+/**
+ * Withdraw the acknowledgement. The counterpart to taking it implicitly: a viewer told "art is loaded because
+ * you own this" must have somewhere to say "I do not". Clears the local record so `packHeaders()` stops sending
+ * `X-RR-Owns-Game` immediately; a signed-in server attestation is the account's own to manage.
+ */
+export function revokeOwnership(): void {
+	try {
+		localStorage.removeItem(OWNS_KEY);
+	} catch {
+		/* private mode — there was nothing to clear */
+	}
+	attestCache = { at: Date.now(), owns: false };
 }
 
 // ── the manifest ────────────────────────────────────────────────────────────────────────────────────────────
