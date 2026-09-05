@@ -32,6 +32,12 @@ pub struct EmitOpts {
     pub pal_lag: u32,
     /// `--flip-facing`, `--swap-teams`, `--forward-records`, `--no-vflip`, `--legacy-order` (diagnostics).
     pub flip_facing: bool, pub swap_teams: bool, pub forward_records: bool, pub no_vflip: bool, pub legacy_order: bool,
+    /// `--no-palrow-resolve` (diagnostic A/B): read palrow block `f` for fighter `f` unconditionally, i.e. the
+    /// pre-2026-09-04 behaviour. `resolve_palrow_slots` is otherwise free to prove that order wrong.
+    pub no_palrow_resolve: bool,
+    /// `--legacy-torn-guard` (diagnostic A/B): restore the ABSOLUTE torn test (`n < 2`), i.e. the pre-2026-09-04
+    /// behaviour that drew a 24 -> 2 -> 24 truncated capture. See the guard in `emit_row`.
+    pub legacy_torn_guard: bool,
     /// `--no-world`, `--no-preamble`
     pub no_world: bool, pub no_preamble: bool,
     /// CLOUD SKINS (2026-09-03, docs/REPLAY-META-SKINS-SPEC.md s3): per fighter slot, 16 colours (0xRRGGBB) that replace
@@ -104,6 +110,14 @@ pub struct Emitter {
     last_nodes: Option<Vec<Node>>,
     bank_slot: HashMap<u32, u8>,
     unknown_slots: Vec<u8>,
+    /// FIGHTER SLOT -> PALROW BLOCK INDEX (see `resolve_palrow_slots`). Identity on every tape whose blocks are
+    /// already in fighter order; a permutation where the tape proves otherwise.
+    pub palrow_slot: [usize; 6],
+    /// One human-readable line about the above, for the emitter/feed log (None = plain identity, nothing to say).
+    pub palrow_note: Option<String>,
+    /// PRISTINE per-clock node counts, snapshotted before the torn guard is ever allowed to substitute into
+    /// `self.nodes`. The guard reads only this, so its verdict is a pure function of the tape.
+    node_counts: HashMap<u32, usize>,
     pub textures: OrderedMap<Texture>,
     pub cb_recs: OrderedMap<Vec<u8>>,
     pub blobs: BlobStore,
@@ -112,6 +126,103 @@ pub struct Emitter {
 }
 
 fn floor_mul(v: f64, k: f64) -> f64 { v.floor() * k }
+
+/// Torn draw-list guard (see `emit_row`): a row must hold less than 1/TORN_FACTOR of the size its neighbours
+/// agree on, and recovery must arrive within TORN_SCAN rows (the engine's own GGPO rollback horizon).
+const TORN_FACTOR: usize = 2;
+const TORN_SCAN: usize = 8;
+
+
+/// PALROW BLOCK -> FIGHTER SLOT.
+///
+/// The engine stages each fighter's eight 16-colour rows at `blk+0x13C0 + k*0x1C0 + row*0x38` (bank
+/// `0x10 + 8k + row`, FUN_1406146d0) and the agent ships those 48 rows verbatim (`harvest::read_palrows`,
+/// `PAL_STAGE_OFF = blk + 0x1040 + 0x10*0x38`). This emitter used to assume `k == fighter slot`. That holds on
+/// every kept gate tape, and it FAILS on prod tape `76561198029172402_..._59618234` (agent 0.3.50, stage 8),
+/// where each P1 fighter's block sits at the ODD index and each P2 fighter's at the EVEN one -- so every
+/// fighter drew in the other side's colours ("the skins look inverted"). It is the BLOCKS that moved, not the
+/// roster: fighter slot 5 submits sprite_id 795, which does not exist in PL38's cell table (max 729), yet
+/// block 5 holds PL38's costume-5 bank; and fighter slot 1's sprite_ids resolve in only 265/1143 of PL34's
+/// cells, yet block 1 holds PL34's costume-5 bank. Whether the engine's registration order or the agent's
+/// slot base is what varies is an open RE question (`FUN_1406146d0`); until the tape carries the per-fighter
+/// bank base outright, the renderer reads it off the colours.
+///
+/// The resolution invents nothing: block `b` belongs to fighter `f` iff ROW 0 of block `b` is byte-equal to one
+/// of `atlas(cid_f).banks` -- the character's OWN palette table out of `PLxx_lut.json`. A same-character mirror
+/// ties, and the tie breaks on `bank == costume[f] * 8`, which is exactly the rule `Atlas::palette(None, cos)`
+/// already encodes. A block matching no bank at all is a wildcard.
+///
+/// IDENTITY WINS. The permutation is used only when identity is NOT a consistent assignment and exactly one
+/// complete assignment is -- so no tape that renders correctly today can move a pixel.
+fn resolve_palrow_slots(tape: &Tape, atlases: &HashMap<u8, Atlas>, p1: &[u8], p2: &[u8]) -> ([usize; 6], Option<String>) {
+    let ident = [0usize, 1, 2, 3, 4, 5];
+    if tape.palrows.is_empty() || tape.pals.is_empty() { return (ident, None); }
+    let cid_of = |f: usize| -> Option<u8> { (if f % 2 == 0 { p1 } else { p2 }).get(f / 2).copied() };
+
+    // row 0 of each block, as the modal palette index over every palrows record in the tape
+    let mut base_idx = [None; 6];
+    for b in 0..6 {
+        let mut n: HashMap<u16, u32> = HashMap::new();
+        for pr in tape.palrows.values() { *n.entry(pr.idx[b * 8]).or_insert(0) += 1; }
+        base_idx[b] = n.into_iter().max_by_key(|&(i, c)| (c, std::cmp::Reverse(i))).map(|(i, _)| i);
+    }
+
+    // candidates per block, at two strengths. CHARACTER level: the fighters whose ROM table contains those 16
+    // colours at all (None = the colours are in no fighter's table -- a wildcard, e.g. a dimmed row). COSTUME
+    // level: of those, the ones whose `costume[f] * 8` is the very bank that matched (breaks a mirror tie).
+    let mut chr_cand: [Option<Vec<usize>>; 6] = Default::default();
+    let mut cand: [Option<Vec<usize>>; 6] = Default::default();
+    for b in 0..6 {
+        let Some(pi) = base_idx[b] else { continue };
+        let Some(want) = tape.pals.get(pi as usize) else { continue };
+        let mut hits: Vec<(usize, usize)> = Vec::new();   // (fighter, bank)
+        for f in 0..6 {
+            let Some(at) = cid_of(f).and_then(|c| atlases.get(&c)) else { continue };
+            if let Some(bi) = at.banks.iter().position(|bk| (0..16).all(|i| bk.get(i).map(|c| *c == want[i]).unwrap_or(false))) {
+                hits.push((f, bi));
+            }
+        }
+        if hits.is_empty() { continue; }                                   // wildcard
+        chr_cand[b] = Some(hits.iter().map(|&(f, _)| f).collect());
+        let cos8: Vec<usize> = hits.iter().filter(|&&(f, bi)| tape.costume.get(f).map(|c| *c * 8 == bi as i64).unwrap_or(false))
+                                   .map(|&(f, _)| f).collect();
+        cand[b] = Some(if cos8.is_empty() { hits.iter().map(|&(f, _)| f).collect() } else { cos8 });
+    }
+
+    // TRIGGER ON CHARACTER IDENTITY ONLY. A block whose colours belong to a DIFFERENT character than the fighter
+    // sitting at its index cannot be explained by a mis-recorded `costume`; a bank-number disagreement can, and
+    // `costume` is agent-recorded too. So a costume-only disagreement is left alone -- it changes no pixel that
+    // renders correctly today, and it keeps every mirror match on the existing behaviour.
+    let chr_ok = |perm: &[usize; 6]| (0..6).all(|b| chr_cand[b].as_ref().map(|c| c.contains(&perm[b])).unwrap_or(true));
+    if chr_ok(&ident) { return (ident, None); }
+
+    // A fighter is provably wearing another character's colours. Solve the assignment, mirrors broken on costume.
+    let ok = |perm: &[usize; 6]| (0..6).all(|b| cand[b].as_ref().map(|c| c.contains(&perm[b])).unwrap_or(true));
+    let mut found: Option<[usize; 6]> = None;
+    let mut n_found = 0usize;
+    let mut perm = ident;
+    permute(&mut perm, 0, &mut |p| { if ok(p) { n_found += 1; if found.is_none() { found = Some(*p); } } });
+    match (n_found, found) {
+        (1, Some(p)) => {
+            // p maps BLOCK -> FIGHTER; the emitter indexes FIGHTER -> BLOCK
+            let mut inv = [0usize; 6];
+            for b in 0..6 { inv[p[b]] = b; }
+            let note = format!("palrows: the staged palette blocks are NOT in fighter-slot order -- fighter slot -> block {:?} \
+                                (resolved by exact ROM-bank match on PLxx_lut.json; identity was contradicted)", inv);
+            (inv, Some(note))
+        }
+        (0, _) => (ident, Some("palrows: a fighter's staged block holds ANOTHER character's palette and no consistent re-assignment \
+                                exists -- keeping fighter-slot order (that fighter's colours are wrong)".into())),
+        _ => (ident, Some(format!("palrows: identity is contradicted but {n_found} assignments fit -- keeping fighter-slot order"))),
+    }
+}
+
+/// Every permutation of `a[k..]`, in place (6! = 720 for the fighter slots).
+fn permute(a: &mut [usize; 6], k: usize, f: &mut impl FnMut(&[usize; 6])) {
+    if k == 6 { f(a); return; }
+    for i in k..6 { a.swap(k, i); permute(a, k + 1, f); a.swap(k, i); }
+}
+
 
 /// The Python `items` tuple before the atlas lookup (cid, sid, tsx, tsy, mir, kind, cos, bit15, angle, hot, walk, depth, pslot, layer).
 type PreItem = (u8, u16, f64, f64, bool, &'static str, i64, bool, u16, (i16, i16), i64, Option<f32>, i64, i64);
@@ -133,9 +244,39 @@ impl Emitter {
         let world_assets = if !tape.anodes.is_empty() && !opts.no_world && camera.is_some() { world_assets } else { None };
         let world_state = world_assets.as_ref().map(|a| WorldState::new(a, &tape));
         let nodes = tape.nodes.clone();
+        let node_counts: HashMap<u32, usize> = tape.nodes.iter().map(|(k, v)| (*k, v.len())).collect();
         let sprite_state = { let m = sprite_state; let fp = crate::util::state_fp(&m); (std::rc::Rc::new(m), fp) };
+        let (palrow_slot, palrow_note) = if opts.no_palrow_resolve { ([0, 1, 2, 3, 4, 5], None) }
+                                          else { resolve_palrow_slots(&tape, &atlases, &p1, &p2) };
         Emitter { tape, atlases, camera, wt, world_assets, world_state, sprite_state, opts, p1, p2, nodes, last_nodes: None,
-                  bank_slot, unknown_slots, textures: OrderedMap::new(), cb_recs: OrderedMap::new(), blobs: BlobStore::default(), stats: Stats::default(), prof_rows: 0 }
+                  bank_slot, unknown_slots, palrow_slot, palrow_note, node_counts,
+                  textures: OrderedMap::new(), cb_recs: OrderedMap::new(), blobs: BlobStore::default(), stats: Stats::default(), prof_rows: 0 }
+    }
+
+    // ---- LIVE FEED (added 2026-09-04, SUPERGUN). STRICTLY ADDITIVE: nothing above or below this
+    // method changes, and no existing path calls it. `open` + `emit_row` behave exactly as before.
+    //
+    // Appends one already-decoded row and its per-clock side tables, repeating exactly the bookkeeping
+    // `new()` does for them: `bank_slot` is fed from the row nodes, `node_counts` gets the PRISTINE count
+    // (the torn guard reads only that, so its verdict stays a pure function of what was pushed), and both
+    // `tape.nodes` and the emitter own `nodes` copy are kept in step.
+    //
+    // Deliberately NOT recomputed per push, because they are whole-tape properties that `new()` derives
+    // once and a live feed cannot improve on incrementally: `unknown_slots`, `palrow_slot`/`palrow_note`
+    // and `world_state`. A live session therefore inherits them from the tape it was opened with, which
+    // is why the live path is opened on a representative seed tape rather than an empty one.
+    pub fn push_live_row(&mut self, row: Value, clock: u32, nodes: Option<Vec<Node>>,
+                         anodes: Option<Vec<crate::tape::ANode>>, palrows: Option<crate::tape::PalRows>) -> usize {
+        if let Some(ns) = nodes {
+            for n in &ns { if n.kind == 0 && n.gfx1 != 0 { self.bank_slot.insert(n.gfx1, n.slot); } }
+            self.node_counts.insert(clock, ns.len());
+            self.tape.nodes.insert(clock, ns.clone());
+            self.nodes.insert(clock, ns);
+        }
+        if let Some(a) = anodes { self.tape.anodes.insert(clock, a); }
+        if let Some(pr) = palrows { self.tape.palrows.insert(clock, pr); }
+        self.tape.frames.push(row);
+        self.tape.frames.len() - 1
     }
 
     pub fn world_enabled(&self) -> bool { self.world_assets.is_some() }
@@ -167,9 +308,49 @@ impl Emitter {
         let mut pre: Vec<PreItem> = Vec::new();
         if have_nodes {
             let cur_len = self.nodes.get(&frc).map(|c| c.len());
-            let torn = match (cur_len, &self.last_nodes) { (Some(n), Some(l)) => n < 2 && l.len() >= 3, _ => false };
+            // TORN DRAW-LIST GUARD. The agent walks the engine's draw list while the game may be rebuilding it, so a
+            // row can carry a truncated PREFIX of the real list. Such a row must be held, not drawn.
+            //
+            // The original test was ABSOLUTE -- `n < 2` -- which catches only a total collapse. On prod tape
+            // ..._59618234 row 851 the list goes 24 -> 2 -> 24 and was drawn: every effect and one fighter vanish for
+            // exactly one frame and come back. That is a visible pop and it reads as "shaky".
+            //
+            // The test is now RELATIVE, and additive: a row is torn if the old rule says so, OR if it holds less than
+            // 1/TORN_FACTOR of what BOTH of its neighbours agree on. RECOVERY is the discriminator -- no engine event
+            // removes draws and restores them inside one 1/60 s frame, whereas a legitimate shrink (a super's effects
+            // ending, a KO) PERSISTS into the next row and so is never held. The forward scan steps over a run of
+            // consecutive torn rows to find that recovery, bounded by TORN_SCAN.
+            //
+            // TORN_FACTOR = 2 is a stated MARGIN, not a fit: the row must hold less than half of the agreed size.
+            // TORN_SCAN = 8 is the engine's own rollback horizon (GGPO MAX_PREDICTION_FRAMES); a collapse that has not
+            // recovered by then is not a single-poll capture artefact and is left alone.
+            // Counts come from `node_counts`, a snapshot of the PRISTINE tape taken in `new()`, so the decision cannot
+            // see an earlier row's substitution -- unlike `self.nodes`, which this guard mutates. The verdict for a row
+            // therefore depends only on the tape, never on the order rows were requested (seeking is now safe here).
+            // `--legacy-torn-guard` / `{"legacy_torn_guard":true}` restores the absolute test exactly.
+            let torn = match (cur_len, &self.last_nodes) {
+                (Some(n), Some(l)) => {
+                    n < 2 && l.len() >= 3 || !self.opts.legacy_torn_guard && {
+                        let prev = l.len();
+                        let mut nxt = None;
+                        for k in 1..=TORN_SCAN {
+                            let Some(r2) = self.tape.frames.get(row + k) else { break };
+                            let c2 = self.tape.num(r2, "frame").unwrap_or(0.0) as u32;
+                            if let Some(&m) = self.node_counts.get(&c2) {
+                                if m * TORN_FACTOR >= prev { nxt = Some(m); break; }
+                            }
+                        }
+                        nxt.map(|m| n * TORN_FACTOR < prev.min(m)).unwrap_or(false)
+                    }
+                }
+                _ => false,
+            };
             if cur_len.is_none() || torn {
-                let k = if cur_len.is_none() { "no nodes".to_string() } else { format!("torn ({} node)", cur_len.unwrap()) };
+                let k = match cur_len {
+                    None => "no nodes".to_string(),
+                    Some(n) if n < 2 && self.last_nodes.as_ref().map(|l| l.len() >= 3).unwrap_or(false) => format!("torn ({} node)", n),
+                    Some(n) => format!("torn ({} of {} nodes)", n, self.last_nodes.as_ref().map(|l| l.len()).unwrap_or(0)),
+                };
                 *ctx.stats.held.entry(k).or_insert(0) += 1;
                 if let Some(l) = &self.last_nodes { self.nodes.insert(frc, l.clone()); }
             } else {
@@ -241,7 +422,7 @@ impl Emitter {
         }
         prof::lap("world 5/6/12/13", &mut tick);
         // ── the sprites
-        emit_sprites(&self.tape, &self.opts, &self.sprite_state, have_nodes, &mut ctx, items, ps);
+        emit_sprites(&self.tape, &self.opts, &self.sprite_state, have_nodes, &mut ctx, items, ps, &self.palrow_slot);
         prof::lap("sprites", &mut tick);
         // ── effects/shadows/markers after the sprites, the HUD last
         if let (Some(assets), Some(cm), Some(ws)) = (&self.world_assets, &self.camera, self.world_state.as_mut()) {
@@ -263,7 +444,8 @@ impl Emitter {
 }
 
 /// The sprite quad loop of main() (`for lay, at, sid, tsx, tsy, mir, kind, cos, extra in items:`).
-fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &crate::state::StateRc, have_nodes: bool, ctx: &mut FrameCtx, items: Vec<Item>, ps: Option<[[f32; 4]; 4]>) {
+fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &crate::state::StateRc, have_nodes: bool, ctx: &mut FrameCtx, items: Vec<Item>, ps: Option<[[f32; 4]; 4]>,
+                prslot: &[usize; 6]) {
     {
         let v3pals = &tape.pals;
         for it in items {
@@ -284,8 +466,10 @@ fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &crate::state::State
                 }
             }
             let zero: Pal256 = [[0u8; 4]; 256];
+            // fighter slot -> palrow BLOCK (identity unless the tape proves otherwise; `resolve_palrow_slots`)
+            let pblk = if (0..6).contains(&it.pslot) { prslot[it.pslot as usize] } else { it.pslot.max(0) as usize };
             let (base_pal, blk_base): (Pal256, Option<i64>) = if let Some(p) = prow {
-                let ps_ = (it.pslot * 8) as usize;
+                let ps_ = pblk * 8;
                 let pi = p.idx[ps_] as usize;
                 let bp = if pi < v3pals.len() { v3pals[pi] } else {
                     match v3pals.get(it.cos as usize) { Some(x) => *x, None => { *ctx.stats.missing.entry("pal index out of range".into()).or_insert(0) += 1; zero } } };
@@ -310,7 +494,7 @@ fn emit_sprites(tape: &Tape, opts: &EmitOpts, sprite_state: &crate::state::State
             let pal_for_row = |row: u8, pal_cache: &mut HashMap<u8, Pal256>| -> Pal256 {
                 if let Some(p) = prow {
                     if row == 0 { return base_pal; }
-                    let pi = p.idx[(it.pslot * 8) as usize + (row & 7) as usize] as usize;
+                    let pi = p.idx[pblk * 8 + (row & 7) as usize] as usize;
                     return if pi < v3pals.len() { v3pals[pi] } else { base_pal };
                 }
                 match blk_base {

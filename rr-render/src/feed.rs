@@ -65,6 +65,7 @@ impl FrameFeed {
         let wt = WorldTemplate::frozen();
         let template_cbs: HashMap<String, Vec<u8>> = tpl.cbs.iter().cloned().collect();
         let em = Emitter::new(tape, atlases, camera, tpl.draw.clone(), wt, world_assets, opts);
+        if let Some(n) = &em.palrow_note { log.push(n.clone()); }
         Ok(FrameFeed { em, tpl, state_ids: HashMap::new(), state_fp: HashMap::new(), tex_sent: 0, blobs_sent: 0, cb_ids: HashMap::new(), template_cbs, log })
     }
 
@@ -85,6 +86,33 @@ impl FrameFeed {
             "world": self.em.world_enabled(), "viewport": self.tpl.viewport, "sceneRT": self.tpl.scene_rt,
             "inputLayouts": Value::Object(il), "log": self.log,
         }).to_string()
+    }
+
+    /// LIVE FEED (added 2026-09-04, SUPERGUN). STRICTLY ADDITIVE: `open` and `frame` are untouched and no
+    /// existing caller reaches this. Decodes a tape (typically a ONE-ROW tape emitted by the runner harvest
+    /// for the frame just ticked) and appends its rows and per-clock side tables to the open session, then
+    /// returns `(first_index, count)` so the caller can hand the indices straight to `frame(i)`.
+    ///
+    /// This exists so a live session pays the genuine per-tape setup -- the palette-block resolver,
+    /// `node_counts`, world-state init, atlas selection -- ONCE at `open`, instead of sixty times a second.
+    /// The alternative (calling `open` per frame on a one-row tape) re-runs all of it and is the wrong shape
+    /// to keep even where it is fast enough.
+    pub fn push_tape(&mut self, tape_bytes: &[u8]) -> Res<(usize, usize)> {
+        let t = Tape::decode(tape_bytes)?;
+        let mut first = None;
+        let mut n = 0usize;
+        for row in t.frames.iter() {
+            let clock = t.num(row, "frame").unwrap_or(0.0) as u32;
+            let idx = self.em.push_live_row(
+                row.clone(), clock,
+                t.nodes.get(&clock).cloned(),
+                t.anodes.get(&clock).cloned(),
+                t.palrows.get(&clock).cloned(),
+            );
+            if first.is_none() { first = Some(idx); }
+            n += 1;
+        }
+        Ok((first.unwrap_or(0), n))
     }
 
     fn state_id(&mut self, d: &Draw, new_states: &mut Vec<(u32, String)>) -> u32 {
