@@ -56,7 +56,18 @@
 		}
 	}
 
-	const show = $derived(browser && !agent.reporting && !dismissed);
+	// PHONES ARE NOT A DOWNLOAD TARGET. This offers a WINDOWS/LINUX DESKTOP agent, so on a phone or tablet it
+	// is advertising something the visitor cannot install - and on the LIVE tab it was doing that ABOVE the
+	// match (measured 2026-09-05 at 390 px: 72 px of prompt, with the picture not starting until 581 px of an
+	// 844 px viewport). Suppressing it here rather than per-route because it is wrong on mobile everywhere,
+	// not just on LIVE. Detected once at module scope, from the UA plus a coarse pointer on a narrow screen,
+	// so a desktop browser merely resized narrow still sees it.
+	const isMobile =
+		browser &&
+		(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+			(matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 720));
+
+	const show = $derived(browser && !isMobile && !agent.reporting && !dismissed);
 
 	// Resolve once, as soon as the prompt is actually shown — not on every page load, and early enough that
 	// the href is correct well before anyone expands the options and clicks.

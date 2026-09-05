@@ -1117,6 +1117,78 @@ try {
 		await pp.close();
 	}
 
+	// ═══ THE PICTURE IS THE FIRST THING ON THE PAGE ══════════════════════════════════════════════════════
+	// Tris, on a phone (2026-09-05): "the first thing we want users to see when they click live is the latest
+	// match playing... bam, right there in their face". MEASURED before the fix at 390x844: the frame did not
+	// start until 581 px of an 844 px viewport - an agent-download prompt (72 px), the masthead, and a 207 px
+	// platform notice all outranked the match.
+	//
+	// This asserts the RULE, not the numbers: nothing sits above the picture except the app header and the
+	// masthead. That is what makes it survive the next banner someone adds - a new block above the frame fails
+	// here by name instead of quietly pushing the match off the phone again.
+	if (has('--fold')) {
+		for (const [w, h, mob] of [[390, 844, true], [744, 1133, true], [1024, 1366, false], [1440, 900, false]]) {
+			const pf = await browser.newPage();
+			await pf.setViewport({ width: w, height: h, deviceScaleFactor: mob ? 2 : 1, isMobile: mob, hasTouch: mob });
+			await pf.goto(URL_, { waitUntil: 'load', timeout: 120000 });
+			await waitEmbed(pf, '__rrHero', ['playing', 'ready', 'paused', 'closed', 'nopack', 'unavailable']);
+			await sleep(900);
+			const m = await pf.evaluate(() => {
+				const sec = document.querySelector('[data-test="hero"]');
+				const cv = document.querySelector('[data-test="hero"] canvas');
+				if (!sec || !cv) return { ok: false };
+				const r = cv.getBoundingClientRect();
+				const cTop = Math.round(r.top + scrollY);
+				const cBot = Math.round(r.bottom + scrollY);
+				const secTop = Math.round(sec.getBoundingClientRect().top + scrollY);
+
+				// PAGE CHROME ABOVE THE THEATRE. Measured against the SECTION, not the canvas: the embed's own
+				// record row sits inside the picture card by design, and at >= 1140 the comment column sits
+				// BESIDE the picture, so both have a smaller `top` without being "above" anything. Neither is
+				// page chrome and neither pushes the frame down.
+				const above = [];
+				document.querySelectorAll('body *').forEach((el) => {
+					const b = el.getBoundingClientRect();
+					if (b.height < 8 || b.width < 100) return;
+					if (Math.round(b.top + scrollY) >= secTop) return;
+					if (el.contains(sec)) return;                       // a wrapper is not "above"
+					if (el.closest('header.bar, section.mast')) return; // the two things allowed to be there
+					const cls = typeof el.className === 'string' ? el.className.trim().split(/\s+/)[0] : '';
+					above.push(`${el.tagName.toLowerCase()}.${cls}(${Math.round(b.height)}px)`);
+				});
+
+				const sech = document.querySelector('[data-test="hero"] .sechd');
+				const rcb = document.querySelector('.rcb');
+				return {
+					ok: true, cTop, cBot, secTop, vh: innerHeight,
+					hscroll: document.documentElement.scrollWidth > innerWidth,
+					above,
+					captionBelow: sech ? Math.round(sech.getBoundingClientRect().top + scrollY) > cTop : null,
+					noticeBelow: rcb ? Math.round(rcb.getBoundingClientRect().top + scrollY) > cTop : 'absent',
+					agentPrompt: !!document.querySelector('.dl')
+				};
+			});
+			log(`fold ${w}x${h}`, JSON.stringify(m));
+			check(m.ok, `fold ${w}: the picture exists`);
+			check(!m.hscroll, `fold ${w}: no horizontal scroll`);
+			check(m.captionBelow === true, `fold ${w}: the theatre's own label is BELOW the frame, not pushing it down`);
+			check(m.noticeBelow !== false, `fold ${w}: the platform notice is below the picture (${m.noticeBelow})`);
+			if (w === 390) {
+				// THE REQUIREMENT, on the phone Tris is holding: nothing above the frame but header + masthead,
+				// and the WHOLE picture inside the first screenful. A new banner fails here BY NAME.
+				check(m.above.length === 0, `fold 390: nothing above the theatre but the header and masthead (found: ${m.above.join(', ') || 'nothing'})`);
+				check(m.cBot <= m.vh, `fold 390: the ENTIRE picture is inside the first viewport (${m.cTop}..${m.cBot} of ${m.vh})`);
+				check(!m.agentPrompt, 'fold 390: no desktop-agent download prompt on a phone that cannot install it');
+			} else {
+				// On desktop the agent prompt is legitimate - it is for exactly this visitor. What must NEVER
+				// come back above the frame is the platform notice, which is not LIVE-tab content at all.
+				const notices = m.above.filter((x) => /rcb|hostb/i.test(x));
+				check(notices.length === 0, `fold ${w}: no platform/host banner above the theatre (found: ${notices.join(', ') || 'none'})`);
+			}
+			await pf.close();
+		}
+	}
+
 	// ═══ 💬 ANCHORED COMMENTS (LIVE-TAB-V2-SPEC §4, P5) ══════════════════════════════════════════════════
 	// Signed out on purpose. Posting, the rate limits, the participants-only hide and auto-hide at three
 	// reporters are ENFORCED AND SMOKE-VERIFIED SERVER-SIDE, so re-asserting them here would only prove the

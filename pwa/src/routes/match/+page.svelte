@@ -21,7 +21,6 @@
 	import CommentWall from '$lib/components/CommentWall.svelte';
 	import { comments } from '$lib/stores/comments.svelte';
 	import ResultCheckBanner from '$lib/components/ResultCheckBanner.svelte';
-	import HostBanner from '$lib/components/HostBanner.svelte';
 	import ReplayEmbed, { type ReplayMeta, type State as EmbedState } from '$lib/components/ReplayEmbed.svelte';
 	import { canShare, copyText, shareLink, theatreLink, COPIED_MS } from '$lib/share';
 	import { shoutText } from '$lib/stores/motd.svelte';
@@ -582,10 +581,6 @@
 	{/snippet}
 </Masthead>
 
-<ResultCheckBanner />
-
-{#if me}<HostBanner steamid={me} self />{/if}
-
 <!-- 🪙 one-tap accept funnel — arrived via a share link (?mm=). Unchanged. -->
 {#if mmId}
 	<section class="invite" bind:this={inviteEl} class:live={inviteOpen}>
@@ -647,6 +642,40 @@
      A result row swaps the picture; ?m= picks it; the three sections below keep their order and their internals.
      ⚠ data-test="hero" is the smoke harness's stable handle for this slot (scripts/smoke-replay.mjs). -->
 <section class="sec theatre" data-test="hero" bind:this={theatreEl} aria-label="The theatre">
+	<div class="tgrid">
+	<div class="stage">
+	{#if theatre}
+		{#if theatre.source}
+			<ReplayEmbed
+				bind:this={theatreEmbed}
+				source={theatre.source}
+				poster={theatre.poster}
+				meta={theatre.meta}
+				maxPicture={700}
+				marks={commentMarks}
+				onmark={(f) => {
+					theatreEmbed?.pause();
+					void theatreEmbed?.seek(f);
+				}}
+				{autoload}
+				autoart={autoload}
+				hookName="rrHero"
+				onstate={(st) => (theatreSt = st)}
+			/>
+		{:else}
+			<div class="resolving"><span class="rail">Finding the tape</span></div>
+		{/if}
+	{:else if coldLoad}
+		<div class="resolving"><span class="rail">Finding the last match</span></div>
+	{:else}
+		<div class="empty">No tapes yet — the next finished set lands here.</div>
+	{/if}
+
+	<!-- ⬇ THE CAPTION, UNDER THE FRAME (2026-09-05, Tris on a phone: "the first thing we want users to see
+	     when they click live is the latest match playing... bam, right there in their face").
+	     A label above a picture is chrome that pushes the picture down; measured at 390 px it cost 55 px and
+	     the frame did not start until 581 px of an 844 px viewport. It reads exactly as well as a caption, and
+	     BROWSE stays outside the `theatre` conditional so you can still go looking when nothing is playing. -->
 	<div class="sechd">
 		<h2 class="shead">
 			<span class="ic tape" aria-hidden="true">{theatreIcon}</span> {theatreLabel}
@@ -677,29 +706,7 @@
 		</div>
 	{/if}
 
-	<div class="tgrid">
-	<div class="stage">
 	{#if theatre}
-		{#if theatre.source}
-			<ReplayEmbed
-				bind:this={theatreEmbed}
-				source={theatre.source}
-				poster={theatre.poster}
-				meta={theatre.meta}
-				maxPicture={700}
-				marks={commentMarks}
-				onmark={(f) => {
-					theatreEmbed?.pause();
-					void theatreEmbed?.seek(f);
-				}}
-				{autoload}
-				autoart={autoload}
-				hookName="rrHero"
-				onstate={(st) => (theatreSt = st)}
-			/>
-		{:else}
-			<div class="resolving"><span class="rail">Finding the tape</span></div>
-		{/if}
 		<!-- the actions live in the CHROME, never on the picture (§6 amendment 4) — so they still work in every
 		     state the picture cannot play: no tape, no WebGPU, art not acknowledged, phone `closed`. -->
 		<div class="acts">
@@ -729,10 +736,6 @@
 				onfocus={(e) => e.currentTarget.select()}
 			/>
 		{/if}
-	{:else if coldLoad}
-		<div class="resolving"><span class="rail">Finding the last match</span></div>
-	{:else}
-		<div class="empty">No tapes yet — the next finished set lands here.</div>
 	{/if}
 	</div>
 	<!-- 💬 the wall: the right column beside the picture at >= 1140, below it at every narrower width (§4.4).
@@ -757,6 +760,13 @@
 </section>
 
 {#if !inMatch}<MyMatch onTape={openSet} />{/if}
+
+<!-- ⚠ the platform notice, BELOW the picture. It is not LIVE-tab content: it is a global note about result
+     display that points at the 🔔 Result Check bell in the top bar, and it was the single biggest block above
+     the frame (207 px at 390 px wide). It stays dismissible and stays on the page — it just stops outranking
+     the match. HostBanner was dropped from this route entirely: it renders for host-node operators only and
+     already lives on the viewer's own profile (routes/u/[steamid]/+page.svelte), so it was a duplicate. -->
+<ResultCheckBanner />
 
 <!-- 🪙 LIVE MONEY (§5): your wager first (WagerRail self-manages: state rail or the quarter-up CTA), then one
      MoneyCard per locked wager on the rail board (RailPanel verbatim inside), then the arcade's open
@@ -1519,6 +1529,15 @@
 		align-items: center;
 		gap: 10px;
 		margin-top: 10px;
+	}
+	/* the caption sits UNDER the picture and shares its width, so the two read as one block */
+	.theatre .sechd {
+		max-width: 702px;
+		margin: 10px auto 0;
+	}
+	.theatre .newer {
+		max-width: 702px;
+		margin-inline: auto;
 	}
 	/* the theatre's actions sit under its picture and share its width, so they read as one block */
 	.theatre .acts {
