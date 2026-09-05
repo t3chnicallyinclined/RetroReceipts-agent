@@ -1231,6 +1231,18 @@ impl GsCapture {
         self.confirmed_in.clear();   // 0.3.26: this game owns its confirmed-input buffer
         self.objs.clear();           // 0.3.27: and its per-frame object-pool (effects) buffer
         self.calib.clear();          // 0.3.29: and its self-describing effect-node calibration blob
+        // 0.3.53: the TAPE v5 world-space buffers are per-GAME too, exactly like objs/calib above.
+        // They were added in 0.3.35 and never cleared here, so `aobjs` -- the content-hash intern
+        // table every anode indexes into -- accumulated for the LIFE OF THE PROCESS and every
+        // subsequent tape shipped the whole thing. Measured on prod 2026-09-05: a 5,038-frame
+        // match carried a 56.67 MB `aobjs` (aobjs_n = 65,534 = the 0xFFFE u16 cap, saturated) in a
+        // 70.3 MB tape -- 90% padding, 87% of GS_MAX_BODY on the wire. Worse than size: `anodes`
+        // and `palrows` are capped at GS_CAP (20,000) frames, so once the accumulation crossed
+        // that, LATER MATCHES IN A SESSION RECORDED NO WORLD NODES OR PALETTE ROWS AT ALL.
+        self.anodes.clear();
+        self.aobjs.clear();
+        self.aobj_idx.clear();
+        self.palrows.clear();
         self.frame_addr = frame_addr;
         self.synthetic = synthetic;
         self.assist = ms.assist;
@@ -1295,5 +1307,52 @@ impl GsCapture {
                           start_sim_frame: self.start_sim_frame, confirmed_in: self.confirmed_in.clone(), objs: self.objs.clone(),
                           calib: self.calib.clone(), battle_blk: self.battle_blk, tie_ggpo_frame: self.tie_ggpo_frame,
                           anodes: self.anodes.clone(), aobjs: self.aobjs.clone(), palrows: self.palrows.clone() }
+    }
+}
+
+#[cfg(test)]
+mod tests_0_3_53 {
+    use super::*;
+
+    fn ms() -> MatchStart {
+        MatchStart { assist: [0; 6], costume: [0; 6], team_ids: [0; 6], local_pn: 0, set_start: None,
+                     seat_map: [-1; 4], build_id: String::new(), stage_id: 0, start_sim_frame: 0,
+                     battle_blk: 0, tie_ggpo_frame: -1 }
+    }
+
+    /// 0.3.53 regression gate. The TAPE v5 world buffers must NOT survive a match boundary.
+    /// Before the fix all four accumulated for the life of the agent process: prod tapes carried a
+    /// 56.67 MB `aobjs` with `aobjs_n` saturated at the 0xFFFE u16 cap, and once the accumulation
+    /// crossed GS_CAP the later matches of a session recorded no world nodes or palette rows at all.
+    /// The second half guards the OPPOSITE invariant -- `anchor` and `select_in` belong to the
+    /// character select that preceded the match and must survive -- so a future "tidy up" of
+    /// begin_match cannot silently break the receipt path while making this test pass.
+    #[test]
+    fn world_buffers_reset_between_matches() {
+        let mut c = GsCapture::default();
+        c.begin_match(&ms(), 0, false);
+        for i in 0..1000u32 {
+            c.aobjs.push(vec![i as u8; 64]);
+            c.aobj_idx.insert(i as u64, i as u16);
+            c.anodes.insert(i, Vec::new());
+            c.palrows.push((i, [[0u8; 32]; 48], [0u8; 48]));
+        }
+        assert_eq!(c.aobjs.len(), 1000, "setup");
+
+        c.begin_match(&ms(), 0, false);
+        assert!(c.aobjs.is_empty(),    "aobjs survived the match boundary ({} left)", c.aobjs.len());
+        assert!(c.aobj_idx.is_empty(), "aobj_idx survived the match boundary ({} left)", c.aobj_idx.len());
+        assert!(c.anodes.is_empty(),   "anodes survived the match boundary ({} left)", c.anodes.len());
+        assert!(c.palrows.is_empty(),  "palrows survived the match boundary ({} left)", c.palrows.len());
+    }
+
+    #[test]
+    fn anchor_and_select_in_survive_begin_match() {
+        let mut c = GsCapture::default();
+        c.anchor = Some(vec![1, 2, 3]);
+        c.select_in.push((1, 2, 3));
+        c.begin_match(&ms(), 0, false);
+        assert!(c.anchor.is_some(), "anchor must survive begin_match -- it belongs to the PRECEDING character select");
+        assert_eq!(c.select_in.len(), 1, "select_in must survive begin_match");
     }
 }
