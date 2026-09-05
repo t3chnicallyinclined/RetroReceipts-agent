@@ -108,6 +108,10 @@ impl FrameFeed {
                 t.nodes.get(&clock).cloned(),
                 t.anodes.get(&clock).cloned(),
                 t.palrows.get(&clock).cloned(),
+                // The chunk's own object table. It was ALREADY decoded above and used to be dropped
+                // here, which left `ANode.obj` pointing into the seed session's table instead.
+                // Costs no bandwidth: these bytes are already on the wire and already parsed.
+                Some(&t.aobjs),
             );
             if first.is_none() { first = Some(idx); }
             n += 1;

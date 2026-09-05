@@ -95,6 +95,36 @@ struct Item<'a> {
     bit15: bool, angle: u16, hot: (i16, i16), walk: i64, depth: Option<f32>, pslot: i64, pframe: u32,
 }
 
+/// FNV-1a over everything that makes an `ObjRec` a DIFFERENT object to draw: its texture identity,
+/// its render state, its colour, every vertex of every polygon group, AND its bounding sphere.
+/// Floats are hashed by their bit pattern, so this is exact equality rather than a tolerance.
+///
+/// `centre`/`radius` are in here even though they are not rasterisation inputs: they feed
+/// `sort_key_record` (`world.rs`), i.e. the TRANSLUCENT DRAW ORDER. Two records identical in every
+/// other field but with different bounding spheres would otherwise merge and inherit the wrong sort
+/// key -- changing blended output without changing a single vertex. Measured on 1,506 real objects
+/// (722 capture + 784 seed) that collision occurs zero times, but zero-so-far is not never, and
+/// mixing two more fields in costs nothing. Used to give the live feed a session-stable object
+/// index (`aobj_index`).
+fn aobj_hash(recs: &[crate::tape::ObjRec]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |b: &[u8]| { for &x in b { h ^= x as u64; h = h.wrapping_mul(0x100_0000_01b3); } };
+    for r in recs {
+        mix(&r.tcw.to_le_bytes()); mix(r.key.as_bytes());
+        mix(&r.pcw.to_le_bytes()); mix(&r.isp.to_le_bytes());
+        mix(&r.tsp.to_le_bytes()); mix(&r.texnum.to_le_bytes());
+        for c in r.colour { mix(&c.to_bits().to_le_bytes()); }
+        for (flags, vs) in &r.groups {
+            mix(&flags.to_le_bytes());
+            for v in vs { for f in v { mix(&f.to_bits().to_le_bytes()); } }
+        }
+        // the sort-order inputs -- see the note above
+        match &r.centre { Some(c) => { mix(&[1u8]); for f in c { mix(&f.to_bits().to_le_bytes()); } } None => mix(&[0u8]) }
+        match &r.radius { Some(v) => { mix(&[1u8]); mix(&v.to_bits().to_le_bytes()); } None => mix(&[0u8]) }
+    }
+    h
+}
+
 pub struct Emitter {
     pub tape: Tape,
     pub atlases: HashMap<u8, Atlas>,
@@ -118,6 +148,17 @@ pub struct Emitter {
     /// PRISTINE per-clock node counts, snapshotted before the torn guard is ever allowed to substitute into
     /// `self.nodes`. The guard reads only this, so its verdict is a pure function of the tape.
     node_counts: HashMap<u32, usize>,
+
+    /// CONTENT HASH -> index into `tape.aobjs`, for the LIVE feed only.
+    ///
+    /// `ANode.obj` is a CHUNK-LOCAL index: the agent interns objects per `GsCapture` in first-seen
+    /// order (`agent/src/harvest.rs:1281-1290`) and the window path builds a fresh capture per flush,
+    /// so every pushed chunk restarts its index space at 0 with a few dozen entries. Looking those up
+    /// in the SESSION's table (784 entries from the seed tape) drew other recordings' geometry:
+    /// measured against MvC2's own draw list, 97.28% precision with 300/300 frames below 100% and
+    /// 79,543 spurious world vertices in a 300-frame burst. Merging by CONTENT makes an index mean the
+    /// same bytes for the life of the session, which is what the lookup in `world.rs` assumes.
+    aobj_index: HashMap<u64, u16>,
     pub textures: OrderedMap<Texture>,
     pub cb_recs: OrderedMap<Vec<u8>>,
     pub blobs: BlobStore,
@@ -250,6 +291,7 @@ impl Emitter {
                                           else { resolve_palrow_slots(&tape, &atlases, &p1, &p2) };
         Emitter { tape, atlases, camera, wt, world_assets, world_state, sprite_state, opts, p1, p2, nodes, last_nodes: None,
                   bank_slot, unknown_slots, palrow_slot, palrow_note, node_counts,
+                  aobj_index: HashMap::new(),
                   textures: OrderedMap::new(), cb_recs: OrderedMap::new(), blobs: BlobStore::default(), stats: Stats::default(), prof_rows: 0 }
     }
 
@@ -266,14 +308,47 @@ impl Emitter {
     // and `world_state`. A live session therefore inherits them from the tape it was opened with, which
     // is why the live path is opened on a representative seed tape rather than an empty one.
     pub fn push_live_row(&mut self, row: Value, clock: u32, nodes: Option<Vec<Node>>,
-                         anodes: Option<Vec<crate::tape::ANode>>, palrows: Option<crate::tape::PalRows>) -> usize {
+                         anodes: Option<Vec<crate::tape::ANode>>, palrows: Option<crate::tape::PalRows>,
+                         aobjs: Option<&[Vec<crate::tape::ObjRec>]>) -> usize {
         if let Some(ns) = nodes {
             for n in &ns { if n.kind == 0 && n.gfx1 != 0 { self.bank_slot.insert(n.gfx1, n.slot); } }
             self.node_counts.insert(clock, ns.len());
             self.tape.nodes.insert(clock, ns.clone());
             self.nodes.insert(clock, ns);
         }
-        if let Some(a) = anodes { self.tape.anodes.insert(clock, a); }
+        // MERGE the pushed chunk's object table into the session's BY CONTENT, then rewrite this
+        // chunk's node indices into the session namespace. Without this the indices below are
+        // chunk-local and address the seed tape's objects instead -- see `aobj_index`.
+        let remap: Option<Vec<u16>> = aobjs.map(|chunk| {
+            if self.aobj_index.is_empty() && !self.tape.aobjs.is_empty() {
+                // Seed the index from whatever `open` already loaded, so a chunk object that is
+                // byte-identical to a seed object reuses the seed's slot instead of growing the table.
+                for (i, o) in self.tape.aobjs.iter().enumerate() {
+                    if i > u16::MAX as usize { break; }
+                    self.aobj_index.entry(aobj_hash(o)).or_insert(i as u16);
+                }
+            }
+            chunk.iter().map(|o| {
+                let h = aobj_hash(o);
+                if let Some(&i) = self.aobj_index.get(&h) { return i; }
+                // 0xFFFF is the tape's own no-object sentinel, and `world.rs` bounds-checks against
+                // `tape.aobjs.len()`, so a saturated table degrades to SKIPPING the node rather than
+                // aliasing it onto an unrelated object.
+                if self.tape.aobjs.len() >= u16::MAX as usize { return u16::MAX; }
+                let i = self.tape.aobjs.len() as u16;
+                self.tape.aobjs.push(o.clone());
+                self.aobj_index.insert(h, i);
+                i
+            }).collect()
+        });
+        if let Some(mut a) = anodes {
+            if let Some(map) = &remap {
+                for nd in a.iter_mut() {
+                    nd.obj = map.get(nd.obj as usize).copied().unwrap_or(u16::MAX);
+                }
+            }
+            self.tape.anodes.insert(clock, a);
+        }
         if let Some(pr) = palrows { self.tape.palrows.insert(clock, pr); }
         self.tape.frames.push(row);
         self.tape.frames.len() - 1
