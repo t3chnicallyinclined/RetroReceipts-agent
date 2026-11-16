@@ -15,6 +15,8 @@
 	import { GROUPS, glanceTiles, groupSummary, mentionViews, nf, nf1, presentSubs, type GroupId } from '$lib/finale/derive';
 	import { reveal, revealAll } from '$lib/finale/motion';
 	import { DISCORD_URL } from '$lib/links';
+	import { seasonReg } from '$lib/stores/seasonreg.svelte';
+	import { RESIGN_COPY } from '$lib/launch';
 	import { gamesOf, rankOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
 	import type { Player } from '$lib/types';
 	import Avatar from '$lib/components/Avatar.svelte';
@@ -298,20 +300,15 @@
 		};
 	});
 
-	// registering for the open season: the same authed POST the Settings card uses (current season only)
-	let regBusy = $state(false);
-	let regDone = $state(false);
-	let regMsg = $state('');
-	async function register(nextLabel: string) {
-		regBusy = true;
-		regMsg = '';
-		const r = await auth.post('/rr/season/register', {});
-		regBusy = false;
-		if (r.ok) {
-			regDone = true;
-			regMsg = `You’re registered for ${nextLabel}.`;
-		} else regMsg = r.error ?? 'Could not register right now.';
-	}
+	// the open season's registration: status is read on load (so a registered player sees the registered state,
+	// never "Register" again); joining is the same authed call as Settings. A flag only.
+	$effect(() => {
+		const open = next?.id;
+		const sid = auth.steamid;
+		if (!open) return;
+		seasonReg.reset();
+		void seasonReg.load(sid);
+	});
 
 	const title = $derived(season ? `${season.label} wrap-up` : 'Season wrap-up');
 	let shareStatus = $state('');
@@ -445,8 +442,8 @@
 						<span class="rail">Open now</span>
 						<h3>{next.label}</h3>
 						<p>Everyone starts fresh at the same rating. Register to take part, play your first five ranked games to get a rank, and {label} stays here to look back on.</p>
-						<div class="cta">{#if regDone}<span class="pill">Registered</span>{:else if auth.authed}<button type="button" class="btn pri" disabled={regBusy} onclick={() => register(next.label)}>Register for {next.label}</button>{:else}<button type="button" class="btn pri" onclick={() => auth.login()}>Sign in to register</button>{/if}<a class="btn" href="{base}/ranks">See the current ladder</a></div>
-						<p class="status" role="status" aria-live="polite">{regMsg}</p>
+						<div class="cta">{#if seasonReg.registered}<span class="pill">Registered</span>{:else if !auth.authed}<button type="button" class="btn pri" onclick={() => auth.login()}>Sign in to register</button>{:else if seasonReg.refusal === 'signin'}<button type="button" class="btn pri" onclick={() => auth.login()}>Sign in through Steam</button>{:else}<button type="button" class="btn pri" disabled={seasonReg.busy || !seasonReg.known} onclick={() => seasonReg.join()}>Register for {next.label}</button>{/if}<a class="btn" href="{base}/ranks">See the current ladder</a></div>
+						<p class="status" role="status" aria-live="polite">{seasonReg.justJoined ? `You’re registered for ${next.label}.` : seasonReg.refusal === 'signin' ? RESIGN_COPY : seasonReg.message}</p>
 						<p class="dimp">We plan to run more seasons after that.</p>
 					</div>
 				{:else}

@@ -1,5 +1,6 @@
 import { apiGet } from '$lib/net.svelte';
 import { parseSeasonTable, type Season, type SeasonTable } from '$lib/seasons';
+import { seasonChanged } from '$lib/launch';
 
 // The season table and the viewer's selected season. Loaded ONCE per page load from GET /rr/seasons; every
 // label in the app comes from it (nothing is hard-coded). Old servers have no such route: a 404 (or any
@@ -18,6 +19,29 @@ export class SeasonsStore {
 	status = $state<'idle' | 'loading' | 'ready' | 'absent'>('idle');
 
 	#inflight: Promise<void> | null = null;
+	#baseline: string | null = null;
+	#lastCheck = 0;
+	/** the current season changed while this tab was open: its ladder is stale until a refresh */
+	changed = $state(false);
+
+	/**
+	 * Re-read the season table (cheap: one small GET) and flag a change of the CURRENT season. Called on focus /
+	 * when the tab becomes visible, at most once a minute. Never throws; an old server (404) changes nothing.
+	 */
+	async recheck(now: number = Date.now(), minGapMs = 60_000): Promise<boolean> {
+		if (this.#baseline === null || now - this.#lastCheck < minGapMs) return this.changed;
+		this.#lastCheck = now;
+		try {
+			const t = parseSeasonTable(await apiGet<unknown>('/rr/seasons', { ttl: 0, force: true }));
+			if (t && seasonChanged(this.#baseline, t.current)) {
+				this.table = t;
+				this.changed = true;
+			}
+		} catch {
+			/* a blip: try again on the next focus */
+		}
+		return this.changed;
+	}
 
 	get available(): boolean {
 		return !!this.table;
@@ -86,6 +110,7 @@ export class SeasonsStore {
 				const t = parseSeasonTable(await apiGet<unknown>('/rr/seasons', { ttl: 0 }));
 				this.table = t;
 				this.status = t ? 'ready' : 'absent';
+				if (t && this.#baseline === null) this.#baseline = t.current; // the season this tab started with
 			} catch (e) {
 				// 404 = a server from before seasons: settled, stay quiet. Anything else: allow a retry.
 				const notThere = e instanceof Error && e.message === '404';

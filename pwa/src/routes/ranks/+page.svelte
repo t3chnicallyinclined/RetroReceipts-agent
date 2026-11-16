@@ -19,6 +19,8 @@
 	import { seasons } from '$lib/stores/seasons.svelte';
 	import SeasonPicker from '$lib/components/SeasonPicker.svelte';
 	import SeasonNote from '$lib/components/SeasonNote.svelte';
+	import JoinStrip from '$lib/components/JoinStrip.svelte';
+	import { seasonReg } from '$lib/stores/seasonreg.svelte';
 	import type { LeaderboardTab, LeaderboardPeriod } from '$lib/types';
 
 	// ── live wiring: initial fetch + subscribe to the "leaderboard" SSE channel; pause on hide ──
@@ -216,6 +218,12 @@
 
 <SeasonNote onback={onSeason} />
 
+<!-- current season only: how many have registered, and the one-tap register strip (a flag, nothing more) -->
+{#if seasons.available && seasons.currentLabel && !seasons.archived}
+	{#if seasonReg.count}<p class="regline">{seasonReg.count} registered for {seasons.currentLabel}</p>{/if}
+	<JoinStrip label={seasons.currentLabel} current={true} />
+{/if}
+
 {#if regionView}
 	<!-- Region leaderboard — city ladders by total wins (same store/rows as the old /regions page). -->
 	{#if regionCold}
@@ -300,6 +308,11 @@
 {/if}
 
 <style>
+	.regline {
+		margin: 0 2px 6px;
+		font-size: 12px;
+		color: var(--dim);
+	}
 	.controls {
 		display: flex;
 		align-items: center;

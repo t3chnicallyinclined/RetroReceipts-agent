@@ -6,6 +6,7 @@
 	import { agent } from '$lib/stores/agent.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
 	import { seasons } from '$lib/stores/seasons.svelte';
+	import { registerRefusal, RESIGN_COPY } from '$lib/launch';
 	import { theme, type ThemeChoice } from '$lib/stores/theme.svelte';
 	import { APP_VERSION, api } from '$lib/config';
 	import Avatar from '$lib/components/Avatar.svelte';
@@ -68,7 +69,7 @@
 			seasonMsg = seasonLabel ? `You’re registered for ${seasonLabel}.` : 'You’re registered.';
 			await loadSeason();
 		} else {
-			seasonMsg = r.error ?? 'Could not join right now.';
+			seasonMsg = registerRefusal(r.error) === 'signin' ? RESIGN_COPY : (r.error ?? 'Could not join right now.');
 		}
 	}
 

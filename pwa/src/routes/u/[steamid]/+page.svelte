@@ -263,6 +263,7 @@
 				link={false}
 			/>
 			{#if loc}<span class="loc heroloc">{loc}</span>{/if}
+			{#if seasons.available && !seasons.archived && p.season_registered}<span class="pill regpill" title="Registered for {seasons.currentLabel}">Registered</span>{/if}
 			{#if aliases.length}
 				<!-- name history on this SteamID — renaming never sheds a reputation -->
 				<span class="aka">a.k.a. <b>{aliases.slice(0, 5).join(' · ')}</b></span>
