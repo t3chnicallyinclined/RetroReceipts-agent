@@ -177,6 +177,9 @@
 			{/if}
 		</div>
 		{#if seasonMsg}<div class="season-msg" role="status">{seasonMsg}</div>{/if}
+		{#if seasons.previous}
+			<div class="season-msg"><a class="season-link" href="{base}/season/{seasons.previous.id}">See the {seasons.previous.label} wrap-up</a></div>
+		{/if}
 	</div>
 
 	<!-- Represent — set your country/city so a flag shows by your name and you land on the Regions board -->
@@ -405,6 +408,11 @@
 		margin-top: 10px;
 		font-size: 12px;
 		color: var(--dim);
+	}
+	.season-link {
+		color: var(--ink);
+		text-decoration: underline;
+		font-weight: 700;
 	}
 	.season-msg {
 		margin-top: 10px;

@@ -55,6 +55,13 @@ export class SeasonsStore {
 		return this.archived ? (this.selected ?? undefined) : undefined;
 	}
 
+	/** The finished season right before the current one (its wrap-up is linkable), or null. */
+	get previous(): Season | null {
+		const list = this.table?.seasons ?? [];
+		const i = list.findIndex((s) => s.id === this.table?.current);
+		return i > 0 ? list[i - 1] : null;
+	}
+
 	/** Newest first — the order a person expects in a list. */
 	get newestFirst(): Season[] {
 		return [...(this.table?.seasons ?? [])].reverse();

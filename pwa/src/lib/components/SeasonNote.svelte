@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import { seasons } from '$lib/stores/seasons.svelte';
 
 	// Shown only while a finished season is on screen: says plainly that these numbers are final and offers
@@ -20,6 +21,7 @@
 		<span class="txt"
 			><b>{s.label}</b> is over. You're looking at its final standings, which won't change.</span
 		>
+		<a class="wrap" href="{base}/season/{s.id}">See the season wrap-up</a>
 		{#if cur}<button class="back" type="button" onclick={back}>Back to {cur}</button>{/if}
 	</div>
 {/if}
@@ -50,6 +52,20 @@
 	.txt {
 		flex: 1 1 220px;
 		min-width: 0;
+	}
+	.wrap {
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--ink);
+		text-decoration: underline;
+		padding: 8px 4px;
+		min-height: 36px;
+		display: inline-flex;
+		align-items: center;
+	}
+	.wrap:focus-visible {
+		outline: 2px solid var(--gold);
+		outline-offset: 2px;
 	}
 	.back {
 		font: inherit;
