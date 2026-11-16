@@ -16,8 +16,9 @@
 		player,
 		place,
 		tab,
-		scoped = false
-	}: { player: Player; place: 1 | 2 | 3; tab: LeaderboardTab; scoped?: boolean } = $props();
+		scoped = false,
+		challenge = true
+	}: { player: Player; place: 1 | 2 | 3; tab: LeaderboardTab; scoped?: boolean; challenge?: boolean } = $props();
 
 	const r = $derived(rankOf(player.rating, gamesOf(player)));
 	// Scoped podiums (Lobby/Tournament) carry no rating → no tier badge and a neutral plate accent.
@@ -56,7 +57,7 @@
 	{/if}
 	<b class="prt">{statValue(player, tab)}</b>
 	<span class="pwl">{player.wins ?? 0}W · {player.losses ?? 0}L · {winrateOf(player)}%</span>
-	{#if player.steamid}
+	{#if player.steamid && challenge}
 		<span class="chall"><ChallengeButton steamid={player.steamid} name={player.name || 'this player'} compact /></span>
 	{/if}
 </div>

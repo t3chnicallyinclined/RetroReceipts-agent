@@ -272,3 +272,15 @@ button {
 			calc(84px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
 	}
 }
+
+/* Light theme: the pale tier colours (Silver #cdd7e4, Infinity, Gold...) are unreadable on white, so tier TEXT is
+   mixed toward the ink colour. Badges and bars keep their own colours. */
+:root[data-theme='light'] .rk-iron { color: color-mix(in srgb, #a7adb8 52%, var(--ink)); }
+:root[data-theme='light'] .rk-bronze { color: color-mix(in srgb, #d59a5f 52%, var(--ink)); }
+:root[data-theme='light'] .rk-silver { color: color-mix(in srgb, #cdd7e4 52%, var(--ink)); }
+:root[data-theme='light'] .rk-gold { color: color-mix(in srgb, #f2c74a 52%, var(--ink)); }
+:root[data-theme='light'] .rk-vibranium { color: color-mix(in srgb, #b98cff 52%, var(--ink)); }
+:root[data-theme='light'] .rk-adamantium { color: color-mix(in srgb, #9fd4ef 52%, var(--ink)); }
+:root[data-theme='light'] .rk-herald { color: color-mix(in srgb, #ffb35c 52%, var(--ink)); }
+:root[data-theme='light'] .rk-infinity { color: color-mix(in srgb, #ffe9b0 52%, var(--ink)); }
+:root[data-theme='light'] .rk-galactus { color: color-mix(in srgb, #ff7ae0 52%, var(--ink)); }
