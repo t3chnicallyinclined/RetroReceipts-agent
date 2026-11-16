@@ -27,7 +27,7 @@
 		});
 		busy = false;
 		if (res.ok) {
-			notice = { kind: 'ok', text: 'Thanks — your idea is in. Good ones become boards.' };
+			notice = { kind: 'ok', text: 'Thanks. Your idea is in.' };
 			text = '';
 		} else {
 			notice = { kind: 'err', text: res.error ?? 'Could not send that — try again.' };
@@ -99,12 +99,11 @@
 				</button>
 			{:else}
 				<p class="lede">
-					Think a stat is worth tracking? Tell us what to rank and how you’d score it — good ideas get added
-					to the boards.
+					Think a stat is worth tracking? Tell us what to rank and how you’d score it.
 				</p>
 				<div class="hintbox">
 					<b>Data we can rank on:</b> match wins/losses, teams &amp; characters used, per-round outcomes, health
-					&amp; comeback situations, combo hit-counts, OCVs, perfects, and head-to-head matchups.
+					&amp; comeback situations, combo hit-counts, perfects, and head-to-head matchups.
 					<div class="ex">
 						<b>Example:</b>
 						<i>“Anchor Clutch — win-rate when you’re down to your last character.”</i>

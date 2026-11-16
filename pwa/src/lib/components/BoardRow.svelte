@@ -61,6 +61,7 @@
 			<span class="nm">{player.name || 'Player'}</span>
 		{/if}
 		{#if me}<span class="me-tag">YOU</span>{/if}
+		{#if player.registered}<span class="regmk" role="img" aria-label="Registered for this season" title="Registered">✓</span>{/if}
 		{#if team.length}
 			<span class="subteam" aria-hidden="true">
 				{#each team as id, k (k)}<span class="tchip s"><CharSprite {id} still palette={lo?.[id] ?? null} alt={charTag(id)} /></span>{/each}
@@ -109,6 +110,19 @@
 		font-variant-numeric: tabular-nums;
 		text-align: center;
 	}
+	/* registered mark: a quiet outlined tick (never gold: gold marks the winner) */
+	.regmk {
+		flex: none;
+		display: inline-grid;
+		place-items: center;
+		width: 15px;
+		height: 15px;
+		border: 1px solid var(--faint);
+		border-radius: 50%;
+		font-size: 9px;
+		line-height: 1;
+		color: var(--dim);
+	}
 	.bd-name {
 		font-weight: 700;
 		font-size: 13.5px;
@@ -134,6 +148,15 @@
 	.tchip.s {
 		width: 15px;
 		height: 15px;
+	}
+	/* Missing portrait: CharSprite falls back to a 3-letter code at 15px, which is wider than these chips and
+	   made neighbouring codes overlap. Fit the code to the chip. */
+	.tchip :global(.abbr) {
+		font-size: 9px;
+		letter-spacing: 0;
+	}
+	.tchip.s :global(.abbr) {
+		font-size: 6px;
 	}
 	.subteam {
 		display: none; /* phones only */

@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
 	import { api } from '$lib/config';
+	import { seasons } from '$lib/stores/seasons.svelte';
 	import Flag from '$lib/components/Flag.svelte';
 	import { rankOf } from '$lib/ranks';
 	import { rankTitle } from '$lib/stores/rankinfo.svelte';
@@ -47,6 +48,7 @@
 		const qs = new URLSearchParams({ tab: 'wins', limit: '50' });
 		if (cc) qs.set('country', cc);
 		if (city) qs.set('city', city);
+		if (seasons.param) qs.set('season', seasons.param); // roster of the season the board is showing
 		try {
 			const res = await fetch(api(`/rr/leaderboard?${qs}`), { headers: { accept: 'application/json' } });
 			if (!res.ok) return [];

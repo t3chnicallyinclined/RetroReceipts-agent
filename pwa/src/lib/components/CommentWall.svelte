@@ -3,6 +3,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import PlayerPlate from './PlayerPlate.svelte';
 	import { timeAgo } from '$lib/format';
+	import { commentPlateRating } from '$lib/commentPlate';
 
 	// 💬 THE COMMENT WALL (LIVE-TAB-V2-SPEC §4) — the distinctive half of the beta: a comment can carry the
 	// exact FRAME it is about, so "0:42" is a jump link rather than text someone typed.
@@ -198,7 +199,7 @@
 				{/if}
 				<li class="c" class:hidden={c.hidden}>
 					<div class="chd">
-						<PlayerPlate steamid={c.author} name={c.name} avatar={c.avatar} rating={c.rating} games={c.games} density="tag" />
+						<PlayerPlate steamid={c.author} name={c.name} avatar={c.avatar} rating={commentPlateRating(c)} games={c.games} density="tag" />
 						{#if foughtThis(c)}<span class="fought" title="Fought in this match">FOUGHT THIS</span>{/if}
 						{#if c.frame != null}
 							<button type="button" class="at" onclick={() => onSeek?.(c.frame ?? 0)} title="Jump to this moment and pause">@ {mmss(c.frame)}</button>

@@ -16,8 +16,9 @@
 		player,
 		place,
 		tab,
-		scoped = false
-	}: { player: Player; place: 1 | 2 | 3; tab: LeaderboardTab; scoped?: boolean } = $props();
+		scoped = false,
+		challenge = true
+	}: { player: Player; place: 1 | 2 | 3; tab: LeaderboardTab; scoped?: boolean; challenge?: boolean } = $props();
 
 	const r = $derived(rankOf(player.rating, gamesOf(player)));
 	// Scoped podiums (Lobby/Tournament) carry no rating → no tier badge and a neutral plate accent.
@@ -43,6 +44,7 @@
 		<Avatar url={player.avatar} size={crown ? 58 : 46} alt={player.name} />
 		<b class="pnm">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{player.name || 'Player'}</b>
 	{/if}
+	{#if player.registered}<span class="regmk" role="img" aria-label="Registered for this season" title="Registered">✓ Registered</span>{/if}
 	{#if !scoped}
 		<span class="ptier bd-tier">
 			<RankBadge rating={player.rating} games={gamesOf(player)} size={crown ? 20 : 16} />
@@ -56,7 +58,7 @@
 	{/if}
 	<b class="prt">{statValue(player, tab)}</b>
 	<span class="pwl">{player.wins ?? 0}W · {player.losses ?? 0}L · {winrateOf(player)}%</span>
-	{#if player.steamid}
+	{#if player.steamid && challenge}
 		<span class="chall"><ChallengeButton steamid={player.steamid} name={player.name || 'this player'} compact /></span>
 	{/if}
 </div>
@@ -80,6 +82,14 @@
 		overflow: hidden;
 	}
 	.pwl,
+	.regmk {
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--dim);
+		border: 1px solid var(--faint);
+		border-radius: 999px;
+		padding: 0 7px;
+	}
 	.ptier {
 		max-width: 100%;
 	}
@@ -108,6 +118,11 @@
 		width: 56px;
 		height: 56px;
 	}
+	/* If a portrait is missing, CharSprite shows a 3-letter code at 15px: scale it to the chip so codes never overlap. */
+	.squad .sq :global(.abbr) {
+		font-size: 11px;
+		letter-spacing: 0;
+	}
 	.chall {
 		margin-top: 4px;
 	}
@@ -118,13 +133,19 @@
 	.crown .mark {
 		font-size: 16px;
 	}
+	/* Real handles can be long ("twitch.tvducvader"): wrap to two lines so the part that identifies the player
+	   is not the part that gets cut off. */
 	.pnm {
 		font-size: 14px;
 		font-weight: 800;
 		max-width: 100%;
+		text-align: center;
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 	}
 	.av-link {
 		display: inline-flex;
@@ -164,6 +185,25 @@
 	   overflow-x:hidden → it gets clipped). Straighten the plates and tighten padding so
 	   all three fit exactly. */
 	@media (max-width: 560px) {
+		/* The squad is three portraits; at 44/56px they are wider than a phone-width plate and the side plates
+		   clipped them. Size each chip from the plate's own width instead (inline-size container). */
+		.pod {
+			container-type: inline-size;
+		}
+		.squad {
+			gap: 3px;
+		}
+		.squad .sq {
+			width: min(44px, calc((100cqw - 6px) / 3));
+			height: min(44px, calc((100cqw - 6px) / 3));
+		}
+		.squad.crown .sq {
+			width: min(56px, calc((100cqw - 6px) / 3));
+			height: min(56px, calc((100cqw - 6px) / 3));
+		}
+		.squad .sq :global(.abbr) {
+			font-size: 9px;
+		}
 		.pod {
 			transform: none;
 			padding: 12px 8px 10px;

@@ -1,4 +1,5 @@
 import { api } from '$lib/config';
+import { seasons } from '$lib/stores/seasons.svelte';
 
 // Regions ("represent") store. rune-$state, modelled on LeaderboardStore: one fetch, keep-last-good on
 // error. The list is small (one row per city/country ladder) so no virtualization / live channel is
@@ -49,14 +50,21 @@ export class RegionsStore {
 	lastLoaded = $state(0);
 
 	#reqId = 0;
+	#shownSeason: string | undefined = undefined;
 
 	async load(): Promise<void> {
 		const myReq = ++this.#reqId;
 		const level = this.level; // snapshot the request axes so a late response can't mislabel the board
 		const sort = this.sort;
+		const season = seasons.param;
+		if (season !== this.#shownSeason) {
+			this.regions = []; // never show another season's cities while this one loads
+			this.#shownSeason = season;
+		}
 		this.loading = true;
 		try {
 			const qs = new URLSearchParams({ level, sort, limit: '40' });
+			if (season) qs.set('season', season);
 			const res = await fetch(api(`/rr/regions?${qs}`), { headers: { accept: 'application/json' } });
 			if (!res.ok) throw new Error(`regions ${res.status}`);
 			const json = (await res.json()) as RegionsResponse;

@@ -9,6 +9,8 @@
 	import DownloadAgent from '$lib/components/DownloadAgent.svelte';
 	import UpdateAgent from '$lib/components/UpdateAgent.svelte';
 	import AnnounceBanner from '$lib/components/AnnounceBanner.svelte';
+	import SeasonAnnouncement from '$lib/components/SeasonAnnouncement.svelte';
+	import SeasonChangeNotice from '$lib/components/SeasonChangeNotice.svelte';
 	import RankInfoModal from '$lib/components/RankInfoModal.svelte';
 	import ReplaySheet from '$lib/components/ReplaySheet.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
@@ -41,6 +43,8 @@
 		<TopBar />
 		<ChallengeStrip />
 		<AnnounceBanner />
+		<SeasonAnnouncement />
+		<SeasonChangeNotice />
 		<UpdateAgent />
 		<DownloadAgent />
 		<main>

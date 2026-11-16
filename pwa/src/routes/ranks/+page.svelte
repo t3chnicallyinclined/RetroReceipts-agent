@@ -16,10 +16,19 @@
 	import Flag from '$lib/components/Flag.svelte';
 	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { seasons } from '$lib/stores/seasons.svelte';
+	import SeasonPicker from '$lib/components/SeasonPicker.svelte';
+	import SeasonNote from '$lib/components/SeasonNote.svelte';
+	import JoinStrip from '$lib/components/JoinStrip.svelte';
+	import { seasonReg } from '$lib/stores/seasonreg.svelte';
 	import type { LeaderboardTab, LeaderboardPeriod } from '$lib/types';
 
 	// ── live wiring: initial fetch + subscribe to the "leaderboard" SSE channel; pause on hide ──
 	onMount(() => {
+		void seasons.load();
+		void seasons.applyUrl(location.search).then((changed) => {
+			if (changed) onSeason(); // ?season=<id> in the link
+		});
 		void leaderboard.load(true);
 		leaderboard.connect();
 		const onVis = () => {
@@ -38,6 +47,12 @@
 	});
 
 	let q = $state('');
+
+	// The season changed (picker or "back to current"): the stores drop the old season's rows and refetch.
+	function onSeason() {
+		void leaderboard.load(true);
+		if (regionView) void regions.load();
+	}
 
 	const tab = $derived(leaderboard.tab);
 	const scope = $derived(leaderboard.scope);
@@ -134,6 +149,8 @@
 	{#snippet pills()}
 		{#if (regionView ? regions.error && regionList.length : leaderboard.error && players.length)}
 			<span class="pill live" title={regionView ? regions.error : leaderboard.error}>RECONNECTING…</span>
+		{:else if seasons.archived}
+			<span class="pill">FINAL</span>
 		{:else}
 			<span class="pill good">LIVE</span>
 		{/if}
@@ -142,7 +159,7 @@
 
 <!-- Board control area (ONE grouped masthead row — DESIGN-SYSTEM hard-rule #1: never a second
      control row). Scope · stat tabs · period · search. Stays one row from ~900px up; wraps on phones. -->
-<div class="controls">
+<div class="controls" class:hasseas={seasons.multiple}>
 	<!-- Scope switch: which games feed the boards. Ranked carries ratings + titles; Lobby/Tournament
 	     are pure records. A distinct segmented control so it never reads as another stat tab. -->
 	<div class="scopes" role="tablist" aria-label="Board scope">
@@ -192,9 +209,20 @@
 				{/each}
 			</div>
 		{/if}
+		{#if seasons.multiple}<div class="seas"><SeasonPicker onchange={onSeason} /></div>{/if}
 		<input class="search" type="search" placeholder="Search player…" bind:value={q} aria-label="Search player" />
+	{:else if seasons.multiple}
+		<div class="seas"><SeasonPicker onchange={onSeason} /></div>
 	{/if}
 </div>
+
+<SeasonNote onback={onSeason} />
+
+<!-- current season only: how many have registered, and the one-tap register strip (a flag, nothing more) -->
+{#if seasons.available && seasons.currentLabel && !seasons.archived}
+	{#if seasonReg.count}<p class="regline">{seasonReg.count} registered for {seasons.currentLabel}</p>{/if}
+	<JoinStrip label={seasons.currentLabel} current={true} />
+{/if}
 
 {#if regionView}
 	<!-- Region leaderboard — city ladders by total wins (same store/rows as the old /regions page). -->
@@ -222,6 +250,8 @@
 	<div class="empty">
 		{#if searching}
 			No players match “{q}”.
+		{:else if seasons.archived}
+			No games were recorded in {seasons.active?.label ?? 'this season'}.
 		{:else if scoped}
 			No {scope === 'lobby' ? 'lobby' : 'tournament'} games recorded {leaderboard.period === 'all' ? 'yet' : PERIOD_LABEL[leaderboard.period]} — they log automatically as they happen.
 		{:else}
@@ -240,8 +270,8 @@
 	<Board {items} {tab} {scoped} flashIds={leaderboard.flashIds} mySteam={auth.steamid} />
 
 	<!-- pinned YOU row — ranked only: scoped boards have no per-mode rating/rank to pin. -->
-	{#if scoped}
-		<!-- intentionally no YOU card under Lobby/Tournament -->
+	{#if scoped || seasons.archived}
+		<!-- intentionally no YOU card under Lobby/Tournament, or in a finished season (it would show today's rating) -->
 	{:else if auth.authed}
 		<a class="you-card" href="{base}/u/{auth.steamid}">
 			<span class="you-tag">YOU</span>
@@ -278,6 +308,11 @@
 {/if}
 
 <style>
+	.regline {
+		margin: 0 2px 6px;
+		font-size: 12px;
+		color: var(--dim);
+	}
 	.controls {
 		display: flex;
 		align-items: center;
@@ -380,6 +415,13 @@
 	/* Period buttons carry a full + a short label; the short one only shows in the tight ~900px band. */
 	.per .sm {
 		display: none;
+	}
+	.seas {
+		margin-left: auto;
+		flex: none;
+	}
+	.seas + .search {
+		margin-left: 0;
 	}
 	.search {
 		margin-left: auto;
@@ -506,7 +548,7 @@
 	   (shrinks, never grows huge), while scope collapses to icons and the period uses short labels in
 	   the tight 900–1079 band. Below 900 the area wraps freely (mobile). */
 	@media (min-width: 900px) {
-		.controls {
+		.controls:not(.hasseas) {
 			flex-wrap: nowrap;
 		}
 		.cuts {
@@ -535,21 +577,33 @@
 			min-width: 96px;
 		}
 	}
+	/* With the season picker in the row (it adds ~175px) the full-width band never fits on one line (the row
+	   tops out at 1104px), so the row stays in its compact form at every width and goes nowrap only once the
+	   compact row fits (>=980px). Between 900 and 979 it wraps rather than push the search field off the page. */
+	@media (min-width: 980px) {
+		.controls.hasseas {
+			flex-wrap: nowrap;
+		}
+		.hasseas .search {
+			flex: 0 1 150px;
+			min-width: 80px;
+		}
+	}
 	/* ≥1080px: room returns → scope shows its labels and the period shows full words again. */
 	@media (min-width: 1080px) {
-		.scope {
+		.controls:not(.hasseas) .scope {
 			padding: 6px 12px;
 		}
-		.scope .slbl {
+		.controls:not(.hasseas) .scope .slbl {
 			display: inline;
 		}
-		.cut {
+		.controls:not(.hasseas) .cut {
 			padding: 6px 12px;
 		}
-		.per .lg {
+		.controls:not(.hasseas) .per .lg {
 			display: inline;
 		}
-		.per .sm {
+		.controls:not(.hasseas) .per .sm {
 			display: none;
 		}
 	}
@@ -561,6 +615,14 @@
 			flex-basis: 100%;
 			margin-left: 0;
 			order: 3;
+		}
+		.seas {
+			margin-left: 0;
+			flex: 1 1 100%;
+		}
+		.seas :global(.sp),
+		.seas :global(.sel) {
+			width: 100%;
 		}
 	}
 

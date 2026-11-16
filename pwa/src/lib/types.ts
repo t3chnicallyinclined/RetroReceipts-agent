@@ -13,6 +13,7 @@ export interface Player {
 	verified_wins?: number;
 	top_team?: number[]; // most-played team (char-id triple; [] / absent = never recorded)
 	stat?: number; // the active tab's stat value (server-computed)
+	registered?: boolean; // registered for the CURRENT season (ranked rows of the open season only)
 	rank?: string; // server-supplied tier name — never trusted; client derives from rating+games
 }
 

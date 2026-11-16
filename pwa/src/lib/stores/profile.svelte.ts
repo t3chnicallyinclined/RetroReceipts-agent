@@ -1,6 +1,8 @@
 import { apiGet, invalidate } from '$lib/net.svelte';
 import { getChannel } from '$lib/rt.svelte';
 import { auth } from '$lib/stores/auth.svelte';
+import { seasons } from '$lib/stores/seasons.svelte';
+import { withSeason } from '$lib/seasons';
 import type { SseFrame } from '$lib/types';
 
 // Public player profile store. rune-$state, modelled on LeaderboardStore: fetch on demand, keep the
@@ -101,7 +103,10 @@ export interface Profile {
 	lobby?: ModeRecord | null;
 	// 🎟 THE RAIL — public betting record: settled W-L as a bettor, net coins, coins riding on
 	// open/matched bets right now. Absent on older servers.
-	rail?: { wins?: number; losses?: number; net?: number; riding?: number };
+	// `scope` = the id of the season this block covers (newer servers; absent on older ones).
+	rail?: { scope?: string; wins?: number; losses?: number; net?: number; riding?: number };
+	// Season the whole card was computed for (newer servers).
+	season?: string;
 	// Owner view only: the server stamps `admin:true` in GET /profile when the caller's OWN SteamID is on
 	// the operator allowlist (Bearer required; false/absent for everyone else). Gates the /admin dashboard.
 	admin?: boolean;
@@ -122,14 +127,18 @@ export class ProfileStore {
 	lastLoaded = $state(0);
 
 	#reqId = 0;
+	/** `?season=` the card in `data` belongs to (undefined = current). A card never outlives its season. */
+	#shownSeason: string | undefined = undefined;
 	#unsub: (() => void) | null = null;
 
 	async load(steamid: string): Promise<void> {
 		const sid = String(steamid || '');
-		if (sid !== this.steamid) {
+		const season = seasons.param;
+		if (sid !== this.steamid || season !== this.#shownSeason) {
 			// A different player → drop the previous card immediately (keep-last-good is per-player only,
 			// so we never flash player A's stats under player B's URL).
 			this.steamid = sid;
+			this.#shownSeason = season;
 			this.data = null;
 			this.error = null;
 		}
@@ -141,10 +150,11 @@ export class ProfileStore {
 			// caller's OWN id server-side (e.g. the private lobby record) — it grants nothing on others'.
 			// Shared GET: dedups against every other profile reader in the same tick (the live match card and
 			// this store routinely want the same player) — see $lib/net.svelte.
-			const json = await apiGet<Profile>(`/rr/profile?steamid=${encodeURIComponent(sid)}`, {
+			const json = await apiGet<Profile>(withSeason(`/rr/profile?steamid=${encodeURIComponent(sid)}`, season), {
 				token: auth.token
 			});
 			if (myReq !== this.#reqId) return; // a newer load superseded this one
+			if (season && json.season && json.season !== season) return; // wrong season echoed: never show it
 			this.data = json;
 			this.error = null;
 			this.lastLoaded = Date.now();
@@ -189,7 +199,7 @@ export class ProfileStore {
 			// card, don't just clear the banner (the page used to freeze until tab-hide or nav).
 			if (cur.current_match) this.data = { ...cur, current_match: null };
 			invalidate('/rr/profile');
-			void this.load(sid);
+			if (!seasons.archived) void this.load(sid); // a finished season's card can't change
 		}
 	}
 }
