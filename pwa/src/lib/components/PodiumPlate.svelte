@@ -123,13 +123,19 @@
 	.crown .mark {
 		font-size: 16px;
 	}
+	/* Real handles can be long ("twitch.tvducvader"): wrap to two lines so the part that identifies the player
+	   is not the part that gets cut off. */
 	.pnm {
 		font-size: 14px;
 		font-weight: 800;
 		max-width: 100%;
+		text-align: center;
 		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 	}
 	.av-link {
 		display: inline-flex;
