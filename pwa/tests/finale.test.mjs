@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 const { finaleAvailability, shapeLadder, shapeSummary, fetchFinale, fetchLadder, dayLabel } = await import('$lib/seasonFinale');
 const { invalidate } = await import('$lib/net.svelte');
+const { readFileSync } = await import('node:fs');
 
 const TABLE = {
 	current: 'beta-s1',
@@ -149,4 +150,13 @@ test('fetchFinale: 404 (older server) and failures give null, not an error', asy
 test('dayLabel formats a server date and rejects junk', () => {
 	assert.equal(dayLabel('2026-01-05'), '5 Jan 2026');
 	assert.equal(dayLabel('nope'), undefined);
+});
+
+test('feedback callout: the top link and the bottom block share one anchor id', () => {
+	const src = readFileSync(new URL('../src/routes/season/[id]/+page.svelte', import.meta.url), 'utf8');
+	const id = /const FEEDBACK_ID = '([^']+)'/.exec(src)?.[1];
+	assert.ok(id, 'FEEDBACK_ID constant');
+	assert.ok(src.includes('href="#{FEEDBACK_ID}"'), 'callout links to the anchor');
+	assert.ok(src.includes('id={FEEDBACK_ID}') && src.includes('tabindex="-1"'), 'the block heading carries the id and is focusable');
+	assert.equal(src.split('id={FEEDBACK_ID}').length, 2, 'the id is used exactly once');
 });

@@ -203,3 +203,16 @@ test('profile: ?season= passes through and the card is dropped on a season chang
 	assert.equal(pf.data.rail.scope, 'season0');
 	assert.equal(seasons.labelOf(pf.data.rail.scope), 'Season Zero');
 });
+
+test('applyUrl: ?season= in a link selects that season; unknown or absent changes nothing', async () => {
+	fakeServer({ '/rr/seasons': () => json(TABLE) });
+	assert.equal(await seasons.applyUrl(''), false);
+	assert.equal(await seasons.applyUrl('?x=1'), false);
+	assert.equal(await seasons.applyUrl('?season=nope'), false);
+	assert.equal(seasons.param, undefined);
+	assert.equal(await seasons.applyUrl('?season=season0'), true);
+	assert.equal(seasons.param, 'season0');
+	assert.equal(await seasons.applyUrl('?season=season0'), false); // already there
+	assert.equal(await seasons.applyUrl('?season=beta-s1'), true); // the current season = follow current
+	assert.equal(seasons.param, undefined);
+});

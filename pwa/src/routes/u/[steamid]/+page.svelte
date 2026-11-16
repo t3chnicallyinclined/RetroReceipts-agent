@@ -56,7 +56,9 @@
 
 	// Live current-match banner via the shared "matches" channel; pause while backgrounded (CPU discipline).
 	onMount(() => {
-		void seasons.load();
+		void seasons.applyUrl(location.search).then((changed) => {
+			if (changed) onSeason(); // ?season=<id> in the link
+		});
 		store.connect();
 		const onVis = () => {
 			if (document.hidden) store.disconnect();

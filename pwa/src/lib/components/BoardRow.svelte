@@ -135,6 +135,15 @@
 		width: 15px;
 		height: 15px;
 	}
+	/* Missing portrait: CharSprite falls back to a 3-letter code at 15px, which is wider than these chips and
+	   made neighbouring codes overlap. Fit the code to the chip. */
+	.tchip :global(.abbr) {
+		font-size: 9px;
+		letter-spacing: 0;
+	}
+	.tchip.s :global(.abbr) {
+		font-size: 6px;
+	}
 	.subteam {
 		display: none; /* phones only */
 		align-items: flex-end;

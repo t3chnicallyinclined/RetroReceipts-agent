@@ -17,11 +17,25 @@
 	import Masthead from '$lib/components/Masthead.svelte';
 	import PodiumPlate from '$lib/components/PodiumPlate.svelte';
 	import Board from '$lib/components/Board.svelte';
+	import SuggestModal from '$lib/components/SuggestModal.svelte';
+	import { auth } from '$lib/stores/auth.svelte';
 
 	// SEASON WRAP-UP: the finale page for a season the server marks finished. Everything shown comes from the
 	// server (season table, the season's rating ladder, GET /rr/season/summary). Stats are optional: the
 	// whole section hides on an older server, and an item with no honest number is simply left out.
 	const id = $derived(page.params.id ?? '');
+
+	// feedback: the callout under the lead jumps to this block; the in-app "suggest a stat" form needs a sign-in
+	const FEEDBACK_ID = 'help-shape';
+	let showSuggest = $state(false);
+	function jumpToFeedback(e: MouseEvent) {
+		e.preventDefault();
+		const el = document.getElementById(FEEDBACK_ID);
+		if (!el) return;
+		const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+		el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+		el.focus({ preventScroll: true }); // keyboard + screen-reader users land on the heading
+	}
 
 	let tried = $state(false);
 	onMount(() => {
@@ -97,6 +111,9 @@
 
 	<p class="lead">
 		{season.label} has ended. Thank you to everyone who played. Here is how the final ladder finished.
+	</p>
+	<p class="ask">
+		<a class="plain" href="#{FEEDBACK_ID}" onclick={jumpToFeedback}>Tell us what you’d like next season</a>{#if DISCORD_URL}{' '}·{' '}<a class="plain" href={DISCORD_URL} rel="noopener">Join the Discord</a>{/if}
 	</p>
 
 	<!-- Final ladder: top 3 on the podium, then places 4 to 8 -->
@@ -188,15 +205,36 @@
 			We are also working on SUPERGUN, the planned successor to this app. It is early and still in testing.
 			You can read more at <a class="plain" href={SUPERGUN_URL} rel="noopener">supergun.io</a>.
 		</p>
-		<p>
-			Feedback and suggestions are very welcome. Tell us what worked, what didn’t, and what you would like to
-			see{DISCORD_URL ? ' on Discord' : ''}.
-		</p>
 		<div class="cta">
-			{#if DISCORD_URL}<a class="btn" href={DISCORD_URL} rel="noopener">Join the Discord</a>{/if}
 			<a class="btn ghost" href="{base}/ranks">See the current ladder</a>
 		</div>
 	</section>
+
+	<!-- Feedback: prompts are about the page in general so they read correctly when a stat is hidden -->
+	<h2 class="rail hd" id={FEEDBACK_ID} tabindex="-1">Help shape the next season</h2>
+	<section class="thanks help" aria-labelledby={FEEDBACK_ID}>
+		<p>
+			This is a side project and it is still in testing, so we would really like to hear from you. We can’t
+			promise what will be built, but your ideas help us decide what to try next.
+		</p>
+		<ul class="prompts">
+			<li>Which of the numbers and leaderboards on this page did you care about, and what was missing?</li>
+			<li>What should a season reward? Badges, titles, something else?</li>
+			<li>How long should a season run?</li>
+			<li>What would make ranked play better for you?</li>
+		</ul>
+		<p>
+			{#if DISCORD_URL}Tell us on Discord{:else}Tell us{/if}{#if auth.authed}, or send a quick idea straight from here{/if}.
+		</p>
+		<div class="cta">
+			{#if DISCORD_URL}<a class="btn" href={DISCORD_URL} rel="noopener">Join the Discord</a>{/if}
+			{#if auth.authed}<button class="btn ghost" type="button" onclick={() => (showSuggest = true)}>Suggest a stat</button>{/if}
+		</div>
+	</section>
+{/if}
+
+{#if showSuggest}
+	<SuggestModal onClose={() => (showSuggest = false)} />
 {/if}
 
 <style>
@@ -357,6 +395,26 @@
 		font-size: 14px;
 		line-height: 1.55;
 	}
+	.ask {
+		margin: -6px 0 6px;
+		font-size: 13px;
+		color: var(--dim);
+	}
+	.prompts {
+		margin: 0 0 12px;
+		padding-left: 20px;
+		max-width: 66ch;
+	}
+	.prompts li {
+		margin: 0 0 6px;
+	}
+	.hd:focus {
+		outline: none;
+	}
+	.hd:focus-visible {
+		outline: 2px solid var(--gold);
+		outline-offset: 4px;
+	}
 	.thanks p {
 		margin: 0 0 10px;
 		max-width: 66ch;
@@ -378,6 +436,8 @@
 		color: var(--ink);
 		font-size: 13px;
 		font-weight: 700;
+		font-family: inherit;
+		cursor: pointer;
 		text-decoration: none;
 	}
 	.btn.ghost {

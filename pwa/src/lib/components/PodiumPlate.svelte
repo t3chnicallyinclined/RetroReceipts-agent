@@ -108,6 +108,11 @@
 		width: 56px;
 		height: 56px;
 	}
+	/* If a portrait is missing, CharSprite shows a 3-letter code at 15px: scale it to the chip so codes never overlap. */
+	.squad .sq :global(.abbr) {
+		font-size: 11px;
+		letter-spacing: 0;
+	}
 	.chall {
 		margin-top: 4px;
 	}
@@ -164,6 +169,25 @@
 	   overflow-x:hidden → it gets clipped). Straighten the plates and tighten padding so
 	   all three fit exactly. */
 	@media (max-width: 560px) {
+		/* The squad is three portraits; at 44/56px they are wider than a phone-width plate and the side plates
+		   clipped them. Size each chip from the plate's own width instead (inline-size container). */
+		.pod {
+			container-type: inline-size;
+		}
+		.squad {
+			gap: 3px;
+		}
+		.squad .sq {
+			width: min(44px, calc((100cqw - 6px) / 3));
+			height: min(44px, calc((100cqw - 6px) / 3));
+		}
+		.squad.crown .sq {
+			width: min(56px, calc((100cqw - 6px) / 3));
+			height: min(56px, calc((100cqw - 6px) / 3));
+		}
+		.squad .sq :global(.abbr) {
+			font-size: 9px;
+		}
 		.pod {
 			transform: none;
 			padding: 12px 8px 10px;

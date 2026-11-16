@@ -97,6 +97,16 @@ export class SeasonsStore {
 		return this.#inflight;
 	}
 
+	/** Honour `?season=<id>` in a page URL (a shared or bookmarked link). Resolves true when the selection changed. */
+	async applyUrl(search: string): Promise<boolean> {
+		const q = new URLSearchParams(search).get('season');
+		if (!q) return false;
+		await this.load();
+		const before = this.selected;
+		this.select(q);
+		return this.selected !== before;
+	}
+
 	/** Pick a season by id. Unknown ids are ignored; picking the current one means "follow current". */
 	select(id: string): boolean {
 		if (!this.find(id)) return false;

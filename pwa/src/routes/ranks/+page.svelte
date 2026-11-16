@@ -24,6 +24,9 @@
 	// ── live wiring: initial fetch + subscribe to the "leaderboard" SSE channel; pause on hide ──
 	onMount(() => {
 		void seasons.load();
+		void seasons.applyUrl(location.search).then((changed) => {
+			if (changed) onSeason(); // ?season=<id> in the link
+		});
 		void leaderboard.load(true);
 		leaderboard.connect();
 		const onVis = () => {
