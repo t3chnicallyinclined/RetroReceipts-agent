@@ -21,6 +21,47 @@ export function reveal(node: HTMLElement) {
 	return { destroy: () => io.disconnect() };
 }
 
+/**
+ * Reveal every `.rv` element under `root` as it scrolls into view, including ones rendered later (data arrives
+ * after the page). Without this the `.anim .rv` rule would leave them hidden. Call only when `.anim` is set.
+ */
+export function revealAll(root: HTMLElement): () => void {
+	if (typeof IntersectionObserver === 'undefined') {
+		root.querySelectorAll('.rv').forEach((n) => n.classList.add('in'));
+		return () => {};
+	}
+	const io = new IntersectionObserver(
+		(es) => {
+			for (const e of es) {
+				if (e.isIntersecting) {
+					e.target.classList.add('in');
+					io.unobserve(e.target);
+				}
+			}
+		},
+		{ rootMargin: '0px 0px -6% 0px' }
+	);
+	const watch = (n: Element) => {
+		if (!n.classList.contains('in')) io.observe(n);
+	};
+	const scan = (el: ParentNode) => el.querySelectorAll('.rv').forEach(watch);
+	scan(root);
+	const mo = new MutationObserver((ms) => {
+		for (const m of ms)
+			m.addedNodes.forEach((n) => {
+				if (n instanceof Element) {
+					if (n.classList.contains('rv')) watch(n);
+					scan(n);
+				}
+			});
+	});
+	mo.observe(root, { childList: true, subtree: true });
+	return () => {
+		io.disconnect();
+		mo.disconnect();
+	};
+}
+
 /** Count a number up from zero once, when first visible. The true value stays in the text for screen readers. */
 export function countUp(node: HTMLElement, p: { value: number; format: (n: number) => string }) {
 	node.textContent = p.format(p.value);

@@ -40,7 +40,7 @@
 		{/if}
 	</div>
 	{#if bits.length}
-		<p class="lead">{#each bits as b, i (i)}<b><CountUp value={b.n} format={b.fmt} /></b> {b.n === 1 ? b.one : b.many}. {/each}</p>
+		<p class="lead">{#each bits as b, i (i)}<b><CountUp value={b.n} format={b.fmt} /></b> {b.n === 1 ? b.one : b.many}.{' '}{/each}</p>
 	{/if}
 	<p class="thanks">Thank you to everyone who played. Here is who won, what got played, and a few questions about what comes next.</p>
 	<div class="cta">

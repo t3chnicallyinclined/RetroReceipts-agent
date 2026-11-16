@@ -13,7 +13,7 @@
 	import { fetchRoster, type Roster } from '$lib/finale/players';
 	import { fetchMine, type Mine } from '$lib/finale/mine';
 	import { GROUPS, glanceTiles, groupSummary, mentionViews, nf, nf1, presentSubs, type GroupId } from '$lib/finale/derive';
-	import { reveal } from '$lib/finale/motion';
+	import { reveal, revealAll } from '$lib/finale/motion';
 	import { DISCORD_URL } from '$lib/links';
 	import { gamesOf, rankOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
 	import type { Player } from '$lib/types';
@@ -60,17 +60,20 @@
 	let mine = $state<Mine | null>(null);
 	let mineLoaded = $state(false);
 
+	// each endpoint marks itself settled (even on a 404) so deep links wait for the content they point at
+	let done = $state({ ladder: false, sum: false, hl: false, roster: false });
 	let loadedId = '';
 	$effect(() => {
 		const s = season;
 		if (!s || s.id === loadedId) return;
 		loadedId = s.id;
 		ladderRaw = null; ladderFailed = false; sum = null; hl = null; fb = null; roster = null;
+		done = { ladder: false, sum: false, hl: false, roster: false };
 		seasons.select(s.id); // player links on this page open THAT season's profile
-		void fetchLadder(s.id).then((p) => { if (loadedId === s.id) ladderRaw = p; }).catch(() => { if (loadedId === s.id) ladderFailed = true; });
-		void fetchSummary(s.id).then((v) => { if (loadedId === s.id) sum = v; });
-		void fetchHighlights(s.id).then((v) => { if (loadedId === s.id) hl = v; });
-		void fetchRoster(s.id).then((v) => { if (loadedId === s.id) roster = v; });
+		void fetchLadder(s.id).then((p) => { if (loadedId === s.id) ladderRaw = p; }).catch(() => { if (loadedId === s.id) ladderFailed = true; }).finally(() => { if (loadedId === s.id) done.ladder = true; });
+		void fetchSummary(s.id).then((v) => { if (loadedId === s.id) { sum = v; done.sum = true; } });
+		void fetchHighlights(s.id).then((v) => { if (loadedId === s.id) { hl = v; done.hl = true; } });
+		void fetchRoster(s.id).then((v) => { if (loadedId === s.id) { roster = v; done.roster = true; } });
 	});
 	// feedback and the viewer's own season follow the sign-in
 	$effect(() => {
@@ -230,7 +233,7 @@
 	let restored = false;
 	$effect(() => {
 		// once the page content has arrived: a hash wins over the remembered position
-		if (restored || !season || ladderRaw === null) return;
+		if (restored || !season || !(done.ladder && done.sum && done.hl && done.roster)) return;
 		restored = true;
 		untrack(() => {
 			void tick().then(async () => {
@@ -257,7 +260,11 @@
 	onMount(() => {
 		void seasons.load().finally(() => (tried = true));
 		const calm = matchMedia('(prefers-reduced-motion: reduce)');
-		if (!calm.matches) root?.classList.add('anim');
+		let stopReveal = () => {};
+		if (!calm.matches && root) {
+			root.classList.add('anim');
+			stopReveal = revealAll(root);
+		}
 		const mq = matchMedia('(min-width: 900px)');
 		wide = mq.matches;
 		const onMq = (e: MediaQueryListEvent) => {
@@ -283,6 +290,7 @@
 		addEventListener('resize', setTab);
 		return () => {
 			mq.removeEventListener('change', onMq);
+			stopReveal();
 			ro?.disconnect();
 			removeEventListener('scroll', onScroll);
 			removeEventListener('resize', setTab);

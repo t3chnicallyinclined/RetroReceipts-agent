@@ -15,13 +15,13 @@
 			<button type="button" class="hb" aria-pressed={pick === r.key} aria-label={r.msg} onclick={() => (pick = r.key)} onfocus={() => (pick = r.key)} onmouseenter={() => (pick = r.key)}>
 				<span class="hl">{#if row}{@render row(r)}{:else}<span>{r.label}</span>{/if}</span>
 				<span class="tr" aria-hidden="true"><i class="fl" style="--w:{(100 * r.value) / max}%;--bc:{r.color ?? 'var(--dim)'}"></i></span>
-				<b class:up={r.tone === 'up'}>{r.text}{#if r.sub} <small>{r.sub}</small>{/if}</b>
+				<b class:up={r.tone === 'up'}>{r.text}{#if r.sub}{' '}<small>{r.sub}</small>{/if}</b>
 			</button>
 		{:else}
 			<div class="hb">
 				<span class="hl">{#if row}{@render row(r)}{:else}<span>{r.label}</span>{/if}</span>
 				<span class="tr" aria-hidden="true"><i class="fl" style="--w:{(100 * r.value) / max}%;--bc:{r.color ?? 'var(--dim)'}"></i></span>
-				<b class:up={r.tone === 'up'}>{r.text}{#if r.sub} <small>{r.sub}</small>{/if}</b>
+				<b class:up={r.tone === 'up'}>{r.text}{#if r.sub}{' '}<small>{r.sub}</small>{/if}</b>
 			</div>
 		{/if}
 	{/each}
