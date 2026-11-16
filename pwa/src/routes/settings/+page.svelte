@@ -5,6 +5,7 @@
 	import { wallet } from '$lib/stores/wallet.svelte';
 	import { agent } from '$lib/stores/agent.svelte';
 	import { pwa } from '$lib/stores/pwa.svelte';
+	import { seasons } from '$lib/stores/seasons.svelte';
 	import { theme, type ThemeChoice } from '$lib/stores/theme.svelte';
 	import { APP_VERSION, api } from '$lib/config';
 	import Avatar from '$lib/components/Avatar.svelte';
@@ -28,8 +29,10 @@
 		{ id: 'auto', label: 'Auto' }
 	];
 
-	// ── Season Zero (light touch): policy v1 makes registering a functional no-op, so this is flavor,
-	// not a CTA. Status from GET /season/status; join via the shared authed POST. ──
+	// ── Season card: everything shown comes from the server. The label is the season table's current
+	// season; registered state + count from GET /season/status (per season; defaults to the current one);
+	// joining registers for the current season only. Registering means taking part: the copy promises
+	// nothing beyond that (what unregistered matches count for is not decided). ──
 	interface SeasonStatus {
 		registered?: boolean;
 		since?: number;
@@ -41,6 +44,8 @@
 	let showSuggest = $state(false);
 	let seasonBusy = $state(false);
 	let seasonMsg = $state('');
+	// Label of the season being offered; null on a server with no season table (neutral wording then).
+	const seasonLabel = $derived(seasons.currentLabel);
 
 	async function loadSeason(): Promise<void> {
 		if (!auth.steamid) return;
@@ -60,7 +65,7 @@
 		const r = await auth.post('/rr/season/register', {});
 		seasonBusy = false;
 		if (r.ok) {
-			seasonMsg = 'You’re in. See you on the ladder.';
+			seasonMsg = seasonLabel ? `You’re registered for ${seasonLabel}.` : 'You’re registered.';
 			await loadSeason();
 		} else {
 			seasonMsg = r.error ?? 'Could not join right now.';
@@ -76,6 +81,7 @@
 	onMount(() => {
 		if (auth.steamid) {
 			void wallet.load(auth.steamid);
+			void seasons.load();
 			void loadSeason();
 			void agent.load(auth.steamid);
 		}
@@ -150,27 +156,27 @@
 		{/if}
 	</div>
 
-	<!-- Season Zero — deliberately subtle (policy v1: joining is just a flag, no reset, no side ladder) -->
+	<!-- Season — label, state and count all come from the server -->
 	<div class="rail sec-hd">Season</div>
 	<div class="card">
 		<div class="row">
 			<div class="rowlabel">
-				<b>Season Zero <span class="soon">preseason</span></b>
+				<b>{seasonLabel ?? 'Season'}{#if seasonLabel} <span class="soon">current</span>{/if}</b>
 				<span class="sub">
 					{#if season?.registered}
-						You’re in for Season Zero{#if season.registered_count}, with {season.registered_count} other{season.registered_count === 1 ? '' : 's'}{/if}. Nothing to do yet — your rank carries on as normal.
+						You’re registered for {seasonLabel ?? 'this season'}.{#if season.registered_count} {season.registered_count} player{season.registered_count === 1 ? ' has' : 's have'} registered so far.{/if}
 					{:else}
-						A soft prologue while the season format is finalized. Joining is just a flag for now — no reset, no separate ladder.
+						Register to take part in {seasonLabel ?? 'the current season'}.{#if seasons.available} Each season starts everyone fresh, and past seasons stay on the leaderboard to look back on.{/if}
 					{/if}
 				</span>
 			</div>
 			{#if season?.registered}
 				<span class="pill good">JOINED</span>
 			{:else}
-				<button class="btn ghost" onclick={joinSeason} disabled={seasonBusy}>{seasonBusy ? 'Joining…' : 'Join Season Zero'}</button>
+				<button class="btn ghost" onclick={joinSeason} disabled={seasonBusy}>{seasonBusy ? 'Joining…' : seasonLabel ? `Join ${seasonLabel}` : 'Join this season'}</button>
 			{/if}
 		</div>
-		{#if seasonMsg}<div class="season-msg">{seasonMsg}</div>{/if}
+		{#if seasonMsg}<div class="season-msg" role="status">{seasonMsg}</div>{/if}
 	</div>
 
 	<!-- Represent — set your country/city so a flag shows by your name and you land on the Regions board -->

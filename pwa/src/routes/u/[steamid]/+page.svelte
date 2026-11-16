@@ -19,6 +19,10 @@
 	import SessionModal from '$lib/components/SessionModal.svelte';
 	import { rankOf, gamesOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
 	import { apiGet } from '$lib/net.svelte';
+	import { withSeason } from '$lib/seasons';
+	import { seasons } from '$lib/stores/seasons.svelte';
+	import SeasonPicker from '$lib/components/SeasonPicker.svelte';
+	import SeasonNote from '$lib/components/SeasonNote.svelte';
 	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import Flag from '$lib/components/Flag.svelte';
 	import ReportModal from '$lib/components/ReportModal.svelte';
@@ -40,8 +44,19 @@
 		}
 	});
 
+	// The season changed (picker or "back to current"): refetch this player's card + rivalries for it. The
+	// match-history pager re-keys itself off the season below.
+	function onSeason() {
+		pageN = 0;
+		if (sid) {
+			void store.load(sid);
+			void stats.load(sid);
+		}
+	}
+
 	// Live current-match banner via the shared "matches" channel; pause while backgrounded (CPU discipline).
 	onMount(() => {
+		void seasons.load();
 		store.connect();
 		const onVis = () => {
 			if (document.hidden) store.disconnect();
@@ -147,22 +162,24 @@
 	let pageN = $state(0);
 	let histTotal = $state<number | null>(null); // null = pager endpoint absent → window fallback
 	let histPages = $state<Record<number, import('$lib/stores/profile.svelte').RecentMatch[]>>({});
-	let histKey = ''; // sid|perPage the cache belongs to
+	let histKey = ''; // sid|perPage|season the cache belongs to
 	$effect(() => {
 		const s = sid, pp = perPage, pn = pageN;
+		const season = seasons.param; // undefined = current season
 		if (!s) return;
-		const key = `${s}|${pp}`;
+		const key = `${s}|${pp}|${season ?? ''}`;
 		if (key !== histKey) {
 			histKey = key;
 			histPages = {};
+			histTotal = null; // another season's total must not size this season's pager
 		}
 		if (histPages[pn]) return;
 		void (async () => {
 			try {
 				const j = await apiGet<{ ok?: boolean; total?: number; rows?: import('$lib/stores/profile.svelte').RecentMatch[] }>(
-					`/rr/history?steamid=${encodeURIComponent(s)}&offset=${pn * pp}&limit=${pp}`
+					withSeason(`/rr/history?steamid=${encodeURIComponent(s)}&offset=${pn * pp}&limit=${pp}`, season)
 				);
-				if (`${s}|${pp}` !== histKey) return; // superseded
+				if (key !== histKey) return; // superseded
 				if (j?.ok && Array.isArray(j.rows)) {
 					histPages = { ...histPages, [pn]: j.rows };
 					histTotal = j.total ?? null;
@@ -216,6 +233,11 @@
 </script>
 
 <svelte:head><title>{title} · Retro Receipts</title></svelte:head>
+
+{#if seasons.multiple}
+	<div class="seasbar"><SeasonPicker onchange={onSeason} /></div>
+	<SeasonNote onback={onSeason} />
+{/if}
 
 {#if cold}
 	<div class="empty">LOADING…</div>
@@ -421,7 +443,8 @@
 
 	<!-- 🎟 the rail record — settled betting W-L + net (public ledger); hidden until they've ever bet -->
 	{#if (p.rail?.wins ?? 0) + (p.rail?.losses ?? 0) + (p.rail?.riding ?? 0) > 0}
-		<div class="rail sec-hd">The rail</div>
+		<!-- the block is season-scoped server-side (`rail.scope` = season id): say which season it covers -->
+		<div class="rail sec-hd">The rail{#if seasons.labelOf(p.rail?.scope)} · {seasons.labelOf(p.rail?.scope)}{/if}</div>
 		<div class="mmrec">
 			<div class="mmline">
 				<span class="mmpct" class:good={(p.rail?.net ?? 0) > 0} class:low={(p.rail?.net ?? 0) < 0}>
@@ -492,6 +515,17 @@
 {/if}
 
 <style>
+	.seasbar {
+		display: flex;
+		justify-content: flex-end;
+		margin: 0 0 10px;
+	}
+	@media (max-width: 560px) {
+		.seasbar :global(.sp),
+		.seasbar :global(.sel) {
+			width: 100%;
+		}
+	}
 	.heroloc {
 		display: block;
 		margin-top: 6px;

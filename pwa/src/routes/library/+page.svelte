@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { tierlist } from '$lib/stores/tierlist.svelte';
+	import { seasons } from '$lib/stores/seasons.svelte';
+	import SeasonPicker from '$lib/components/SeasonPicker.svelte';
+	import SeasonNote from '$lib/components/SeasonNote.svelte';
 	import Masthead from '$lib/components/Masthead.svelte';
 	import { teamAbbr } from '$lib/chars';
 	import { winrateColor } from '$lib/ranks';
@@ -9,8 +12,11 @@
 	// keep-last-good (RegionsStore pattern). Static list → no live channel; a min-games gate is the one
 	// piece of interactivity (low-games teams have noisy 100% rates, so gate them client-side).
 	onMount(() => {
+		void seasons.load();
 		void tierlist.load();
 	});
+	// The season changed: the store drops the old season's teams and refetches.
+	const onSeason = () => void tierlist.load();
 
 	const MIN_PRESETS = [5, 20, 50, 100];
 	let minGames = $state(20);
@@ -54,6 +60,7 @@
 			<button class="chip" class:on={n === minGames} onclick={() => (minGames = n)}>{n}+</button>
 		{/each}
 	</div>
+	{#if seasons.multiple}<SeasonPicker onchange={onSeason} />{/if}
 	{#if all.length}
 		<span class="note">
 			{shown.length} team{shown.length === 1 ? '' : 's'}
@@ -61,6 +68,8 @@
 		</span>
 	{/if}
 </div>
+
+<SeasonNote onback={onSeason} />
 
 {#if cold}
 	<div class="empty">LOADING…</div>

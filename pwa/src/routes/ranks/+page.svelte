@@ -16,10 +16,14 @@
 	import Flag from '$lib/components/Flag.svelte';
 	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { seasons } from '$lib/stores/seasons.svelte';
+	import SeasonPicker from '$lib/components/SeasonPicker.svelte';
+	import SeasonNote from '$lib/components/SeasonNote.svelte';
 	import type { LeaderboardTab, LeaderboardPeriod } from '$lib/types';
 
 	// ── live wiring: initial fetch + subscribe to the "leaderboard" SSE channel; pause on hide ──
 	onMount(() => {
+		void seasons.load();
 		void leaderboard.load(true);
 		leaderboard.connect();
 		const onVis = () => {
@@ -38,6 +42,12 @@
 	});
 
 	let q = $state('');
+
+	// The season changed (picker or "back to current"): the stores drop the old season's rows and refetch.
+	function onSeason() {
+		void leaderboard.load(true);
+		if (regionView) void regions.load();
+	}
 
 	const tab = $derived(leaderboard.tab);
 	const scope = $derived(leaderboard.scope);
@@ -134,6 +144,8 @@
 	{#snippet pills()}
 		{#if (regionView ? regions.error && regionList.length : leaderboard.error && players.length)}
 			<span class="pill live" title={regionView ? regions.error : leaderboard.error}>RECONNECTING…</span>
+		{:else if seasons.archived}
+			<span class="pill">FINAL</span>
 		{:else}
 			<span class="pill good">LIVE</span>
 		{/if}
@@ -192,9 +204,14 @@
 				{/each}
 			</div>
 		{/if}
+		{#if seasons.multiple}<div class="seas"><SeasonPicker onchange={onSeason} /></div>{/if}
 		<input class="search" type="search" placeholder="Search player…" bind:value={q} aria-label="Search player" />
+	{:else if seasons.multiple}
+		<div class="seas"><SeasonPicker onchange={onSeason} /></div>
 	{/if}
 </div>
+
+<SeasonNote onback={onSeason} />
 
 {#if regionView}
 	<!-- Region leaderboard — city ladders by total wins (same store/rows as the old /regions page). -->
@@ -222,6 +239,8 @@
 	<div class="empty">
 		{#if searching}
 			No players match “{q}”.
+		{:else if seasons.archived}
+			No games were recorded in {seasons.active?.label ?? 'this season'}.
 		{:else if scoped}
 			No {scope === 'lobby' ? 'lobby' : 'tournament'} games recorded {leaderboard.period === 'all' ? 'yet' : PERIOD_LABEL[leaderboard.period]} — they log automatically as they happen.
 		{:else}
@@ -240,8 +259,8 @@
 	<Board {items} {tab} {scoped} flashIds={leaderboard.flashIds} mySteam={auth.steamid} />
 
 	<!-- pinned YOU row — ranked only: scoped boards have no per-mode rating/rank to pin. -->
-	{#if scoped}
-		<!-- intentionally no YOU card under Lobby/Tournament -->
+	{#if scoped || seasons.archived}
+		<!-- intentionally no YOU card under Lobby/Tournament, or in a finished season (it would show today's rating) -->
 	{:else if auth.authed}
 		<a class="you-card" href="{base}/u/{auth.steamid}">
 			<span class="you-tag">YOU</span>
@@ -380,6 +399,13 @@
 	/* Period buttons carry a full + a short label; the short one only shows in the tight ~900px band. */
 	.per .sm {
 		display: none;
+	}
+	.seas {
+		margin-left: auto;
+		flex: none;
+	}
+	.seas + .search {
+		margin-left: 0;
 	}
 	.search {
 		margin-left: auto;
@@ -561,6 +587,14 @@
 			flex-basis: 100%;
 			margin-left: 0;
 			order: 3;
+		}
+		.seas {
+			margin-left: 0;
+			flex: 1 1 100%;
+		}
+		.seas :global(.sp),
+		.seas :global(.sel) {
+			width: 100%;
 		}
 	}
 

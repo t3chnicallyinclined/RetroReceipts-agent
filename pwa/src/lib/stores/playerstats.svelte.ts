@@ -1,4 +1,6 @@
 import { api } from '$lib/config';
+import { seasons } from '$lib/stores/seasons.svelte';
+import { withSeason } from '$lib/seasons';
 
 // Companion store for a profile's RIVALRIES + recent FORM, off the public read endpoint:
 //   GET /rr/playerstats?steamid=…
@@ -34,10 +36,13 @@ export class PlayerStatsStore {
 	error = $state<string | null>(null);
 
 	#reqId = 0;
+	#shownSeason: string | undefined = undefined;
 
 	async load(steamid: string): Promise<void> {
 		const sid = String(steamid || '');
-		if (sid !== this.steamid) {
+		const season = seasons.param;
+		if (sid !== this.steamid || season !== this.#shownSeason) {
+			this.#shownSeason = season;
 			// New player → drop the previous rivalries immediately (keep-last-good is per-player only).
 			this.steamid = sid;
 			this.data = null;
@@ -47,7 +52,7 @@ export class PlayerStatsStore {
 		const myReq = ++this.#reqId;
 		this.loading = true;
 		try {
-			const res = await fetch(api(`/rr/playerstats?steamid=${encodeURIComponent(sid)}`), {
+			const res = await fetch(api(withSeason(`/rr/playerstats?steamid=${encodeURIComponent(sid)}`, season)), {
 				headers: { accept: 'application/json' }
 			});
 			if (!res.ok) throw new Error(`playerstats ${res.status}`);

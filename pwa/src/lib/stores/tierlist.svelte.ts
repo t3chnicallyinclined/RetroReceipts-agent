@@ -1,4 +1,5 @@
 import { api } from '$lib/config';
+import { seasons } from '$lib/stores/seasons.svelte';
 
 // MvC2 team tier list store — the dataset's signature knowledge surface. rune-$state, modelled on
 // RegionsStore: one fetch, keep-last-good on error (never blank a list that's already showing).
@@ -25,11 +26,18 @@ export class TierlistStore {
 	lastLoaded = $state(0);
 
 	#reqId = 0;
+	#shownSeason: string | undefined = undefined;
 
 	async load(country?: string, city?: string): Promise<void> {
 		const myReq = ++this.#reqId;
 		this.loading = true;
+		const season = seasons.param;
+		if (season !== this.#shownSeason) {
+			this.teams = [];
+			this.#shownSeason = season;
+		}
 		const qs = new URLSearchParams();
+		if (season) qs.set('season', season);
 		if (country) qs.set('country', country);
 		if (city) qs.set('city', city);
 		const q = qs.toString();

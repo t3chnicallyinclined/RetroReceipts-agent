@@ -1,5 +1,6 @@
 import { fetchLeaderboard } from '$lib/api';
 import { getChannel } from '$lib/rt.svelte';
+import { seasons } from '$lib/stores/seasons.svelte';
 import type { Player, LeaderboardTab, LeaderboardPeriod } from '$lib/types';
 import type { LeaderboardScope } from '$lib/boards';
 
@@ -25,6 +26,8 @@ export class LeaderboardStore {
 	#deb: ReturnType<typeof setTimeout> | null = null;
 	#flashTimer: ReturnType<typeof setTimeout> | null = null;
 	#reqId = 0;
+	/** `?season=` of the rows now in `players` (undefined = current season). Rows never outlive their season. */
+	#shownSeason: string | undefined = undefined;
 
 	/** Ranked (ELO) is cumulative skill → always all-time; the period switch is hidden for it. */
 	get periodLocked(): boolean {
@@ -66,13 +69,23 @@ export class LeaderboardStore {
 		const tab = this.tab;
 		const period = this.period;
 		const scope = this.scope;
+		const season = seasons.param;
+		if (season !== this.#shownSeason) {
+			// A different season: drop the old rows NOW (keep-last-good is for the same season only), so a
+			// slow or failed fetch can never leave another season's standings on screen.
+			this.players = [];
+			this.flashIds = new Set();
+			this.#shownSeason = season;
+		}
 		try {
-			const res = await fetchLeaderboard(tab, period, scope, 50);
+			const res = await fetchLeaderboard(tab, period, scope, 50, undefined, season);
 			if (myReq !== this.#reqId) return; // a newer request superseded this one
 			// Skew guard: only trust rows when the server ECHOES the scope we asked for. A pre-scope
 			// server ignores &scope= (echoes 'ranked' / nothing), so under Lobby/Tournament we show the
 			// honest empty state rather than ranked rows dressed as scoped data.
-			const skew = scope !== 'ranked' && res.scope !== scope;
+			// Same guard for the season: if the server names a season, it must be the one we asked for.
+			const seasonSkew = !!season && !!res.season && res.season !== season;
+			const skew = (scope !== 'ranked' && res.scope !== scope) || seasonSkew;
 			const next = skew ? [] : (res.players ?? []);
 			if (!reset && !skew) this.#computeFlash(next);
 			this.players = next;
@@ -134,7 +147,7 @@ export class LeaderboardStore {
 
 	// Coalesce a burst of deltas (a run of matches) into ONE refetch (~500ms) — mirrors rtLeaderboardRefresh.
 	#debouncedReload() {
-		if (this.#deb) return;
+		if (this.#deb || seasons.archived) return; // a finished season can't change: nothing to refresh
 		this.#deb = setTimeout(() => {
 			this.#deb = null;
 			void this.load();
