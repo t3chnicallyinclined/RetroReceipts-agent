@@ -109,7 +109,7 @@ export const optionPct = (p: Poll, o: PollOption): number => {
 };
 
 export type VoteRefusal = 'signin' | 'closed' | 'limit' | 'error';
-export type VoteResult = { ok: true; view: FeedbackView | null } | { ok: false; refusal: VoteRefusal };
+export type VoteResult = { ok: true; view: FeedbackView | null; poll: Poll | null } | { ok: false; refusal: VoteRefusal };
 type Post = (path: string, body: unknown) => Promise<{ ok: boolean; error?: string; data?: unknown }>;
 
 /** Map the server's refusal text to a reason the UI can word. */
@@ -126,7 +126,11 @@ export async function submitVote(a: { signedIn: boolean; open: boolean; season: 
 	if (!a.open) return { ok: false, refusal: 'closed' };
 	if (!a.signedIn) return { ok: false, refusal: 'signin' };
 	const r = await a.post('/rr/season/feedback/vote', { season: a.season, poll: a.poll, option: a.option });
-	return r.ok ? { ok: true, view: normalizeFeedback(r.data) } : { ok: false, refusal: refusalOf(r.error) };
+	// SERVER: a vote answers with the UPDATED POLL ({id, q, options, mine}); the whole view is accepted too
+	if (!r.ok) return { ok: false, refusal: refusalOf(r.error) };
+	const view = normalizeFeedback(r.data);
+	const one = view ? null : normalizeFeedback({ ok: true, polls: [r.data] })?.polls[0] ?? null;
+	return { ok: true, view, poll: one };
 }
 
 export const NOTE_MIN = 4;

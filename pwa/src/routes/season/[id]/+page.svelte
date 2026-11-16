@@ -167,7 +167,7 @@
 	]);
 	const titleOf = $derived<Record<string, string>>({
 		top: 'Sections', podium: 'Podium', mentions: 'Notable mentions', glance: 'At a glance', you: 'Your season', explore: 'Explore the season',
-		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', thanks: 'Special thanks', feedback: 'Have your say', close: 'Thank you'
+		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', thanks: 'Special thanks', feedback: 'Feedback', close: 'Thank you'
 	});
 	const navItems = $derived<NavItem[]>([
 		{ id: 'podium', title: 'The podium', summary: ladder.champion ? `${ladder.champion.name} finished first` : undefined },
@@ -297,6 +297,21 @@
 			clearTimeout(timer);
 		};
 	});
+
+	// registering for the open season: the same authed POST the Settings card uses (current season only)
+	let regBusy = $state(false);
+	let regDone = $state(false);
+	let regMsg = $state('');
+	async function register(nextLabel: string) {
+		regBusy = true;
+		regMsg = '';
+		const r = await auth.post('/rr/season/register', {});
+		regBusy = false;
+		if (r.ok) {
+			regDone = true;
+			regMsg = `You’re registered for ${nextLabel}.`;
+		} else regMsg = r.error ?? 'Could not register right now.';
+	}
 
 	const title = $derived(season ? `${season.label} wrap-up` : 'Season wrap-up');
 	let shareStatus = $state('');
@@ -430,7 +445,8 @@
 						<span class="rail">Open now</span>
 						<h3>{next.label}</h3>
 						<p>Everyone starts fresh at the same rating. Register to take part, play your first five ranked games to get a rank, and {label} stays here to look back on.</p>
-						<div class="cta"><a class="btn pri" href="{base}/settings">Register for {next.label}</a><a class="btn" href="{base}/ranks">See the current ladder</a></div>
+						<div class="cta">{#if regDone}<span class="pill">Registered</span>{:else if auth.authed}<button type="button" class="btn pri" disabled={regBusy} onclick={() => register(next.label)}>Register for {next.label}</button>{:else}<button type="button" class="btn pri" onclick={() => auth.login()}>Sign in to register</button>{/if}<a class="btn" href="{base}/ranks">See the current ladder</a></div>
+						<p class="status" role="status" aria-live="polite">{regMsg}</p>
 						<p class="dimp">We plan to run more seasons after that.</p>
 					</div>
 				{:else}

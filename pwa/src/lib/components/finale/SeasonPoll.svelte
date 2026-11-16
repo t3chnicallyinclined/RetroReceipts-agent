@@ -6,7 +6,7 @@
 	// One poll: a native radio group (arrow keys and Space work). Choosing an option votes at once. Results show
 	// after a vote, on "Show results", or when voting has closed. One vote per signed-in account; focus returns to
 	// the chosen radio after a vote.
-	let { poll, open, season, hint, current = true, blocked, onview }: { poll: Poll; open: boolean; season: string; hint?: string; current?: boolean; blocked?: string; onview: (v: FeedbackView) => void } = $props();
+	let { poll, open, season, hint, current = true, blocked, onview, onpoll }: { poll: Poll; open: boolean; season: string; hint?: string; current?: boolean; blocked?: string; onview: (v: FeedbackView) => void; onpoll: (p: Poll) => void } = $props();
 	let showResults = $state(false);
 	let refusal = $state<VoteRefusal | null>(null);
 	let busy = $state(false);
@@ -20,7 +20,8 @@
 		busy = false;
 		if (r.ok) {
 			refusal = null;
-			if (r.view) onview(r.view);
+			if (r.poll) onpoll(r.poll);
+			else if (r.view) onview(r.view);
 			await tick();
 			box?.querySelector<HTMLInputElement>(`input[value="${CSS.escape(optionId)}"]`)?.focus();
 		} else {

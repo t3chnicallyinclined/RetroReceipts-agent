@@ -253,6 +253,15 @@ test('poll state machine: signed-out refusal, vote, change vote, closed', async 
 	assert.deepEqual(refused, { ok: false, refusal: 'signin' });
 });
 
+test('vote answers: the committed server returns the updated poll, not the whole view', async () => {
+	const pollOnly = async () => ({ ok: true, data: { ...POLL, mine: 'a', options: [{ id: 'a', label: 'A', votes: 4 }, { id: 'b', label: 'B', votes: 1 }] } });
+	const r = await F.submitVote({ signedIn: true, open: true, season: 's', poll: 'p', option: 'a', post: pollOnly });
+	assert.equal(r.ok, true);
+	assert.equal(r.view, null);
+	assert.equal(r.poll.mine, 'a');
+	assert.equal(F.optionPct(r.poll, r.poll.options[0]), 80);
+});
+
 test('poll: a signed-in viewer who may not vote sees the reason, not a failed tap', () => {
 	const view = F.normalizeFeedback({ ok: true, can_vote: false, can_vote_reason: 'Only players who played Season Zero can vote.', polls: [{ ...POLL }], asked: [] });
 	assert.equal(view.blocked, 'Only players who played Season Zero can vote.');

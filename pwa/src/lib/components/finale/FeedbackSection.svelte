@@ -33,7 +33,7 @@
 {#if fb && fb.polls.length}
 	<div class="polls">
 		{#each fb.polls as p, i (p.id)}
-			<SeasonPoll poll={p} open={fb.open} {season} hint={lengthHint(p)} current={i === qi} blocked={fb.blocked} {onview} />
+			<SeasonPoll poll={p} open={fb.open} {season} hint={lengthHint(p)} current={i === qi} blocked={fb.blocked} {onview} onpoll={(np) => fb && onview({ ...fb, polls: fb.polls.map((x) => (x.id === np.id ? np : x)) })} />
 		{/each}
 	</div>
 	<div class="ppager">
