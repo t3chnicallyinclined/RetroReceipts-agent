@@ -487,7 +487,7 @@
 			<button type="button" class="pbtn" disabled={pageN >= lastPage} onclick={() => (pageN = Math.min(lastPage, pageN + 1))}>Next ›</button>
 		</div>
 		<div class="matches">
-			{#each pageRows as m, i (m.mid ?? m.match_key ?? i)}
+			{#each pageRows as m, i (m.mid || m.match_key || i)}
 				<MatchBanner
 					a={{ steamid: sid, name: p.name || 'Player', avatar: p.avatar, cc: p.cc, rating, games: gp, team: m.my_team ?? null }}
 					b={{ steamid: m.opp_id ?? '', name: m.opp, team: m.opp_team ?? null }}

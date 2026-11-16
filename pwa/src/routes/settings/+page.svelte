@@ -166,7 +166,7 @@
 					{#if season?.registered}
 						You’re registered for {seasonLabel ?? 'this season'}.{#if season.registered_count} {season.registered_count} player{season.registered_count === 1 ? ' has' : 's have'} registered so far.{/if}
 					{:else}
-						Register to take part in {seasonLabel ?? 'the current season'}.{#if seasons.available} Each season starts everyone fresh, and past seasons stay on the leaderboard to look back on.{/if}
+						Register to take part in {seasonLabel ?? 'the current season'}.{#if seasons.available}{' '}Each season starts everyone fresh, and past seasons stay on the leaderboard to look back on.{/if}
 					{/if}
 				</span>
 			</div>

@@ -154,7 +154,7 @@
 
 <!-- Board control area (ONE grouped masthead row — DESIGN-SYSTEM hard-rule #1: never a second
      control row). Scope · stat tabs · period · search. Stays one row from ~900px up; wraps on phones. -->
-<div class="controls">
+<div class="controls" class:hasseas={seasons.multiple}>
 	<!-- Scope switch: which games feed the boards. Ranked carries ratings + titles; Lobby/Tournament
 	     are pure records. A distinct segmented control so it never reads as another stat tab. -->
 	<div class="scopes" role="tablist" aria-label="Board scope">
@@ -532,7 +532,7 @@
 	   (shrinks, never grows huge), while scope collapses to icons and the period uses short labels in
 	   the tight 900–1079 band. Below 900 the area wraps freely (mobile). */
 	@media (min-width: 900px) {
-		.controls {
+		.controls:not(.hasseas) {
 			flex-wrap: nowrap;
 		}
 		.cuts {
@@ -561,21 +561,33 @@
 			min-width: 96px;
 		}
 	}
+	/* With the season picker in the row (it adds ~175px) the full-width band never fits on one line (the row
+	   tops out at 1104px), so the row stays in its compact form at every width and goes nowrap only once the
+	   compact row fits (>=980px). Between 900 and 979 it wraps rather than push the search field off the page. */
+	@media (min-width: 980px) {
+		.controls.hasseas {
+			flex-wrap: nowrap;
+		}
+		.hasseas .search {
+			flex: 0 1 150px;
+			min-width: 80px;
+		}
+	}
 	/* ≥1080px: room returns → scope shows its labels and the period shows full words again. */
 	@media (min-width: 1080px) {
-		.scope {
+		.controls:not(.hasseas) .scope {
 			padding: 6px 12px;
 		}
-		.scope .slbl {
+		.controls:not(.hasseas) .scope .slbl {
 			display: inline;
 		}
-		.cut {
+		.controls:not(.hasseas) .cut {
 			padding: 6px 12px;
 		}
-		.per .lg {
+		.controls:not(.hasseas) .per .lg {
 			display: inline;
 		}
-		.per .sm {
+		.controls:not(.hasseas) .per .sm {
 			display: none;
 		}
 	}
