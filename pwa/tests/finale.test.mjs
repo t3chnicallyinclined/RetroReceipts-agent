@@ -78,7 +78,7 @@ test('summary: real fields become labelled stats; zero and absent items are drop
 			games_per_player: { average: 30.84, median: 12, max: 410, max_player: { steamid: '7', name: 'Mak' } },
 			busiest_day: { date: '2026-11-08', games: 77 }
 		},
-		accounts: { registered_in_season: 50, registered_in_season_with_agent_build: 0, season_registrations: 12 },
+		accounts: { installs: 70, installs_played: 55, installs_is_lower_bound: true, registered_in_season: 50, registered_in_season_with_agent_build: 0, season_registrations: 12 },
 		top: {
 			wins: [{ steamid: '7', name: 'Mak', value: 99 }, { steamid: '8', name: 'Zed', value: 0 }],
 			perfects: [],
@@ -93,8 +93,15 @@ test('summary: real fields become labelled stats; zero and absent items are drop
 	assert.equal(t.avg.value, '30.8');
 	assert.equal(t.most.note, 'Mak');
 	assert.equal(t.busiest.value, '8 Nov 2026');
-	assert.equal(t.signedup.value, '50');
+	assert.equal(t.signedup.value, 'At least 70'); // lower bound is said out loud
+	assert.equal(t.signedup.label, 'players signed up');
+	assert.equal(t.signedplayed.value, '55');
+	assert.equal(t.signedplayed.label, 'of them played at least one game');
+	assert.ok(!f.tiles.some((x) => /install/i.test(x.label)), 'never the word installed');
 	assert.equal(t.registered.value, '12');
+	const exact = shapeSummary({ ok: true, accounts: { installs: 8, installs_played: 3, installs_is_lower_bound: false, registered_in_season_with_agent_build: 2 } });
+	assert.equal(exact.tiles.find((x) => x.key === 'signedup').value, '8');
+	assert.ok(exact.tiles.find((x) => x.key === 'withapp').label.includes('desktop app'));
 	assert.equal(t.withapp, undefined); // zero is not printed
 	assert.deepEqual(f.modes.map((m) => m.label), ['Ranked', 'Lobby', 'Money match']); // tourney 0 dropped
 	const wins = f.boards.find((b) => b.key === 'wins');
@@ -102,6 +109,14 @@ test('summary: real fields become labelled stats; zero and absent items are drop
 	assert.equal(f.boards.find((b) => b.key === 'perfects'), undefined); // empty list: no board
 	assert.ok(f.boards.find((b) => b.key === 'teams').rows[0].label.includes('/'));
 	assert.equal(f.boards.find((b) => b.key === 'regions').rows[0].value, '1 player');
+});
+
+test('summary: placeholder character ids (e.g. 255) never show as characters; Ryu (id 0) does', () => {
+	const f = shapeSummary({ ok: true, top: { characters: [{ char_id: 255, games: 9 }, { char_id: 0, games: 4 }], teams: [{ team: '255,0,1', games: 5 }, { team: '0,1,2', games: 3 }] } });
+	const ch = f.boards.find((b) => b.key === 'characters');
+	assert.deepEqual(ch.rows.map((r) => r.label), ['Ryu']);
+	assert.equal(f.boards.find((b) => b.key === 'teams').rows.length, 1);
+	assert.ok(!JSON.stringify(f).includes('#'));
 });
 
 test('summary: an empty season, a bad body or an old server yields nothing, never zeros', () => {

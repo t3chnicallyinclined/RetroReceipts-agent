@@ -100,7 +100,7 @@
 	</p>
 
 	<!-- Final ladder: top 3 on the podium, then places 4 to 8 -->
-	<h2 class="rail sec-hd">Final ladder</h2>
+	<h2 class="rail hd">Final ladder</h2>
 	{#if ladder === null && !ladderFailed}
 		<div class="empty">LOADING…</div>
 	{:else if ladderFailed}
@@ -123,7 +123,7 @@
 
 	<!-- The season in numbers: hidden entirely when the server has none to give -->
 	{#if finale && (finale.tiles.length || finale.modes.length)}
-		<h2 class="rail sec-hd">{season.label} in numbers</h2>
+		<h2 class="rail hd">{season.label} in numbers</h2>
 		{#if finale.tiles.length}
 			<dl class="tiles">
 				{#each finale.tiles as t (t.key)}
@@ -148,7 +148,7 @@
 	{/if}
 
 	{#if finale && finale.boards.length}
-		<h2 class="rail sec-hd">Other leaderboards</h2>
+		<h2 class="rail hd">Other leaderboards</h2>
 		<div class="boards">
 			{#each finale.boards as b (b.key)}
 				<section class="mini" aria-labelledby="mb-{b.key}">
@@ -170,7 +170,7 @@
 	{/if}
 
 	<!-- Thank you / what comes next -->
-	<h2 class="rail sec-hd">Thank you</h2>
+	<h2 class="rail hd">Thank you</h2>
 	<section class="thanks">
 		<p>
 			Thank you to everyone who took part in {season.label}. This is a side project and it is still in
@@ -202,6 +202,10 @@
 <style>
 	.empty p {
 		margin: 4px 0;
+	}
+	/* section headings: this page's own spacing (the shared .rail class is only a small caps label) */
+	.hd {
+		margin: 28px 0 10px;
 	}
 	.plain {
 		color: var(--ink);

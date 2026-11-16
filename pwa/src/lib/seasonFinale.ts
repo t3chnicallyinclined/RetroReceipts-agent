@@ -8,7 +8,7 @@
 
 import { apiGet } from './net.svelte';
 import { withSeason, type Season, type SeasonTable } from './seasons';
-import { charName } from './chars';
+import { CHAR_NAME, charName } from './chars';
 import type { Player } from './types';
 
 // ── availability ────────────────────────────────────────────────────────────────────────────────
@@ -104,8 +104,10 @@ export function dayLabel(iso: string): string | undefined {
 
 /** a team key "44,42,52" -> "Magneto / Storm / Sentinel" */
 function teamName(key: string): string | undefined {
-	const ids = key.split(',').map(Number).filter((n) => Number.isFinite(n));
-	return ids.length ? ids.map(charName).join(' / ') : undefined;
+	const ids = key.split(',').map(Number);
+	// an id that is not a real roster entry (e.g. an empty slot recorded as 255) would print as "#255": drop the row
+	if (!ids.length || ids.some((n) => !Number.isInteger(n) || !(n in CHAR_NAME))) return undefined;
+	return ids.map(charName).join(' / ');
 }
 
 // the "other leaderboards": server key under `top` -> plain title
@@ -148,8 +150,14 @@ export function shapeSummary(raw: unknown): Finale | null {
 
 	// Accounts. Labelled for what the server field is, not as "installs".
 	const acc = obj(j.accounts);
-	add('signedup', 'New players who signed up during the season', pos(acc?.registered_in_season));
-	add('withapp', 'of them ran the desktop app', pos(acc?.registered_in_season_with_agent_build));
+	// `installs` = distinct Steam accounts in the registration log as of the season end (app or website sign-in,
+	// so never worded as "installed"). For a finished season with accounts of unknown sign-up time it is a lower bound.
+	const signed = pos(acc?.installs);
+	add('signedup', 'players signed up', signed, (n) => (acc?.installs_is_lower_bound === true ? `At least ${n0(n)}` : n0(n)));
+	add('signedplayed', 'of them played at least one game', pos(acc?.installs_played));
+	// registered_in_season_with_agent_build = of those who FIRST signed up inside the season, those whose desktop
+	// app reported a build (heartbeat `ver`).
+	add('withapp', 'players who first signed up this season and ran the desktop app', pos(acc?.registered_in_season_with_agent_build));
 	add('registered', 'Players who registered for the season', pos(acc?.season_registrations));
 
 	const bm = obj(games?.by_mode);
@@ -181,7 +189,7 @@ export function shapeSummary(raw: unknown): Finale | null {
 	});
 	if (teams.length) boards.push({ key: 'teams', title: 'Most played teams', rows: teams });
 	const chars = arr(top?.characters).flatMap((r) => {
-		const id = typeof r.char_id === 'number' ? r.char_id : undefined;
+		const id = typeof r.char_id === 'number' && r.char_id in CHAR_NAME ? r.char_id : undefined;
 		const g = pos(r.games);
 		return id !== undefined && g !== undefined ? [{ label: charName(id), value: `${n0(g)} games` }] : [];
 	});
