@@ -1,446 +1,483 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { base } from '$app/paths';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import '$lib/finale/finale.css';
 	import { seasons } from '$lib/stores/seasons.svelte';
 	import { loadouts } from '$lib/stores/loadouts.svelte';
-	import {
-		finaleAvailability,
-		shapeLadder,
-		fetchLadder,
-		fetchFinale,
-		dayLabel,
-		type Finale
-	} from '$lib/seasonFinale';
-	import { DISCORD_URL, SUPERGUN_URL } from '$lib/links';
-	import type { Player } from '$lib/types';
-	import Masthead from '$lib/components/Masthead.svelte';
-	import PodiumPlate from '$lib/components/PodiumPlate.svelte';
-	import Board from '$lib/components/Board.svelte';
-	import SuggestModal from '$lib/components/SuggestModal.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { finaleAvailability, shapeLadder, fetchLadder, fetchSummary, dayLabel, type Summary } from '$lib/seasonFinale';
+	import { fetchHighlights, type Highlights } from '$lib/finale/highlights';
+	import { fetchFeedback, type FeedbackView } from '$lib/finale/feedback';
+	import { fetchRoster, type Roster } from '$lib/finale/players';
+	import { fetchMine, type Mine } from '$lib/finale/mine';
+	import { GROUPS, glanceTiles, groupSummary, mentionViews, nf, nf1, presentSubs, type GroupId } from '$lib/finale/derive';
+	import { reveal } from '$lib/finale/motion';
+	import { DISCORD_URL } from '$lib/links';
+	import { gamesOf, rankOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
+	import type { Player } from '$lib/types';
+	import Avatar from '$lib/components/Avatar.svelte';
+	import Flag from '$lib/components/Flag.svelte';
+	import RankBadge from '$lib/components/RankBadge.svelte';
+	import CharSprite from '$lib/components/CharSprite.svelte';
+	import PodiumPlate from '$lib/components/PodiumPlate.svelte';
+	import FinaleBanner from '$lib/components/finale/FinaleBanner.svelte';
+	import ChampionPlate from '$lib/components/finale/ChampionPlate.svelte';
+	import MentionCard from '$lib/components/finale/MentionCard.svelte';
+	import SeasonCard from '$lib/components/finale/SeasonCard.svelte';
+	import GroupAccordion from '$lib/components/finale/GroupAccordion.svelte';
+	import GroupBodies from '$lib/components/finale/GroupBodies.svelte';
+	import SectionsSheet from '$lib/components/finale/SectionsSheet.svelte';
+	import type { NavItem } from '$lib/finale/types';
+	import SectionNav from '$lib/components/finale/SectionNav.svelte';
+	import FinaleDock from '$lib/components/finale/FinaleDock.svelte';
+	import FeedbackSection from '$lib/components/finale/FeedbackSection.svelte';
+	import AlsoComing from '$lib/components/finale/AlsoComing.svelte';
+	import SupergunBlock from '$lib/components/finale/SupergunBlock.svelte';
+	import SpecialThanks from '$lib/components/finale/SpecialThanks.svelte';
+	import CountUp from '$lib/components/finale/CountUp.svelte';
 
-	// SEASON WRAP-UP: the finale page for a season the server marks finished. Everything shown comes from the
-	// server (season table, the season's rating ladder, GET /rr/season/summary). Stats are optional: the
-	// whole section hides on an older server, and an item with no honest number is simply left out.
+	// SEASON FINALE for a season the server marks finished. Every section is fed by its own endpoint and hides when
+	// that endpoint is missing (older server): table, ladder, summary, highlights, feedback, players, profile.
 	const id = $derived(page.params.id ?? '');
-
-	// feedback: the callout under the lead jumps to this block; the in-app "suggest a stat" form needs a sign-in
-	const FEEDBACK_ID = 'help-shape';
-	let showSuggest = $state(false);
-	function jumpToFeedback(e: MouseEvent) {
-		e.preventDefault();
-		const el = document.getElementById(FEEDBACK_ID);
-		if (!el) return;
-		const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
-		el.focus({ preventScroll: true }); // keyboard + screen-reader users land on the heading
-	}
+	let root: HTMLDivElement | undefined = $state();
+	let sheet: HTMLDialogElement | undefined = $state();
 
 	let tried = $state(false);
-	onMount(() => {
-		void seasons.load().finally(() => (tried = true));
-	});
-
 	const waiting = $derived(!tried && seasons.status !== 'ready' && seasons.status !== 'absent');
 	const avail = $derived(finaleAvailability(seasons.table, id));
 	const season = $derived(avail.state === 'ready' ? avail.season : null);
 	const next = $derived(avail.state === 'ready' ? avail.next : null);
 
-	let ladder = $state<Player[] | null>(null);
+	// ── data ──
+	let ladderRaw = $state<Player[] | null>(null);
 	let ladderFailed = $state(false);
-	let finale = $state<Finale | null>(null);
+	let sum = $state<Summary | null>(null);
+	let hl = $state<Highlights | null>(null);
+	let fb = $state<FeedbackView | null>(null);
+	let roster = $state<Roster | null>(null);
+	let mine = $state<Mine | null>(null);
+	let mineLoaded = $state(false);
 
-	// Load once per season id. Selecting the season here makes the player links open THAT season's profile.
 	let loadedId = '';
 	$effect(() => {
 		const s = season;
 		if (!s || s.id === loadedId) return;
 		loadedId = s.id;
-		ladder = null;
-		ladderFailed = false;
-		finale = null;
-		seasons.select(s.id);
-		void fetchLadder(s.id)
-			.then((p) => {
-				if (loadedId === s.id) ladder = p;
-			})
-			.catch(() => {
-				if (loadedId === s.id) ladderFailed = true;
-			});
-		void fetchFinale(s.id).then((f) => {
-			if (loadedId === s.id) finale = f;
-		});
+		ladderRaw = null; ladderFailed = false; sum = null; hl = null; fb = null; roster = null;
+		seasons.select(s.id); // player links on this page open THAT season's profile
+		void fetchLadder(s.id).then((p) => { if (loadedId === s.id) ladderRaw = p; }).catch(() => { if (loadedId === s.id) ladderFailed = true; });
+		void fetchSummary(s.id).then((v) => { if (loadedId === s.id) sum = v; });
+		void fetchHighlights(s.id).then((v) => { if (loadedId === s.id) hl = v; });
+		void fetchRoster(s.id).then((v) => { if (loadedId === s.id) roster = v; });
+	});
+	// feedback and the viewer's own season follow the sign-in
+	$effect(() => {
+		const s = season;
+		const tok = auth.token;
+		if (!s) return;
+		void fetchFeedback(s.id, tok).then((v) => { if (season?.id === s.id) fb = v; });
+	});
+	$effect(() => {
+		const s = season;
+		const sid = auth.steamid;
+		const tok = auth.token;
+		if (!s || !sid) { mine = null; mineLoaded = false; return; }
+		mineLoaded = false;
+		void fetchMine(sid, s.id, tok).then((v) => { if (season?.id === s.id && auth.steamid === sid) { mine = v; mineLoaded = true; } });
 	});
 
-	const shaped = $derived(shapeLadder(ladder));
-	// podium order on screen: 2nd, 1st, 3rd (same as Ranks)
-	const items = $derived(
-		shaped.rows.map((r) => ({ kind: 'row' as const, key: r.player.steamid, player: r.player, pos: r.pos }))
-	);
+	const ladder = $derived(shapeLadder(ladderRaw));
 	$effect(() => {
-		const ids = shaped.podium.map((p) => p.steamid);
+		const ids = [ladder.champion, ...ladder.side, ...ladder.rows.map((r) => r.player)].filter(Boolean).map((p) => p!.steamid);
 		if (ids.length) void loadouts.prime(ids);
+	});
+	const label = $derived(season?.label ?? '');
+	const mentions = $derived(mentionViews(hl));
+	const glance = $derived(glanceTiles(sum, hl));
+	const honours = $derived.by(() => {
+		const c = ladder.champion;
+		if (!c || !sum) return [] as string[];
+		const out: string[] = [];
+		const pick = (k: 'best_streak' | 'wins' | 'peak_rating' | 'perfects', f: (n: number) => string) => {
+			const row = sum?.top[k]?.[0];
+			if (row && row.player.steamid === c.steamid) out.push(f(row.value));
+		};
+		pick('best_streak', (n) => `Longest win streak: ${nf(n)}`);
+		pick('wins', (n) => `Most wins: ${nf(n)}`);
+		pick('peak_rating', (n) => `Highest rating reached: ${Math.round(n)}`);
+		pick('perfects', (n) => `Most perfects: ${nf(n)}`);
+		return out;
 	});
 
 	const dateLine = $derived.by(() => {
 		if (!season) return '';
-		const a = dayLabel(new Date(season.start_ms).toISOString().slice(0, 10));
-		// end_ms is the first instant AFTER the season, so the last day is one millisecond earlier
-		const b = season.end_ms != null ? dayLabel(new Date(season.end_ms - 1).toISOString().slice(0, 10)) : undefined;
-		// a season that starts at time 0 is the implicit "before seasons" period: it has no honest start date
-		const from = season.start_ms > 0 ? a : undefined;
-		return from && b ? `${from} to ${b}` : b ? `Ended ${b}` : '';
+		const end = season.end_ms != null ? dayLabel(new Date(season.end_ms - 1).toISOString().slice(0, 10)) : undefined;
+		const start = season.start_ms > 0 ? dayLabel(new Date(season.start_ms).toISOString().slice(0, 10)) : undefined;
+		return start && end ? `${start} to ${end}` : end ? `Ended ${end}` : '';
 	});
+	const bits = $derived([
+		...(sum?.games ? [{ n: sum.games, one: 'game', many: 'games' }] : []),
+		...(sum?.sets ? [{ n: sum.sets, one: 'set', many: 'sets' }] : []),
+		...(sum?.players ? [{ n: sum.players, one: 'player', many: 'players' }] : []),
+		...(hl?.days ? [{ n: hl.days, one: 'day', many: 'days' }] : [])
+	]);
+	const pickList = $derived(
+		[...(seasons.table?.seasons ?? [])].reverse().map((s) => ({ id: s.id, label: s.label, current: s.id === seasons.table?.current }))
+	);
+	function pickSeason(to: string) {
+		void goto(to === seasons.table?.current ? `${base}/ranks` : `${base}/season/${encodeURIComponent(to)}`);
+	}
+
+	// ── groups: present ones, open state, one-open rule on phones ──
+	const groups = $derived(
+		GROUPS.flatMap((g) => {
+			const subs = presentSubs(g.id, sum, hl);
+			return subs.length ? [{ ...g, subs, summary: groupSummary(g.id, sum, hl) }] : [];
+		})
+	);
+	let wide = $state(false);
+	let open = $state<Record<string, boolean>>({});
+	const subToGroup = $derived(Object.fromEntries(groups.flatMap((g) => g.subs.map((s) => [s.id, g.id]))));
+	// wide screens start with every present group open
+	let seededWide = false;
+	$effect(() => {
+		if (wide && groups.length && !seededWide) {
+			seededWide = true;
+			open = Object.fromEntries(groups.map((g) => [g.id, true]));
+		}
+	});
+
+	function toggle(gid: string) {
+		const was = !!open[gid];
+		if (wide) open = { ...open, [gid]: !was };
+		else open = was ? {} : { [gid]: true };
+		persist();
+		if (!was && !wide) void tick().then(() => document.getElementById(gid)?.scrollIntoView({ block: 'start' }));
+	}
+
+	// ── navigation: sections, groups, sub-sections ──
+	const ids = $derived([
+		'top', 'podium', ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'you',
+		...(groups.length ? ['explore', ...groups.map((g) => g.id)] : []), 'next', ...(roster ? ['thanks'] : []), 'feedback', 'close'
+	]);
+	const titleOf = $derived<Record<string, string>>({
+		top: 'Sections', podium: 'Podium', mentions: 'Notable mentions', glance: 'At a glance', you: 'Your season', explore: 'Explore the season',
+		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', thanks: 'Special thanks', feedback: 'Have your say', close: 'Thank you'
+	});
+	const navItems = $derived<NavItem[]>([
+		{ id: 'podium', title: 'The podium', summary: ladder.champion ? `${ladder.champion.name} finished first` : undefined },
+		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions', summary: `${mentions.length} ${mentions.length === 1 ? 'player' : 'players'} outside the top 8` }] : []),
+		...(glance.length ? [{ id: 'glance', title: 'At a glance', summary: `${label} in six figures` }] : []),
+		{ id: 'you', title: 'Your season', summary: auth.authed ? 'Where you finished' : 'Sign in to see where you finished' },
+		...groups.map((g) => ({ id: g.id, title: g.title, summary: g.summary, subs: g.subs })),
+		{ id: 'next', title: 'What’s next', summary: next ? `${next.label} and SUPERGUN` : 'More seasons and SUPERGUN' },
+		...(roster ? [{ id: 'thanks', title: 'Special thanks', summary: `${nf(roster.everyone.length || roster.regulars.length)} players` }] : []),
+		{ id: 'feedback', title: 'Help shape the next season', summary: 'Polls, a note, and ideas' }
+	]);
+	const wideNav = $derived([
+		...(ladder.champion ? [{ id: 'podium', title: 'Podium' }] : []),
+		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions' }] : []),
+		...(glance.length ? [{ id: 'glance', title: 'At a glance' }] : []),
+		{ id: 'you', title: 'Your season' },
+		...groups.map((g) => ({ id: g.id, title: g.title })),
+		{ id: 'next', title: 'What’s next' },
+		...(roster ? [{ id: 'thanks', title: 'Thank you' }] : [])
+	]);
+
+	let current = $state('top');
+	const dockLabel = $derived(current === 'top' ? 'Sections' : (titleOf[subToGroup[current] ?? current] ?? 'Sections'));
+	function trackScroll() {
+		let cur = 'top';
+		for (const i of ids) {
+			const el = document.getElementById(i);
+			if (el && el.getBoundingClientRect().top <= 150) cur = i;
+		}
+		current = cur;
+	}
+
+	async function goTo(target: string, opts: { quiet?: boolean } = {}) {
+		const gid = subToGroup[target] ?? (groups.some((g) => g.id === target) ? target : '');
+		if (gid && !open[gid]) {
+			open = wide ? { ...open, [gid]: true } : { [gid]: true };
+			persist();
+		}
+		await tick();
+		const sub = !!subToGroup[target];
+		const heading = sub ? document.getElementById(`${target}-h`) : groups.some((g) => g.id === target) ? document.getElementById(`${target}-b`) : (document.getElementById(`${target}-h`) ?? document.getElementById(target));
+		const box = document.getElementById(target);
+		const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+		(box ?? heading)?.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+		heading?.focus({ preventScroll: true });
+		if (!opts.quiet) history.replaceState(history.state, '', `#${target}`);
+		trackScroll();
+	}
+	function copyLink(anchor: string) {
+		const url = `${location.origin}${location.pathname}#${anchor}`;
+		void navigator.clipboard?.writeText(url).catch(() => {});
+	}
+
+	// ── remembered position: open groups and scroll, per season, in sessionStorage (works without it) ──
+	const memKey = $derived(`rr:finale:${id}`);
+	function persist() {
+		try {
+			sessionStorage.setItem(memKey, JSON.stringify({ open, y: Math.round(scrollY) }));
+		} catch {
+			/* storage blocked: the page works without it */
+		}
+	}
+	let restored = false;
+	$effect(() => {
+		// once the page content has arrived: a hash wins over the remembered position
+		if (restored || !season || ladderRaw === null) return;
+		restored = true;
+		untrack(() => {
+			void tick().then(async () => {
+				if (location.hash.length > 1) {
+					await goTo(decodeURIComponent(location.hash.slice(1)), { quiet: true });
+					return;
+				}
+				try {
+					const m = JSON.parse(sessionStorage.getItem(memKey) ?? 'null');
+					if (m && typeof m === 'object') {
+						if (m.open && typeof m.open === 'object') open = Object.fromEntries(Object.entries(m.open as Record<string, unknown>).filter(([k, v]) => v === true && groups.some((g) => g.id === k))) as Record<string, boolean>;
+						if (typeof m.y === 'number' && m.y > 0) {
+							await tick();
+							scrollTo({ top: m.y, behavior: 'auto' });
+						}
+					}
+				} catch {
+					/* nothing remembered */
+				}
+			});
+		});
+	});
+
+	onMount(() => {
+		void seasons.load().finally(() => (tried = true));
+		const calm = matchMedia('(prefers-reduced-motion: reduce)');
+		if (!calm.matches) root?.classList.add('anim');
+		const mq = matchMedia('(min-width: 900px)');
+		wide = mq.matches;
+		const onMq = (e: MediaQueryListEvent) => {
+			wide = e.matches;
+			if (e.matches) open = Object.fromEntries(groups.map((g) => [g.id, true]));
+			else open = {};
+		};
+		mq.addEventListener('change', onMq);
+		// the real TabBar height (it is hidden on wide screens, so 0 there)
+		const setTab = () => root?.style.setProperty('--tabbar-h', `${document.querySelector<HTMLElement>('.tabbar')?.offsetHeight ?? 0}px`);
+		setTab();
+		const tb = document.querySelector('.tabbar');
+		const ro = tb && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(setTab) : null;
+		if (tb) ro?.observe(tb);
+		let raf = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const onScroll = () => {
+			if (!raf) raf = requestAnimationFrame(() => { raf = 0; trackScroll(); });
+			clearTimeout(timer);
+			timer = setTimeout(persist, 400);
+		};
+		addEventListener('scroll', onScroll, { passive: true });
+		addEventListener('resize', setTab);
+		return () => {
+			mq.removeEventListener('change', onMq);
+			ro?.disconnect();
+			removeEventListener('scroll', onScroll);
+			removeEventListener('resize', setTab);
+			clearTimeout(timer);
+		};
+	});
+
 	const title = $derived(season ? `${season.label} wrap-up` : 'Season wrap-up');
+	let shareStatus = $state('');
+	async function sharePage() {
+		const url = `${location.origin}${location.pathname}`;
+		try {
+			if (typeof navigator.share === 'function' && matchMedia('(pointer: coarse)').matches) {
+				await navigator.share({ url, title });
+				shareStatus = '';
+			} else {
+				await navigator.clipboard.writeText(url);
+				shareStatus = 'Link copied.';
+			}
+		} catch {
+			shareStatus = `Copy this link: ${url}`;
+		}
+	}
+	const showRows = $derived(ladder.rows.length > 0);
 </script>
 
 <svelte:head><title>{title} · Retro Receipts</title></svelte:head>
 
-{#if waiting}
-	<div class="empty">LOADING…</div>
-{:else if !season}
-	<div class="empty" role="status">
-		<p>This season’s wrap-up isn’t available yet.</p>
-		<p><a class="plain" href="{base}/ranks">See the current ladder</a></p>
-	</div>
-{:else}
-	<Masthead title={season.label} ghost="FINAL" accent="var(--dim)" desc={dateLine}>
-		{#snippet pills()}<span class="pill">FINAL</span>{/snippet}
-	</Masthead>
+{#snippet hd(hid: string, text: string)}
+	<div class="shd"><h2 id="{hid}-h" tabindex="-1">{text}</h2><button type="button" class="hdlink" aria-label="Copy a link to {text}" onclick={() => copyLink(hid)}># link</button></div>
+{/snippet}
 
-	<p class="lead">
-		{season.label} has ended. Thank you to everyone who played. Here is how the final ladder finished.
-	</p>
-	<p class="ask">
-		<a class="plain" href="#{FEEDBACK_ID}" onclick={jumpToFeedback}>Tell us what you’d like next season</a>{#if DISCORD_URL}{' '}·{' '}<a class="plain" href={DISCORD_URL} rel="noopener">Join the Discord</a>{/if}
-	</p>
-
-	<!-- Final ladder: top 3 on the podium, then places 4 to 8 -->
-	<h2 class="rail hd">Final ladder</h2>
-	{#if ladder === null && !ladderFailed}
+<div class="fin" bind:this={root}>
+	{#if waiting}
 		<div class="empty">LOADING…</div>
-	{:else if ladderFailed}
-		<div class="empty" role="status">The final standings can’t be loaded right now. Please try again later.</div>
-	{:else if !shaped.podium.length && !shaped.rows.length}
-		<div class="empty">No ranked players finished this season.</div>
+	{:else if !season}
+		<div class="empty" role="status">
+			<p>This season’s wrap-up isn’t available yet.</p>
+			<p><a class="plain" href="{base}/ranks">See the current ladder</a></p>
+		</div>
 	{:else}
-		{#if shaped.podium.length}
-			<div class="podium">
-				<PodiumPlate player={shaped.podium[1]} place={2} tab="rating" />
-				<PodiumPlate player={shaped.podium[0]} place={1} tab="rating" />
-				<PodiumPlate player={shaped.podium[2]} place={3} tab="rating" />
-			</div>
-		{/if}
-		{#if items.length}
-			<Board {items} tab="rating" flashIds={new Set()} />
-		{/if}
-		<p class="foot">Ratings are as they stood when the season closed. Select a player to see their {season.label} profile.</p>
-	{/if}
+		{#if wide}<SectionNav items={wideNav} {current} onjump={(t) => goTo(t)} />{/if}
 
-	<!-- The season in numbers: hidden entirely when the server has none to give -->
-	{#if finale && (finale.tiles.length || finale.modes.length)}
-		<h2 class="rail hd">{season.label} in numbers</h2>
-		{#if finale.tiles.length}
-			<dl class="tiles">
-				{#each finale.tiles as t (t.key)}
-					<div class="tile">
-						<dd class="tv">{t.value}</dd>
-						<dt class="tl">{t.label}</dt>
-						{#if t.note}
-							<dd class="tn">
-								{#if t.steamid}<a class="plain" href="{base}/u/{t.steamid}">{t.note}</a>{:else}{t.note}{/if}
-							</dd>
-						{/if}
+		<FinaleBanner {label} date={dateLine} {bits} hasChampion={!!ladder.champion} seasons={pickList} current={season.id} onpick={pickSeason} onjump={(t) => goTo(t)} />
+
+		<!-- the podium -->
+		<section class="sec" id="podium" aria-labelledby="podium-h">
+			{@render hd('podium', ladder.count || ladderFailed ? 'The podium' : 'Final ladder')}
+			{#if ladderRaw === null && !ladderFailed}
+				<div class="empty">LOADING…</div>
+			{:else if ladderFailed}
+				<div class="empty" role="status">The final standings can’t be loaded right now. Please try again later.</div>
+			{:else if !ladder.champion}
+				<div class="empty">No ranked players finished this season.</div>
+			{:else}
+				<p class="ssub">The {label} ladder is closed. Ratings are as they stood when the season ended.</p>
+				<ChampionPlate player={ladder.champion} season={season.id} {label} {honours} />
+				{#if ladder.side.length}
+					<div class="pods" class:one={ladder.side.length === 1}>
+						{#each ladder.side as p, i (p.steamid)}<PodiumPlate player={p} place={(i + 2) as 2 | 3} tab="rating" challenge={false} />{/each}
 					</div>
-				{/each}
-			</dl>
-		{/if}
-		{#if finale.modes.length}
-			<p class="modes">
-				<span class="ml">Games by mode</span>
-				{#each finale.modes as m (m.label)}<span class="mc">{m.label} <b>{m.value}</b></span>{/each}
-			</p>
-		{/if}
-	{/if}
-
-	{#if finale && finale.boards.length}
-		<h2 class="rail hd">Other leaderboards</h2>
-		<div class="boards">
-			{#each finale.boards as b (b.key)}
-				<section class="mini" aria-labelledby="mb-{b.key}">
-					<h3 id="mb-{b.key}">{b.title}</h3>
-					<ol>
-						{#each b.rows as r, i (i)}
-							<li>
-								<span class="mn">{i + 1}</span>
-								<span class="mname"
-									>{#if r.steamid}<a class="plain" href="{base}/u/{r.steamid}">{r.label}</a>{:else}{r.label}{/if}</span
-								>
-								<span class="mval">{r.value}</span>
-							</li>
+				{/if}
+				{#if ladder.count === 1}<p class="note">One player finished {label} with ranked games.</p>{/if}
+				{#if showRows}
+					<h3 class="rail subh" style="margin:18px 2px 8px">Places 4 to {ladder.count}</h3>
+					<div class="board">
+						<div class="bd-hd rail" aria-hidden="true"><span>#</span><span>Player</span><span class="r">Team</span><span>Tier</span><span class="r">Rating</span><span class="r">Win %</span></div>
+						{#each ladder.rows as { player: p, pos } (p.steamid)}
+							{@const r = rankOf(p.rating, gamesOf(p))}
+							{@const w = winrateOf(p)}
+							<a class="bd-row" href="{base}/u/{encodeURIComponent(p.steamid)}?season={encodeURIComponent(season.id)}">
+								<span class="bd-rank">{pos}</span>
+								<span class="bd-name">
+									<Avatar url={p.avatar} size={30} alt="" />
+									<span class="l1">{#if p.cc}<Flag cc={p.cc} w={16} />{/if}<span class="nm" title={p.name}>{p.name || 'Player'}</span></span>
+									<span class="l2 dsk-hide"><RankBadge rating={p.rating} games={gamesOf(p)} size={13} /><span class="rk-{r.s}">{r.n}</span></span>
+								</span>
+								<span class="bd-team">{#each (p.top_team ?? []).slice(0, 3) as cid, i (i)}<span class="sq1"><CharSprite id={cid} still /></span>{/each}</span>
+								<span class="col-wr" style="text-align:left"><RankBadge rating={p.rating} games={gamesOf(p)} size={16} /> <span class="rk-{r.s}">{r.n}</span></span>
+								<span class="bd-num mono">{Math.round(p.rating)}<small>{nf(p.wins ?? 0)} – {nf(p.losses ?? 0)}</small></span>
+								<span class="col-wr" style="color:{winrateColor(w)}">{w}%</span>
+							</a>
 						{/each}
-					</ol>
-				</section>
-			{/each}
-		</div>
-	{/if}
+					</div>
+				{/if}
+				<p class="note">Select a player to see their {label} profile. <a class="plain" href="{base}/ranks?season={encodeURIComponent(season.id)}">See the full {label} ladder</a></p>
+			{/if}
+		</section>
 
-	<!-- Thank you / what comes next -->
-	<h2 class="rail hd">Thank you</h2>
-	<section class="thanks">
-		<p>
-			Thank you to everyone who took part in {season.label}. This is a side project and it is still in
-			testing, so we are grateful to everyone who gave it a go.
-		</p>
-		{#if next}
-			<p>
-				{next.label} is next. Everyone starts fresh, and {season.label} stays here to look back on. We plan to
-				run more seasons after that.
-			</p>
-		{:else}
-			<p>We plan to run more seasons, and {season.label} will stay here to look back on.</p>
+		<!-- notable mentions -->
+		{#if mentions.length}
+			<section class="sec" id="mentions" aria-labelledby="mentions-h">
+				{@render hd('mentions', 'Notable mentions')}
+				<p class="ssub">Outside the final top {ladder.count || 8}, and all over the season’s leaderboards.</p>
+				<div class="grid2">{#each mentions as v (v.mention.player.steamid)}<MentionCard view={v} season={season.id} only={mentions.length === 1} />{/each}</div>
+			</section>
 		{/if}
-		<p>
-			We are also working on SUPERGUN, the planned successor to this app. It is early and still in testing.
-			You can read more at <a class="plain" href={SUPERGUN_URL} rel="noopener">supergun.io</a>.
-		</p>
-		<div class="cta">
-			<a class="btn ghost" href="{base}/ranks">See the current ladder</a>
-		</div>
-	</section>
 
-	<!-- Feedback: prompts are about the page in general so they read correctly when a stat is hidden -->
-	<h2 class="rail hd" id={FEEDBACK_ID} tabindex="-1">Help shape the next season</h2>
-	<section class="thanks help" aria-labelledby={FEEDBACK_ID}>
-		<p>
-			This is a side project and it is still in testing, so we would really like to hear from you. We can’t
-			promise what will be built, but your ideas help us decide what to try next.
-		</p>
-		<ul class="prompts">
-			<li>Which of the numbers and leaderboards on this page did you care about, and what was missing?</li>
-			<li>What should a season reward? Badges, titles, something else?</li>
-			<li>How long should a season run?</li>
-			<li>What would make ranked play better for you?</li>
-		</ul>
-		<p>
-			{#if DISCORD_URL}Tell us on Discord{:else}Tell us{/if}{#if auth.authed}, or send a quick idea straight from here{/if}.
-		</p>
-		<div class="cta">
-			{#if DISCORD_URL}<a class="btn" href={DISCORD_URL} rel="noopener">Join the Discord</a>{/if}
-			{#if auth.authed}<button class="btn ghost" type="button" onclick={() => (showSuggest = true)}>Suggest a stat</button>{/if}
-		</div>
-	</section>
-{/if}
+		<!-- at a glance -->
+		{#if glance.length}
+			<section class="sec" id="glance" aria-labelledby="glance-h">
+				<h2 class="rail subh" id="glance-h" tabindex="-1" style="margin:0 0 8px">{label} at a glance</h2>
+				<dl class="glance" use:reveal>
+					{#each glance as g (g.key)}<div><dt>{g.label}</dt><dd>{#if g.pre}<span class="pre">{g.pre}</span>{/if}<CountUp value={g.n} format={(x) => (g.dec ? nf1(x) : nf(x))} /></dd></div>{/each}
+				</dl>
+			</section>
+		{/if}
 
-{#if showSuggest}
-	<SuggestModal onClose={() => (showSuggest = false)} />
-{/if}
+		<!-- your season -->
+		<section class="sec" id="you" aria-labelledby="you-h">
+			{@render hd('you', 'Your season')}
+			<SeasonCard {mine} loading={auth.authed && !mineLoaded} loaded={mineLoaded || !auth.authed} season={season.id} {label} nextLabel={next?.label} />
+		</section>
+
+		<!-- explore the season -->
+		{#if groups.length}
+			<section class="sec" id="explore" aria-labelledby="explore-h">
+				{@render hd('explore', 'Explore the season')}
+				<p class="ssub">Pick a part of the season to open it.</p>
+				<div class="grps">
+					{#each groups as g, gi (g.id)}
+						<GroupAccordion id={g.id} title={g.title} summary={g.summary} subs={g.subs} open={!!open[g.id]} next={groups[gi + 1]?.title ?? 'What’s next'} ontoggle={() => toggle(g.id)} onjump={(t) => goTo(t)} onnext={() => goTo(groups[gi + 1]?.id ?? 'next')}>
+							<GroupBodies group={g.id as GroupId} s={sum} h={hl} season={season.id} {label} />
+						</GroupAccordion>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
+		<!-- what's next -->
+		<section class="sec" id="next" aria-labelledby="next-h">
+			{@render hd('next', 'What’s next')}
+			<div class="next">
+				<div class="nl">
+				{#if next}
+					<div class="card">
+						<span class="rail">Open now</span>
+						<h3>{next.label}</h3>
+						<p>Everyone starts fresh at the same rating. Register to take part, play your first five ranked games to get a rank, and {label} stays here to look back on.</p>
+						<div class="cta"><a class="btn pri" href="{base}/settings">Register for {next.label}</a><a class="btn" href="{base}/ranks">See the current ladder</a></div>
+						<p class="dimp">We plan to run more seasons after that.</p>
+					</div>
+				{:else}
+					<div class="card">
+						<span class="rail">Later</span>
+						<h3>More seasons</h3>
+						<p>We plan to run more seasons, and {label} will stay here to look back on.</p>
+						<div class="cta"><a class="btn" href="{base}/ranks">See the current ladder</a></div>
+					</div>
+				{/if}
+				<AlsoComing nextLabel={next?.label} />
+				</div>
+				<SupergunBlock />
+			</div>
+		</section>
+
+		<!-- special thanks -->
+		{#if roster}
+			<section class="sec" id="thanks" aria-labelledby="thanks-h">
+				{@render hd('thanks', 'Special thanks')}
+				<SpecialThanks {roster} season={season.id} {label} />
+			</section>
+		{/if}
+
+		<!-- help shape the next season -->
+		<section class="sec" id="feedback" aria-labelledby="feedback-h">
+			{@render hd('feedback', 'Help shape the next season')}
+			<FeedbackSection {fb} season={season.id} {label} days={hl?.days} onview={(v) => (fb = v)} />
+		</section>
+
+		<!-- close -->
+		<section class="close" id="close" aria-labelledby="close-h">
+			<h2 id="close-h" tabindex="-1">Thank you for playing {label}</h2>
+			<p>This is a side project and it is still in testing. We are grateful to everyone who gave it a go.{next ? ` See you in ${next.label}.` : ''}</p>
+			<div class="cta">
+				<a class="btn pri" href="{base}/ranks">See the current ladder</a>
+				{#if DISCORD_URL}<a class="btn" href={DISCORD_URL} rel="noopener">Join the NOBD Discord</a>{/if}
+				<button type="button" class="btn" onclick={sharePage}>Share this page</button>
+			</div>
+			<p class="status" role="status" aria-live="polite">{shareStatus}</p>
+		</section>
+
+		{#if !wide}
+			<FinaleDock label={dockLabel} onmenu={() => sheet?.showModal()} onfeedback={() => goTo('feedback')} />
+			<SectionsSheet items={navItems} {current} onjump={(t) => goTo(t)} bind:dialog={sheet} />
+		{/if}
+	{/if}
+</div>
 
 <style>
-	.empty p {
-		margin: 4px 0;
-	}
-	/* section headings: this page's own spacing (the shared .rail class is only a small caps label) */
-	.hd {
-		margin: 28px 0 10px;
-	}
-	.plain {
-		color: var(--ink);
-		text-decoration: underline;
-	}
-	.plain:focus-visible,
-	.btn:focus-visible {
-		outline: 2px solid var(--gold);
-		outline-offset: 2px;
-	}
-	.lead {
-		margin: 0 0 14px;
-		font-size: 14px;
-		line-height: 1.5;
-		color: var(--ink);
-		max-width: 62ch;
-	}
-	.podium {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1.22fr) minmax(0, 1fr);
-		gap: 12px;
-		align-items: end;
-		margin-bottom: 12px;
-	}
-	@media (max-width: 560px) {
-		.podium {
-			gap: 7px;
-		}
-	}
-	.foot {
-		padding: 8px 4px 0;
-		font-size: 11.5px;
-		color: var(--faint);
-	}
-	.tiles {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-		gap: 10px;
-		margin: 0;
-	}
-	.tile {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		padding: 12px 14px;
-		background: var(--panel);
-		border: 1px solid var(--line);
-		border-radius: 12px;
-		min-width: 0;
-	}
-	.tile dd,
-	.tile dt {
-		margin: 0;
-	}
-	.tv {
-		order: 1;
-		font-size: 22px;
-		font-weight: 800;
-		font-variant-numeric: tabular-nums;
-		color: var(--ink);
-		overflow-wrap: anywhere;
-	}
-	.tl {
-		order: 2;
-		font-size: 11.5px;
-		color: var(--dim);
-	}
-	.tn {
-		order: 3;
-		font-size: 12px;
-		color: var(--dim);
-		overflow-wrap: anywhere;
-	}
-	.modes {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 6px 14px;
-		margin: 12px 0 0;
-		font-size: 12.5px;
-		color: var(--dim);
-	}
-	.ml {
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--faint);
-	}
-	.mc b {
-		color: var(--ink);
-		font-variant-numeric: tabular-nums;
-	}
-	.boards {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-		gap: 10px;
-	}
-	.mini {
-		background: var(--panel);
-		border: 1px solid var(--line);
-		border-radius: 12px;
-		padding: 12px 14px;
-		min-width: 0;
-	}
-	.mini h3 {
-		margin: 0 0 8px;
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--faint);
-	}
-	.mini ol {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-	.mini li {
-		display: grid;
-		grid-template-columns: 18px minmax(0, 1fr) auto;
-		gap: 8px;
-		align-items: baseline;
-		padding: 5px 0;
-		font-size: 13px;
-		border-top: 1px solid var(--line-soft);
-	}
-	.mini li:first-child {
-		border-top: 0;
-	}
-	.mn {
-		color: var(--faint);
-		font-variant-numeric: tabular-nums;
-	}
-	.mname {
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-	.mval {
-		font-weight: 700;
-		font-variant-numeric: tabular-nums;
-		color: var(--ink);
-	}
-	.thanks {
-		background: var(--panel);
-		border: 1px solid var(--line);
-		border-radius: 14px;
-		padding: 14px 16px;
-		font-size: 14px;
-		line-height: 1.55;
-	}
-	.ask {
-		margin: -6px 0 6px;
-		font-size: 13px;
-		color: var(--dim);
-	}
-	.prompts {
-		margin: 0 0 12px;
-		padding-left: 20px;
-		max-width: 66ch;
-	}
-	.prompts li {
-		margin: 0 0 6px;
-	}
-	.hd:focus {
-		outline: none;
-	}
-	.hd:focus-visible {
-		outline: 2px solid var(--gold);
-		outline-offset: 4px;
-	}
-	.thanks p {
-		margin: 0 0 10px;
-		max-width: 66ch;
-	}
-	.cta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-top: 4px;
-	}
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		min-height: 40px;
-		padding: 0 16px;
-		border-radius: 999px;
-		border: 1px solid var(--line);
-		background: var(--panel-2);
-		color: var(--ink);
-		font-size: 13px;
-		font-weight: 700;
-		font-family: inherit;
-		cursor: pointer;
-		text-decoration: none;
-	}
-	.btn.ghost {
-		background: transparent;
+	/* the wide sticky nav sits flush with the page padding */
+	:global(.fin .snav) {
+		margin-left: -18px;
+		margin-right: -18px;
+		padding-left: 18px;
+		padding-right: 18px;
 	}
 </style>
