@@ -5,6 +5,7 @@
 	import { rankOf, gamesOf, winrateOf, RK_PLATE } from '$lib/ranks';
 	import { rankTitle } from '$lib/stores/rankinfo.svelte';
 	import { statValue, MAST } from '$lib/boards';
+	import { breakable } from '$lib/finale/unlisted';
 	import Flag from '$lib/components/Flag.svelte';
 	import CharSprite from './CharSprite.svelte';
 	import ChallengeButton from './ChallengeButton.svelte';
@@ -39,10 +40,10 @@
 		<a class="av-link" href="{base}/u/{player.steamid}" aria-label={player.name || 'Player'}>
 			<Avatar url={player.avatar} size={crown ? 58 : 46} alt={player.name} />
 		</a>
-		<a class="pnm plink" href="{base}/u/{player.steamid}">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{player.name || 'Player'}</a>
+		<a class="pnm plink" href="{base}/u/{player.steamid}">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{#each breakable(player.name || 'Player') as part}{part}<wbr />{/each}</a>
 	{:else}
 		<Avatar url={player.avatar} size={crown ? 58 : 46} alt={player.name} />
-		<b class="pnm">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{player.name || 'Player'}</b>
+		<b class="pnm">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{#each breakable(player.name || 'Player') as part}{part}<wbr />{/each}</b>
 	{/if}
 	{#if !scoped}
 		<span class="ptier bd-tier">

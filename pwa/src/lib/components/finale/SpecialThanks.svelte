@@ -5,7 +5,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { filterNames, findMe, windowNames, type Roster } from '$lib/finale/players';
 	import { nf } from '$lib/finale/derive';
-	import { rosterAware, testers } from '$lib/finale/unlisted';
+	import { breakable, rosterAware, testers } from '$lib/finale/unlisted';
 
 	// Credits, not a ranking: the regulars as a wall of name plates (days is the only figure), then every name as a
 	// plain list so nobody is forgotten. Plain anchors only (no per-row components), so 566+ links stay cheap.
@@ -49,7 +49,7 @@
 			<li>
 				<a class="plate" href={href(t.steamid)}>
 					<Avatar url={reg?.player.avatar} size={36} alt="" />
-					<span class="pn"><span class="pt" title={t.name}>{t.name}</span>{#if reg}<span class="pd">{nf(reg.days)} days</span>{/if}</span>
+					<span class="pn"><span class="pt" class:long={t.name.length > 12} title={t.name}>{#each breakable(t.name) as part}{part}<wbr />{/each}</span>{#if reg}<span class="pd">{nf(reg.days)} days</span>{/if}</span>
 				</a>
 			</li>
 		{/each}
@@ -62,7 +62,7 @@
 			<li>
 				<a class="plate" href={href(r.player.steamid)}>
 					<Avatar url={r.player.avatar} size={36} alt="" />
-					<span class="pn"><span class="pt" title={r.player.name}>{r.player.name}</span><span class="pd">{nf(r.days)} days</span></span>
+					<span class="pn"><span class="pt" class:long={r.player.name.length > 12} title={r.player.name}>{#each breakable(r.player.name) as part}{part}<wbr />{/each}</span><span class="pd">{nf(r.days)} days</span></span>
 				</a>
 			</li>
 		{/each}

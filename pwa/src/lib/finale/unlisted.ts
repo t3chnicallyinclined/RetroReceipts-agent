@@ -65,3 +65,9 @@ export function findMatches(pool: WallName[], query: string): { shown: WallName[
 	const all = pool.filter((p) => p.name.toLowerCase().includes(q));
 	return { shown: all.slice(0, FIND_CAP), total: all.length };
 }
+
+/** A name split after "/", "\\" and "|" so a long handle like "twitch.tv/gthrillah" wraps at the slash, not mid-word.
+ *  Plain text parts only (names are user text; they are rendered as text with a <wbr> between parts). */
+export function breakable(name: string): string[] {
+	return name.split(/(?<=[/\\|])/).filter((x) => x.length > 0);
+}

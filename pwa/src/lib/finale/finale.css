@@ -491,6 +491,7 @@
 .fin .plate:hover{border-color:var(--dim)}
 .fin .plate .pn{display:grid;min-width:0}
 .fin .plate .pt{font-weight:700;font-size:13.5px;overflow-wrap:anywhere;line-height:1.2}
+.fin .plate .pt.long{font-size:12px}
 .fin .plate .pd{font-size:11.5px;color:var(--dim)}
 .fin .finder{margin-bottom:4px}
 .fin .finput{flex:1 1 180px;min-height:44px;font:inherit;font-size:16px;color:var(--ink);background:var(--board);border:1px solid var(--line);border-radius:999px;padding:0 16px}

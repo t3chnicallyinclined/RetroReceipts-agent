@@ -400,6 +400,13 @@
 		color: var(--gold-ink);
 		font-style: italic;
 	}
+	/* the four scope tabs are ~399px wide at the default padding: tighten on narrow phones so none is clipped */
+	@media (max-width: 420px) {
+		.scope {
+			padding: 6px 9px;
+			gap: 4px;
+		}
+	}
 	.sic {
 		font-size: 12.5px;
 		line-height: 1;

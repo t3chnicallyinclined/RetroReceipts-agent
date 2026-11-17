@@ -25,8 +25,7 @@
 	<div class="acts">
 		<a class="pri" href={winUrl}>Download the app</a>
 		{#if showSignin && !auth.authed}
-			<button type="button" class="sec" onclick={() => auth.login()}>Sign in through Steam</button>
-			<span class="note">{signinNote}</span>
+			<span class="sg"><button type="button" class="sec" onclick={() => auth.login()}>Sign in through Steam</button><span class="note">{signinNote}</span></span>
 		{/if}
 	</div>
 	{#if isLinux}<p class="lin">On Linux or Steam Deck, run <code>{LINUX_CMD}</code></p>{/if}
@@ -71,6 +70,12 @@
 		background: var(--panel-2);
 		color: var(--ink);
 		border: 1px solid var(--line);
+	}
+	.sg {
+		display: inline-flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 4px 8px;
 	}
 	.note {
 		font-size: 12px;

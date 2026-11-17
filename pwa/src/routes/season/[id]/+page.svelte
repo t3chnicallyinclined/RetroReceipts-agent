@@ -419,7 +419,7 @@
 				<dl class="glance" use:reveal>
 					{#each glance as g (g.key)}<div><dt>{g.label}</dt><dd>{#if g.pre}<span class="pre">{g.pre}</span>{/if}<CountUp value={g.n} format={(x) => (g.dec ? nf1(x) : nf(x))} /></dd></div>{/each}
 				</dl>
-				{#if recordedBySentence(sum)}<p class="ssub" style="margin-top:10px">{recordedBySentence(sum)}{#if gamesEachSentence(sum)} {gamesEachSentence(sum)}{/if}</p>{/if}
+				{#if recordedBySentence(sum)}<p class="ssub" style="margin-top:10px">{recordedBySentence(sum)}{#if gamesEachSentence(sum)}{' '}{gamesEachSentence(sum)}{/if}</p>{/if}
 			</section>
 		{/if}
 

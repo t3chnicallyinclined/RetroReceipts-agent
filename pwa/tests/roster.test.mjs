@@ -195,3 +195,10 @@ test('the props section celebrates: no wording that reads as a call-out', () => 
 		assert.ok(!/win ?rate|winrate/i.test(s), `${p} shows a win rate`);
 	}
 });
+
+test('breakable names split after slashes so handles wrap at the slash', () => {
+	assert.deepEqual(U.breakable('twitch.tv/gthrillah'), ['twitch.tv/', 'gthrillah']);
+	assert.deepEqual(U.breakable('twitch.tv\\ducvader'), ['twitch.tv\\', 'ducvader']);
+	assert.deepEqual(U.breakable('NP | Clash'), ['NP |', ' Clash']);
+	assert.equal(U.breakable('<#0ff>=x').join(''), '<#0ff>=x');
+});
