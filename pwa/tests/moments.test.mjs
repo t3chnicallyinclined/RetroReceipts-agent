@@ -169,3 +169,23 @@ test('legacy: the set-page row shows the quiet line and no button; the feed keep
 	const emb = readFileSync(new URL('../src/lib/components/ReplayEmbed.svelte', import.meta.url), 'utf8');
 	assert.ok(emb.includes("reason === 'legacy'") && emb.includes('predates tape v2'), 'the sheet says so, and the honest engine error stays the fallback');
 });
+
+test('legacy: decided on the state alone (a tape_url is still sent), and a 409 {state:"legacy"} on request says so', async () => {
+	const S = await import('$lib/replay/source');
+	const { auth } = await import('$lib/stores/auth.svelte');
+	// the server still returns a tape_url for a legacy tape: it must not become a playable source
+	globalThis.fetch = async () => ({ ok: true, json: async () => ({ ok: true, state: 'legacy', tape_url: '/rr/tape/k.json.gz', frames: 10 }) });
+	assert.deepEqual(await S.resolveSource({ match_key: 'k_url_legacy', ts: 1 }), { kind: 'none', reason: 'legacy' });
+	assert.equal(await S.availability({ match_key: 'k_url_legacy', ts: 1 }), 'legacy');
+	// a row's own projection with a url: same answer, no network
+	assert.deepEqual(await S.resolveSource({ match_key: 'k2', ts: 1, replay: { state: 'legacy', tape_url: '/x' } }), { kind: 'none', reason: 'legacy' });
+	// request: 409 + {state:'legacy'} -> a legacy answer, never "could not request"
+	auth.token = 't';
+	auth.steamid = '76561198000000001';
+	globalThis.fetch = async () => ({ ok: false, status: 409, json: async () => ({ ok: false, state: 'legacy' }) });
+	assert.deepEqual(await S.requestReplay('k3'), { ok: false, legacy: true, error: 'legacy' });
+	assert.equal(await S.availability({ match_key: 'k3', ts: 1 }), 'legacy'); // the next probe sees it too
+	// a plain failure is still a plain failure
+	globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => ({ ok: false, error: 'boom' }) });
+	assert.deepEqual(await S.requestReplay('k4'), { ok: false, error: 'boom' });
+});

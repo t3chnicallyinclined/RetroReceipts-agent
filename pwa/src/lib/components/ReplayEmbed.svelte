@@ -693,6 +693,7 @@
 		const r = await requestReplay(meta.key);
 		requesting = false;
 		if (r.ok) reason = 'requested';
+		else if (r.legacy) reason = 'legacy';
 		else requestNote = r.error === 'signin' ? 'sign in first' : 'could not request — try again';
 	}
 

@@ -167,7 +167,7 @@ export function probeServer(matchKey: string, force = false): Promise<TapeProbe>
 }
 
 /** POST /rr/tape/request {key} — one click pulls the tape from R2 into hot storage; the row turns pending. */
-export async function requestReplay(matchKey: string): Promise<{ ok: boolean; error?: string }> {
+export async function requestReplay(matchKey: string): Promise<{ ok: boolean; error?: string; legacy?: boolean }> {
 	// the ARCHIVE PULL is a server-side write, so it still needs an account (watching a hot tape does not)
 	if (!auth.authed) return { ok: false, error: 'signin' };
 	try {
@@ -177,6 +177,11 @@ export async function requestReplay(matchKey: string): Promise<{ ok: boolean; er
 			body: JSON.stringify({ key: matchKey })
 		});
 		const j = (await res.json().catch(() => ({}))) as { ok?: boolean; state?: string; error?: string };
+		// 409 {state:'legacy'}: recorded before tape v2, nothing to pull, ever. Decided on the state, not the status text.
+		if (j.state === 'legacy') {
+			probes.set(matchKey, { at: Date.now(), p: Promise.resolve({ state: 'legacy', known: true }) });
+			return { ok: false, legacy: true, error: 'legacy' };
+		}
 		if (!res.ok || j.ok === false) return { ok: false, error: j.error ?? `HTTP ${res.status}` };
 		// the next probe must see the new state, not the cached one
 		probes.set(matchKey, { at: Date.now(), p: Promise.resolve({ state: 'pending', known: true }) });

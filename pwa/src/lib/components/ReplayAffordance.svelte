@@ -83,6 +83,7 @@
 			const r = await requestReplay(row.match_key);
 			busy = false;
 			if (r.ok) overridden = 'pending';
+			else if (r.legacy) overridden = 'legacy';
 			else note = r.error === 'signin' ? 'sign in first' : 'could not request — try again';
 			return;
 		}
