@@ -343,7 +343,7 @@ test('deep links: every sub-section id the groups promise exists as an element i
 	for (const id of ['totals', 'tiers', 'streaks', 'climbers', 'characters', 'teams', 'upsets', 'rivalries', 'feats', 'replays', 'countries']) {
 		assert.ok(bodies.includes(`id="${id}"`) && bodies.includes(`id="${id}-h"`), `${id} anchor and heading`);
 	}
-	for (const id of ['top', 'podium', 'mentions', 'glance', 'record', 'explore', 'next', 'thanks', 'feedback', 'close']) {
+	for (const id of ['top', 'podium', 'mentions', 'glance', 'record', 'explore', 'whats-next', 'thanks', 'feedback', 'close']) {
 		assert.ok(page.includes(`id="${id}"`) || page.includes(`hd('${id}'`) || readFileSync(new URL('FinaleBanner.svelte', FIN), 'utf8').includes(`id="${id}"`), `${id} section id`);
 	}
 	assert.ok(page.includes("'thanks'") && page.includes('Special thanks'));

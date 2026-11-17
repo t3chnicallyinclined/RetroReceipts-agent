@@ -33,7 +33,7 @@ test('the block renders those links in new tabs, and is wired into the page, the
 	assert.ok(blk.includes('href={r.url} target="_blank" rel="noopener"') && blk.includes('{#each REPOS as r (r.url)}'));
 	assert.ok(!/stargazers|stars|forks|api\.github/i.test(blk), 'no live numbers');
 	const page = readFileSync(SRC + 'routes/season/[id]/+page.svelte', 'utf8');
-	assert.ok(page.includes('<CodeBlock />') && page.includes("id: 'code', title: 'Check out the code'") && page.includes("'next', 'code'"));
+	assert.ok(page.includes('<CodeBlock />') && page.includes("id: 'code', title: 'Check out the code'") && page.includes("'whats-next', 'code'"));
 	assert.ok(page.includes('{CLOSE_FEEDBACK}') && page.includes('Join the NOBD Discord'));
 	assert.ok(page.indexOf('<SupergunBlock />') < page.indexOf('<CodeBlock />'), 'after the SUPERGUN block');
 	assert.ok(readFileSync(SRC + 'lib/components/finale/SupergunBlock.svelte', 'utf8').includes('{SUPERGUN_FEEDBACK}'));

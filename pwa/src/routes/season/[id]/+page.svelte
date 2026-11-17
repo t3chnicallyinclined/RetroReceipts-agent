@@ -40,6 +40,9 @@
 	import AlsoComing from '$lib/components/finale/AlsoComing.svelte';
 	import SupergunBlock from '$lib/components/finale/SupergunBlock.svelte';
 	import CodeBlock from '$lib/components/finale/CodeBlock.svelte';
+	import BetaStrip from '$lib/components/finale/BetaStrip.svelte';
+	import BetaBlock from '$lib/components/finale/BetaBlock.svelte';
+	import { seasonReg } from '$lib/stores/seasonreg.svelte';
 	import SetLink from '$lib/components/finale/SetLink.svelte';
 	import { momentFigure, momentOf, momentWho, stripMoments } from '$lib/finale/moments';
 	import { openWatch, parseWatchHash } from '$lib/finale/watch';
@@ -172,12 +175,12 @@
 
 	// ── navigation: sections, groups, sub-sections ──
 	const ids = $derived([
-		'top', 'podium', ...(showProps ? ['props'] : []), ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'record',
-		...(groups.length ? ['explore', ...groups.map((g) => g.id)] : []), 'next', 'code', ...(roster ? ['thanks'] : []), 'feedback', 'close'
+		'top', 'podium', ...(showProps ? ['props'] : []), ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'record', ...(next ? ['beta'] : []),
+		...(groups.length ? ['explore', ...groups.map((g) => g.id)] : []), 'whats-next', 'code', ...(roster ? ['thanks'] : []), 'feedback', 'close'
 	]);
 	const titleOf = $derived<Record<string, string>>({
 		top: 'Sections', podium: 'Podium', props: 'Made rank without the app', record: 'Your record', mentions: 'Notable mentions', glance: 'At a glance', explore: 'Explore the season',
-		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', code: 'Check out the code', thanks: 'Special thanks', feedback: 'Feedback', close: 'Thank you'
+		...Object.fromEntries(groups.map((g) => [g.id, g.title])), beta: next?.label ?? 'Next season', 'whats-next': 'What’s next', code: 'Check out the code', thanks: 'Special thanks', feedback: 'Feedback', close: 'Thank you'
 	});
 	const navItems = $derived<NavItem[]>([
 		{ id: 'podium', title: 'The podium', summary: ladder.champion ? `${ladder.champion.name} finished first` : undefined },
@@ -185,8 +188,9 @@
 		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions', summary: `${mentions.length} ${mentions.length === 1 ? 'player' : 'players'} outside the top 8` }] : []),
 		...(glance.length ? [{ id: 'glance', title: 'At a glance', summary: `${label} in six figures` }] : []),
 		{ id: 'record', title: `Your ${label} record`, summary: auth.authed ? 'Where you finished' : 'Find your name, or sign in' },
+		...(next ? [{ id: 'beta', title: next.label, summary: 'Live now: how to take part' }] : []),
 		...groups.map((g) => ({ id: g.id, title: g.title, summary: g.summary, subs: g.subs })),
-		{ id: 'next', title: 'What’s next', summary: next ? `${next.label} and SUPERGUN` : 'More seasons and SUPERGUN' },
+		{ id: 'whats-next', title: 'What’s next', summary: next ? 'SUPERGUN and what else is coming' : 'More seasons and SUPERGUN' },
 		{ id: 'code', title: 'Check out the code', summary: 'Five open projects' },
 		...(roster ? [{ id: 'thanks', title: 'Special thanks', summary: `${nf(roster.everyone.length || roster.regulars.length)} players` }] : []),
 		{ id: 'feedback', title: 'Help shape the next season', summary: 'Polls, a note, and ideas' }
@@ -197,8 +201,9 @@
 		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions' }] : []),
 		...(glance.length ? [{ id: 'glance', title: 'At a glance' }] : []),
 		{ id: 'record', title: 'Your record' },
+		...(next ? [{ id: 'beta', title: next.label }] : []),
 		...groups.map((g) => ({ id: g.id, title: g.title })),
-		{ id: 'next', title: 'What’s next' },
+		{ id: 'whats-next', title: 'What’s next' },
 		...(roster ? [{ id: 'thanks', title: 'Thank you' }] : [])
 	]);
 
@@ -215,6 +220,7 @@
 
 	async function goTo(target: string, opts: { quiet?: boolean } = {}) {
 		if (target === 'you') target = 'record'; // the old "Your season" anchor now lands on the merged record section
+		if (target === 'next') target = next ? 'beta' : 'whats-next'; // #next is the open season's block (nobd.net/app/season#next)
 		const gid = subToGroup[target] ?? (groups.some((g) => g.id === target) ? target : '');
 		if (gid && !open[gid]) {
 			open = wide ? { ...open, [gid]: true } : { [gid]: true };
@@ -244,6 +250,34 @@
 			/* storage blocked: the page works without it */
 		}
 	}
+	// ── the open season: sign-up status, live numbers and the early leaders (all public GETs; each hides when absent) ──
+	let betaGames = $state<number | undefined>(undefined);
+	let betaOnBoard = $state<number | undefined>(undefined);
+	let betaLeaders = $state<Player[]>([]);
+	$effect(() => {
+		const open = next?.id;
+		const sid = auth.steamid;
+		if (!open) return;
+		seasonReg.reset();
+		void seasonReg.load(sid);
+	});
+	$effect(() => {
+		const open = next?.id;
+		if (!open) return;
+		let live = true;
+		void fetchSummary(open).then((sm) => {
+			if (!live) return;
+			betaGames = sm?.games;
+			betaOnBoard = sm?.roster ?? sm?.placed;
+		});
+		void fetchLadder(open).then((p) => {
+			if (live) betaLeaders = p;
+		}).catch(() => {});
+		return () => {
+			live = false;
+		};
+	});
+
 	// ── warm the replay art in the background (signed-in viewers with ownership on file only; see lib/replay/preload.ts) ──
 	let warmStarted = false;
 	let warmStop: (() => void) | null = null;
@@ -396,6 +430,7 @@
 		{#if wide}<SectionNav items={wideNav} {current} onjump={(t) => goTo(t)} />{/if}
 
 		<FinaleBanner {label} date={dateLine} {bits} hasChampion={!!ladder.champion} seasons={pickList} current={season.id} onpick={pickSeason} onjump={(t) => goTo(t)} />
+		{#if next}<BetaStrip label={next.label} onjump={(t) => goTo(t)} />{/if}
 
 		<!-- the podium -->
 		<section class="sec" id="podium" aria-labelledby="podium-h">
@@ -476,6 +511,13 @@
 			<YourRecord u={unl} {roster} {mine} mineLoaded={mineLoaded || !auth.authed} season={season.id} {label} nextLabel={next?.label} />
 		</section>
 
+		<!-- the open season: this page is its landing page too -->
+		{#if next}
+			<section class="sec" aria-labelledby="beta-h">
+				<BetaBlock label={next.label} games={betaGames} onBoard={betaOnBoard} leaders={betaLeaders} />
+			</section>
+		{/if}
+
 		<!-- explore the season -->
 		{#if groups.length}
 			<section class="sec" id="explore" aria-labelledby="explore-h">
@@ -483,7 +525,7 @@
 				<p class="ssub">Pick a part of the season to open it.</p>
 				<div class="grps">
 					{#each groups as g, gi (g.id)}
-						<GroupAccordion id={g.id} title={g.title} summary={g.summary} subs={g.subs} open={!!open[g.id]} next={groups[gi + 1]?.title ?? 'What’s next'} ontoggle={() => toggle(g.id)} onjump={(t) => goTo(t)} onnext={() => goTo(groups[gi + 1]?.id ?? 'next')}>
+						<GroupAccordion id={g.id} title={g.title} summary={g.summary} subs={g.subs} open={!!open[g.id]} next={groups[gi + 1]?.title ?? 'What’s next'} ontoggle={() => toggle(g.id)} onjump={(t) => goTo(t)} onnext={() => goTo(groups[gi + 1]?.id ?? 'whats-next')}>
 							<GroupBodies group={g.id as GroupId} s={sum} h={hl} season={season.id} {label} />
 						</GroupAccordion>
 					{/each}
@@ -492,19 +534,11 @@
 		{/if}
 
 		<!-- what's next -->
-		<section class="sec" id="next" aria-labelledby="next-h">
-			{@render hd('next', 'What’s next')}
+		<section class="sec" id="whats-next" aria-labelledby="whats-next-h">
+			{@render hd('whats-next', 'What’s next')}
 			<div class="next">
 				<div class="nl">
-				{#if next}
-					<div class="card">
-						<span class="rail">Open now</span>
-						<h3>{next.label}</h3>
-						<p>Everyone starts fresh. Download the app, play 5 ranked games and you have a rank. {label} stays here to look back on.</p>
-						<div class="cta"><GetTheApp showSignin={false} /><a class="btn" href="{base}/ranks">See the current ladder</a></div>
-						<p class="dimp">We plan to run more seasons after that.</p>
-					</div>
-				{:else}
+				{#if !next}
 					<div class="card">
 						<span class="rail">Later</span>
 						<h3>More seasons</h3>
