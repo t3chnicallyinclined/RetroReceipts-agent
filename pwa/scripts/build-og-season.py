@@ -268,11 +268,17 @@ def card_portrait(label, players, totals, line):
     ph = int(150 * 1.35) + 2 * int(64 * 1.35) + 28
     champion_plate(img, 60, py, W - 120, ph, players, scale=1.35, stack=True)
     d = ImageDraw.Draw(img)
-    ff = font(F_MONO, 30)
     foot = "  \u00b7  ".join(totals)
     fy = py + ph + 46
     if foot:
-        draw_tracked(d, (60, fy), foot, ff, MUTED, 3.0)
+        # shrink until the whole footer fits inside the margins (it never runs off the card)
+        size, track = 30, 3.0
+        ff = font(F_MONO, size)
+        while tracked_w(ff, foot, track) > W - 120 and size > 15:
+            size -= 1
+            track = max(1.5, track - 0.15)
+            ff = font(F_MONO, size)
+        draw_tracked(d, (60, fy + (30 - size) // 2), foot, ff, MUTED, track)
     if line:
         lf = font(F_BOLD, 40)
         lines, cur = [], ""
