@@ -126,3 +126,10 @@ test('Steam-only copy: the app is for MvC2 on Steam; SUPERGUN is the pointer, an
 		assert.ok(!/(fightcade|flycast|dreamcast).{0,40}(supported|works|compatible)/i.test(s), `${f} claims another version`);
 	}
 });
+
+test('the header has no thank-you sub-line and phones keep the champion near the top', () => {
+	assert.ok(!rd('lib/components/finale/FinaleBanner.svelte').includes('Thank you to everyone who played'));
+	assert.ok(rd('routes/season/[id]/+page.svelte').includes('Thank you for playing {label}'), 'the thank-you lives in its own section');
+	const css = rd('lib/finale/finale.css');
+	assert.ok(/@media\(max-width:759px\)\{[\s\S]*\.fin \.hero \.cta\{display:none\}[\s\S]*\.fin #podium \.ssub\{display:none\}/.test(css));
+});

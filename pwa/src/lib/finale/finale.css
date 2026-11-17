@@ -605,3 +605,14 @@
 .fin .wallwrap{margin-top:12px;display:grid;gap:10px;justify-items:start}
 .fin .wallwrap #record-wall{display:grid;gap:8px;width:100%}
 @media(min-width:760px){.fin .wallnames{columns:4 170px}}
+/* phones: the champion's name stays on the first screen under the Beta Season 1 call to action */
+@media(max-width:759px){
+.fin .hero .cta{display:none}
+.fin .hero .lead{margin:10px 0 0}
+.fin .hero .daterow{margin-top:6px}
+.fin .bstrip{margin:10px 0 0;padding:12px 12px 10px;gap:8px}
+.fin .bstrip .bs-act{gap:8px}
+.fin .bstrip .bs-act .sec{min-height:46px}
+.fin #podium .ssub{display:none}
+.fin #podium{padding-top:6px}
+}

@@ -42,7 +42,6 @@
 	{#if bits.length}
 		<p class="lead">{#each bits as b (b.one)}<b><CountUp value={b.n} format={b.fmt} /></b> {b.n === 1 ? b.one : b.many}{#if b.tail}, against <b><CountUp value={b.tail.n} /></b> {b.tail.n === 1 ? b.tail.one : b.tail.many}{/if}.{' '}{/each}</p>
 	{/if}
-	<p class="thanks">Thank you to everyone who played. Here is who won, what got played, and a few questions about what comes next.</p>
 	<div class="cta">
 		{#if hasChampion}<a class="btn pri" href="#podium" onclick={(e) => { e.preventDefault(); onjump('podium'); }}>See who won</a>{/if}
 		<a class="btn" href="#explore" onclick={(e) => { e.preventDefault(); onjump('explore'); }}>Explore the season</a>
