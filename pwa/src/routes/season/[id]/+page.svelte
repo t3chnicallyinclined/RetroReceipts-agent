@@ -360,6 +360,12 @@
 			root.classList.add('anim');
 			stopReveal = revealAll(root);
 		}
+		// a hash change on this page (the announcement card's #next, a pasted link) scrolls like an in-page link does
+		const onHash = () => {
+			if (parseWatchHash(location.hash) || location.hash.length < 2) return;
+			void goTo(decodeURIComponent(location.hash.slice(1)), { quiet: true });
+		};
+		addEventListener('hashchange', onHash);
 		const mq = matchMedia('(min-width: 900px)');
 		wide = mq.matches;
 		const onMq = (e: MediaQueryListEvent) => {
@@ -388,6 +394,7 @@
 			stopReveal();
 			ro?.disconnect();
 			removeEventListener('scroll', onScroll);
+			removeEventListener('hashchange', onHash);
 			removeEventListener('resize', setTab);
 			clearTimeout(timer);
 		};

@@ -355,7 +355,7 @@
 .fin .riv .mid>span{font-size:11.5px;color:var(--dim)}
 .fin .vs{font-size:14px;font-weight:900;font-style:italic;color:var(--gold)}
 .fin .setlink{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.fin .bstrip{display:flex;align-items:center;gap:8px;margin:10px 0 0;padding:8px 10px 8px 12px;border:1px solid color-mix(in srgb,var(--stream) 55%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--stream) 9%,var(--panel));min-height:48px}
+.fin .bstrip{display:flex;align-items:center;gap:8px;margin:8px 0 0;padding:4px 6px 4px 12px;border:1px solid color-mix(in srgb,var(--stream) 55%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--stream) 9%,var(--panel));min-height:44px}
 .fin .bstrip .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--stream);box-shadow:0 0 0 3px color-mix(in srgb,var(--stream) 25%,transparent)}
 .fin .bstrip .txt{flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:800;color:var(--ink);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fin .bstrip .txt:hover{text-decoration:underline}
