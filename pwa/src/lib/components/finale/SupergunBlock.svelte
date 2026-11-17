@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SUPERGUN_URL, SUPERGUN_DISCORD_URL } from '$lib/links';
+	import { SUPERGUN_FEEDBACK } from '$lib/finale/repos';
 	import { SUPERGUN_COMING, SUPERGUN_PITCH, SUPERGUN_POINTS, SUPERGUN_TODAY } from '$lib/finale/nextCopy';
 
 	// SUPERGUN as a proper feature block: the pitch, four points, what works today and what is still coming, two
@@ -21,4 +22,5 @@
 		<a class="btn pri" href={SUPERGUN_URL} rel="noopener">Get the SUPERGUN beta</a>
 		<a class="btn" href={SUPERGUN_DISCORD_URL} rel="noopener">Join the SUPERGUN Discord</a>
 	</div>
+	<p class="sgfb">{SUPERGUN_FEEDBACK}</p>
 </div>

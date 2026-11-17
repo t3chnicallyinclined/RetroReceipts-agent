@@ -39,6 +39,8 @@
 	import FeedbackSection from '$lib/components/finale/FeedbackSection.svelte';
 	import AlsoComing from '$lib/components/finale/AlsoComing.svelte';
 	import SupergunBlock from '$lib/components/finale/SupergunBlock.svelte';
+	import CodeBlock from '$lib/components/finale/CodeBlock.svelte';
+	import { CLOSE_FEEDBACK } from '$lib/finale/repos';
 	import SpecialThanks from '$lib/components/finale/SpecialThanks.svelte';
 	import CountUp from '$lib/components/finale/CountUp.svelte';
 
@@ -166,11 +168,11 @@
 	// ── navigation: sections, groups, sub-sections ──
 	const ids = $derived([
 		'top', 'podium', ...(showProps ? ['props'] : []), ...(showRecord ? ['record'] : []), ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'you',
-		...(groups.length ? ['explore', ...groups.map((g) => g.id)] : []), 'next', ...(roster ? ['thanks'] : []), 'feedback', 'close'
+		...(groups.length ? ['explore', ...groups.map((g) => g.id)] : []), 'next', 'code', ...(roster ? ['thanks'] : []), 'feedback', 'close'
 	]);
 	const titleOf = $derived<Record<string, string>>({
 		top: 'Sections', podium: 'Podium', props: 'Made rank without the app', record: 'You might have a record here', mentions: 'Notable mentions', glance: 'At a glance', you: 'Your season', explore: 'Explore the season',
-		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', thanks: 'Special thanks', feedback: 'Feedback', close: 'Thank you'
+		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', code: 'Check out the code', thanks: 'Special thanks', feedback: 'Feedback', close: 'Thank you'
 	});
 	const navItems = $derived<NavItem[]>([
 		{ id: 'podium', title: 'The podium', summary: ladder.champion ? `${ladder.champion.name} finished first` : undefined },
@@ -181,6 +183,7 @@
 		{ id: 'you', title: 'Your season', summary: auth.authed ? 'Where you finished' : 'Sign in to see where you finished' },
 		...groups.map((g) => ({ id: g.id, title: g.title, summary: g.summary, subs: g.subs })),
 		{ id: 'next', title: 'What’s next', summary: next ? `${next.label} and SUPERGUN` : 'More seasons and SUPERGUN' },
+		{ id: 'code', title: 'Check out the code', summary: 'Five open projects' },
 		...(roster ? [{ id: 'thanks', title: 'Special thanks', summary: `${nf(roster.everyone.length || roster.regulars.length)} players` }] : []),
 		{ id: 'feedback', title: 'Help shape the next season', summary: 'Polls, a note, and ideas' }
 	]);
@@ -469,6 +472,7 @@
 				</div>
 				<SupergunBlock />
 			</div>
+			<CodeBlock />
 		</section>
 
 		<!-- special thanks -->
@@ -489,6 +493,7 @@
 		<section class="close" id="close" aria-labelledby="close-h">
 			<h2 id="close-h" tabindex="-1">Thank you for playing {label}</h2>
 			<p>This is a side project and it is still in testing. We are grateful to everyone who gave it a go.{next ? ` See you in ${next.label}.` : ''}</p>
+			<p class="closefb">{CLOSE_FEEDBACK}</p>
 			<div class="cta">
 				<a class="btn pri" href="{base}/ranks">See the current ladder</a>
 				{#if DISCORD_URL}<a class="btn" href={DISCORD_URL} rel="noopener">Join the NOBD Discord</a>{/if}

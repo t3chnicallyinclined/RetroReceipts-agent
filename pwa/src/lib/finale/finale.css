@@ -257,6 +257,20 @@
 .fin .fb2 .full{grid-column:1/-1}
 .fin textarea{font-size:14px}
 }
+.fin .code{margin-top:22px}
+.fin .code .shd{margin-bottom:6px}
+.fin .code h3{font-size:20px;font-weight:800;font-style:italic;text-transform:uppercase}
+.fin .repos{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+@media(min-width:760px){.fin .repos{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
+.fin .repo{display:flex;gap:12px;align-items:flex-start;min-height:56px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);text-decoration:none}
+.fin .repo:hover{border-color:var(--dim)}
+.fin .repo:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.fin .repo .ic{flex:none;margin-top:2px;color:var(--dim)}
+.fin .repo .rt{display:grid;gap:2px;min-width:0}
+.fin .repo .rt b{font-weight:800;font-size:14px;overflow-wrap:anywhere}
+.fin .repo .rt span{font-size:13px;color:var(--dim);line-height:1.4}
+.fin .sgfb{margin:12px 0 0;font-size:13px;color:var(--dim);line-height:1.5}
+.fin .closefb{margin:12px auto 12px}
 .fin .close{text-align:center;padding:44px 8px 10px}
 .fin .close h2{font-size:clamp(30px,9.5vw,56px);line-height:.98;font-weight:900;font-style:italic;text-transform:uppercase}
 .fin .close p{color:var(--dim);max-width:52ch;margin:12px auto 18px;font-size:14px;line-height:1.55}
