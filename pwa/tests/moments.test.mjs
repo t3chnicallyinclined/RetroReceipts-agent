@@ -189,3 +189,42 @@ test('legacy: decided on the state alone (a tape_url is still sent), and a 409 {
 	globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => ({ ok: false, error: 'boom' }) });
 	assert.deepEqual(await S.requestReplay('k4'), { ok: false, error: 'boom' });
 });
+
+// ── ONE "Your record" section for every viewer ──
+test('your record: the four states read the agreed copy', async () => {
+	const U = await import('$lib/finale/unlisted');
+	// signed out
+	assert.equal(U.RECORD_LEAD_OUT(537, 'Season Zero'), 'If you played someone running Retro Receipts, your games were recorded. 537 players have a Season Zero record and never ran the app.');
+	assert.ok(U.RECORD_LEAD_OUT(undefined, 'Season Zero').includes('Find your name'), 'no count from the server: no number');
+	// signed in, not on the roster
+	assert.ok(U.NOT_LISTED_NOTE('Beta Season 1').startsWith('You are not on the board:'));
+	assert.ok(U.NOT_LISTED_NOTE('Beta Season 1').includes('Download the app and just play to get on the board for Beta Season 1.'));
+	// signed in, no games
+	assert.equal(U.NO_GAMES_LINE('Season Zero'), 'No Season Zero games on your account.');
+	// the filter covers EVERYONE who played (app users and unlisted), not only the unlisted
+	const roster = { regulars: [], regularDays: 5, everyone: [{ steamid: '1', name: 'AppUser', onRoster: true }, { steamid: '2', name: 'Unlisted', onRoster: false }, { steamid: '', name: 'no id' }, { steamid: '3', name: '' }] };
+	assert.deepEqual(U.everyonePool(roster).map((p) => p.name), ['AppUser', 'Unlisted']);
+	assert.deepEqual(U.everyonePool(null), []);
+	assert.deepEqual(U.findMatches(U.everyonePool(roster), 'app').shown.map((p) => p.steamid), ['1']);
+});
+
+test('your record: one section (#record), #you still lands on it, one nav entry, old sections gone, the wall folded', async () => {
+	const { readFileSync } = await import('node:fs');
+	const rd = (p) => readFileSync(new URL('../src/' + p, import.meta.url), 'utf8').replace(/\r/g, '');
+	const page = rd('routes/season/[id]/+page.svelte');
+	assert.equal((page.match(/id="record"/g) ?? []).length, 1);
+	assert.ok(!page.includes('id="you"') && !page.includes("hd('you'"), 'the old Your season section is gone');
+	assert.ok(page.includes("if (target === 'you') target = 'record'"), '#you is an alias');
+	assert.equal((page.match(/\{ id: 'record', title:/g) ?? []).length, 2, 'one entry in the Jump-to sheet and one in the wide nav');
+	assert.ok(!/id: 'you'/.test(page) && !page.includes("'You might have a record here'"));
+	assert.ok(page.includes('Your ${label} record'));
+	assert.ok(page.indexOf('<YourRecord') > page.indexOf('<!-- at a glance -->') && page.indexOf('<YourRecord') < page.indexOf('<!-- explore the season -->'), 'after the glance strip');
+	const yr = rd('lib/components/finale/YourRecord.svelte');
+	assert.ok(yr.includes('Show players with a record') && yr.includes('{#if showWall}'), 'the wall is folded');
+	assert.ok(yr.includes('Some of the names on the ladder') && yr.includes('everyonePool(roster)') && yr.includes('signinNote="to see your record and vote"'));
+	const card = rd('lib/components/finale/SeasonCard.svelte');
+	assert.ok(card.includes('You would have finished {ordinal(card.overallPlace)} overall.') && card.includes('NOT_LISTED_NOTE(nextLabel)') && card.includes('NO_GAMES_LINE(label)'));
+	assert.ok(card.includes('mine.onRoster === false') && card.includes('Download the app and just play.'));
+	const { existsSync } = await import('node:fs');
+	assert.equal(existsSync(new URL('../src/lib/components/finale/RecordCallout.svelte', import.meta.url)), false);
+});

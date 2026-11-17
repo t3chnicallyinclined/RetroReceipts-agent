@@ -183,12 +183,12 @@ test('the new sections are in the section nav and the Jump-to sheet, and hide wi
 		assert.ok(page.includes(`id="${id}"`) || page.includes(`hd('${id}'`), `${id} section`);
 		assert.ok(page.includes(`{ id: '${id}', title:`), `${id} in the nav lists`);
 	}
-	assert.ok(page.includes('const showProps') && page.includes('const showRecord'));
+	assert.ok(page.includes('const showProps'));
 	assert.ok(page.includes("'props'") && page.includes("'record'"));
 });
 
 test('the props section celebrates: no wording that reads as a call-out', () => {
-	for (const p of ['lib/components/finale/UnlistedProps.svelte', 'lib/components/finale/RecordCallout.svelte', 'lib/finale/unlisted.ts']) {
+	for (const p of ['lib/components/finale/UnlistedProps.svelte', 'lib/components/finale/YourRecord.svelte', 'lib/finale/unlisted.ts']) {
 		const s = read(p);
 		assert.ok(!/bother|refus|ignore|lazy|didn.?t sign|failed to|should have signed/i.test(s), `${p} reads as a call-out`);
 		assert.ok(!/\{@html\b|innerHTML/.test(s), `${p} renders HTML`);

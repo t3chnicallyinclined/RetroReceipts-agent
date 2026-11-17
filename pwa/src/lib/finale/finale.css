@@ -556,4 +556,7 @@
 .fin .card.elo{margin-top:12px}
 .fin .card.rec{margin-top:4px}
 .fin .wallnames{columns:2 150px}
+.fin .rec{display:grid;gap:12px}
+.fin .wallwrap{margin-top:12px;display:grid;gap:10px;justify-items:start}
+.fin .wallwrap #record-wall{display:grid;gap:8px;width:100%}
 @media(min-width:760px){.fin .wallnames{columns:4 170px}}

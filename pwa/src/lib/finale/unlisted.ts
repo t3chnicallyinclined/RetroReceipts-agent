@@ -15,6 +15,16 @@ export const ELO_EXPLAINER =
 export const RECORD_LEAD = (count: number, label: string, nextLabel?: string) =>
 	`If you played someone running Retro Receipts, your games were recorded. ${count.toLocaleString('en-US')} players have a ${label} record and never ran the app. Download the app and just play to get on the board for ${nextLabel ?? 'the next season'}, or sign in with Steam to see your stats.`;
 
+/** The signed-out lead of the merged "Your {label} record" section (the viewer may have a record and never have run the app). */
+export const RECORD_LEAD_OUT = (count: number | undefined, label: string) =>
+	count && count > 0
+		? `If you played someone running Retro Receipts, your games were recorded. ${count.toLocaleString('en-US')} players have a ${label} record and never ran the app.`
+		: `If you played someone running Retro Receipts, your games were recorded. Find your name to see your ${label} record.`;
+/** The signed-in states' lines (one section adapts to the viewer). */
+export const NOT_LISTED_NOTE = (nextLabel?: string) =>
+	`You are not on the board: you have not run the app, so your games were recorded but you are not listed. Download the app and just play to get on the board for ${nextLabel ?? 'the next season'}.`;
+export const NO_GAMES_LINE = (label: string) => `No ${label} games on your account.`;
+
 /** "would have finished 3rd overall", or nothing when the place is unknown */
 export function overallText(r: UnlistedRow): string | undefined {
 	return r.overallPlace ? `would have finished ${ordinal(r.overallPlace)} overall` : undefined;
@@ -46,6 +56,11 @@ export function wallNames(u: Unlisted | undefined): WallName[] {
 /** The searchable list: roll-call rows that are NOT on the roster. Empty when the server does not flag roster rows. */
 export function unlistedPool(roster: Roster | null): WallName[] {
 	return (roster?.everyone ?? []).filter((p) => p.onRoster === false).map((p) => ({ steamid: p.steamid, name: p.name }));
+}
+
+/** The "Find your name" list for the merged record section: EVERYONE who played the season, app users and unlisted. */
+export function everyonePool(roster: Roster | null): WallName[] {
+	return (roster?.everyone ?? []).filter((p) => p.steamid && p.name).map((p) => ({ steamid: p.steamid, name: p.name }));
 }
 
 /** the testers: roster players from the roll call (when the server flags roster rows) */

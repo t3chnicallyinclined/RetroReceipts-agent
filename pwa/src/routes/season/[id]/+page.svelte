@@ -13,9 +13,9 @@
 	import { fetchRoster, type Roster } from '$lib/finale/players';
 	import { fetchMine, type Mine } from '$lib/finale/mine';
 	import { GROUPS, gamesEachSentence, glanceTiles, groupSummary, heroBits, recordedBySentence, mentionViews, nf, nf1, presentSubs, type GroupId } from '$lib/finale/derive';
-	import { propsCards, wallNames } from '$lib/finale/unlisted';
+	import { propsCards } from '$lib/finale/unlisted';
 	import UnlistedProps from '$lib/components/finale/UnlistedProps.svelte';
-	import RecordCallout from '$lib/components/finale/RecordCallout.svelte';
+	import YourRecord from '$lib/components/finale/YourRecord.svelte';
 	import { reveal, revealAll } from '$lib/finale/motion';
 	import { DISCORD_URL } from '$lib/links';
 	import GetTheApp from '$lib/components/GetTheApp.svelte';
@@ -130,7 +130,6 @@
 	// the players who are recorded but not on the roster: props for the high finishers, and an invitation to the rest
 	const unl = $derived(hl?.unlisted);
 	const showProps = $derived(propsCards(unl).length > 0);
-	const showRecord = $derived(!!unl && (unl.count > 0 || wallNames(unl).length > 0));
 	const pickList = $derived(
 		[...(seasons.table?.seasons ?? [])].reverse().map((s) => ({ id: s.id, label: s.label, current: s.id === seasons.table?.current }))
 	);
@@ -167,20 +166,19 @@
 
 	// ── navigation: sections, groups, sub-sections ──
 	const ids = $derived([
-		'top', 'podium', ...(showProps ? ['props'] : []), ...(showRecord ? ['record'] : []), ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'you',
+		'top', 'podium', ...(showProps ? ['props'] : []), ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'record',
 		...(groups.length ? ['explore', ...groups.map((g) => g.id)] : []), 'next', 'code', ...(roster ? ['thanks'] : []), 'feedback', 'close'
 	]);
 	const titleOf = $derived<Record<string, string>>({
-		top: 'Sections', podium: 'Podium', props: 'Made rank without the app', record: 'You might have a record here', mentions: 'Notable mentions', glance: 'At a glance', you: 'Your season', explore: 'Explore the season',
+		top: 'Sections', podium: 'Podium', props: 'Made rank without the app', record: 'Your record', mentions: 'Notable mentions', glance: 'At a glance', explore: 'Explore the season',
 		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', code: 'Check out the code', thanks: 'Special thanks', feedback: 'Feedback', close: 'Thank you'
 	});
 	const navItems = $derived<NavItem[]>([
 		{ id: 'podium', title: 'The podium', summary: ladder.champion ? `${ladder.champion.name} finished first` : undefined },
 		...(showProps ? [{ id: 'props', title: 'Made rank without the app', summary: `${propsCards(unl).length} players who never ran the app and still finished high` }] : []),
-		...(showRecord ? [{ id: 'record', title: 'You might have a record here', summary: unl && unl.count ? `${nf(unl.count)} players have a record and never ran the app` : 'Played someone on the app? Find your name' }] : []),
 		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions', summary: `${mentions.length} ${mentions.length === 1 ? 'player' : 'players'} outside the top 8` }] : []),
 		...(glance.length ? [{ id: 'glance', title: 'At a glance', summary: `${label} in six figures` }] : []),
-		{ id: 'you', title: 'Your season', summary: auth.authed ? 'Where you finished' : 'Sign in to see where you finished' },
+		{ id: 'record', title: `Your ${label} record`, summary: auth.authed ? 'Where you finished' : 'Find your name, or sign in' },
 		...groups.map((g) => ({ id: g.id, title: g.title, summary: g.summary, subs: g.subs })),
 		{ id: 'next', title: 'What’s next', summary: next ? `${next.label} and SUPERGUN` : 'More seasons and SUPERGUN' },
 		{ id: 'code', title: 'Check out the code', summary: 'Five open projects' },
@@ -190,10 +188,9 @@
 	const wideNav = $derived([
 		...(ladder.champion ? [{ id: 'podium', title: 'Podium' }] : []),
 		...(showProps ? [{ id: 'props', title: 'Made rank without the app' }] : []),
-		...(showRecord ? [{ id: 'record', title: 'Your record' }] : []),
 		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions' }] : []),
 		...(glance.length ? [{ id: 'glance', title: 'At a glance' }] : []),
-		{ id: 'you', title: 'Your season' },
+		{ id: 'record', title: 'Your record' },
 		...groups.map((g) => ({ id: g.id, title: g.title })),
 		{ id: 'next', title: 'What’s next' },
 		...(roster ? [{ id: 'thanks', title: 'Thank you' }] : [])
@@ -211,6 +208,7 @@
 	}
 
 	async function goTo(target: string, opts: { quiet?: boolean } = {}) {
+		if (target === 'you') target = 'record'; // the old "Your season" anchor now lands on the merged record section
 		const gid = subToGroup[target] ?? (groups.some((g) => g.id === target) ? target : '');
 		if (gid && !open[gid]) {
 			open = wide ? { ...open, [gid]: true } : { [gid]: true };
@@ -398,14 +396,6 @@
 			</section>
 		{/if}
 
-		<!-- you might have a record here -->
-		{#if showRecord && unl}
-			<section class="sec" id="record" aria-labelledby="record-h">
-				{@render hd('record', 'You might have a record here')}
-				<RecordCallout u={unl} {roster} season={season.id} {label} nextLabel={next?.label} {mine} />
-			</section>
-		{/if}
-
 		<!-- notable mentions -->
 		{#if mentions.length}
 			<section class="sec" id="mentions" aria-labelledby="mentions-h">
@@ -426,10 +416,10 @@
 			</section>
 		{/if}
 
-		<!-- your season -->
-		<section class="sec" id="you" aria-labelledby="you-h">
-			{@render hd('you', 'Your season')}
-			<SeasonCard {mine} loading={auth.authed && !mineLoaded} loaded={mineLoaded || !auth.authed} season={season.id} {label} nextLabel={next?.label} />
+		<!-- your record: one section for every viewer (signed out, on the roster, not listed, no games) -->
+		<section class="sec" id="record" aria-labelledby="record-h">
+			{@render hd('record', `Your ${label} record`)}
+			<YourRecord u={unl} {roster} {mine} mineLoaded={mineLoaded || !auth.authed} season={season.id} {label} nextLabel={next?.label} />
 		</section>
 
 		<!-- explore the season -->

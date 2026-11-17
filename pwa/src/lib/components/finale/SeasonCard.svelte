@@ -6,6 +6,8 @@
 	import CharSprite from '$lib/components/CharSprite.svelte';
 	import ColumnChart from './ColumnChart.svelte';
 	import SetLink from './SetLink.svelte';
+	import GetTheApp from '$lib/components/GetTheApp.svelte';
+	import { NOT_LISTED_NOTE, NO_GAMES_LINE } from '$lib/finale/unlisted';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { rankOf, gamesOf } from '$lib/ranks';
 	import { charName } from '$lib/chars';
@@ -39,18 +41,14 @@
 </script>
 
 {#if !auth.authed}
-	<div class="card you-out">
-		<h3 class="plainh">Did you play {label}?</h3>
-		<p class="dimp">Sign in to see where you finished, your record, your best streak and your most played opponent, with a link you can share.</p>
-		<div class="cta"><button type="button" class="btn pri" onclick={() => auth.login()}>Sign in through Steam</button></div>
-	</div>
+	<!-- the merged "Your record" section draws the signed-out view; this card is for a signed-in viewer -->
 {:else if loading || !loaded}
 	<div class="empty">LOADING…</div>
 {:else if !mine || !mine.found}
 	<div class="card">
-		<h3 class="plainh">No {label} games on your account</h3>
+		<h3 class="plainh">{NO_GAMES_LINE(label)}</h3>
 		<p class="dimp">{nextLabel ? `${nextLabel} is open and everyone starts fresh.` : 'More seasons are planned.'}</p>
-		<div class="cta"><a class="btn" href="#next">See what’s next</a></div>
+		<GetTheApp showSignin={false} line="Download the app and just play." />
 	</div>
 {:else}
 	<div class="you">
@@ -69,7 +67,7 @@
 			{#if unranked}
 				Unranked<small>{gamesOf(mine)} ranked {gamesOf(mine) === 1 ? 'game' : 'games'} played, 5 needed for a rank</small>
 			{:else if mine.onRoster === false && card?.overallPlace}
-				{ordinal(card.overallPlace)} overall<small>you would have finished here if everyone were listed. Your games were recorded; signing in puts you on the board for {nextLabel ?? 'the next season'}.</small>
+				{ordinal(card.overallPlace)} overall<small>You would have finished {ordinal(card.overallPlace)} overall. {NOT_LISTED_NOTE(nextLabel)}</small>
 			{:else if card?.place}
 				{ordinal(card.place)} place<small>of {nf(card.of ?? 0)} ranked players{card.topPct ? ` · top ${card.topPct}%` : ''}{card.place === 1 ? ' · champion' : ''}</small>
 			{:else if r}
@@ -110,5 +108,6 @@
 			<a class="btn" href="{base}/u/{encodeURIComponent(auth.steamid ?? '')}?season={encodeURIComponent(season)}">My {label} profile</a>
 		</div>
 		<p class="status full" role="status" aria-live="polite">{status}</p>
+		{#if mine.onRoster === false}<div class="full"><GetTheApp showSignin={false} line="Download the app and just play." /></div>{/if}
 	</div>
 {/if}

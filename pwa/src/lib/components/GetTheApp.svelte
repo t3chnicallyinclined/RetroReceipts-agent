@@ -73,7 +73,7 @@
 	}
 	.sg {
 		display: inline-flex;
-		align-items: center;
+		align-items: flex-start;
 		flex-wrap: wrap;
 		gap: 4px 8px;
 	}
