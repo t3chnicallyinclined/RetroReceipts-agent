@@ -63,6 +63,12 @@ export function ctaFor(state: JoinState, label: string): Cta {
 	}
 }
 
+/** what the app works with, in plain words (checked in the agent source: Steam build, Windows + Linux/Steam Deck under Proton) */
+export const STEAM_ONLY_LINE = 'For MvC2 on Steam (Marvel vs. Capcom Fighting Collection) on Windows, Linux and Steam Deck.';
+export const STEP1_LINE = 'The app works with MvC2 in the Marvel vs. Capcom Fighting Collection on Steam, on Windows, Linux and Steam Deck.';
+export const SUPERGUN_POINTER_BEFORE = 'Playing another version, or want PC and browser players in the same lobby? That\u2019s where ';
+export const SUPERGUN_POINTER_AFTER = ' is headed.';
+
 export const FEEDBACK_ASK = 'Suggestions or feedback for the new season?';
 export const FEEDBACK_DISCORD = 'Tell us in the NOBD Discord';
 export const FEEDBACK_IDEA = 'Share an idea';

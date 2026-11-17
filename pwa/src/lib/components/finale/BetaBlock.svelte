@@ -5,7 +5,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { seasonReg } from '$lib/stores/seasonreg.svelte';
 	import { DISCORD_URL } from '$lib/links';
-	import { BLOCK_HEAD, BLOCK_LEAD, FEEDBACK_ASK, FEEDBACK_DISCORD, FEEDBACK_IDEA, IN_LINE, JOIN_NOTE, NO_LEADERS, RESIGN_LINE, STEP_PLAY, ctaFor, earlyLeaders, joinState, liveNumbers } from '$lib/finale/beta';
+	import { BLOCK_HEAD, BLOCK_LEAD, FEEDBACK_ASK, FEEDBACK_DISCORD, FEEDBACK_IDEA, IN_LINE, JOIN_NOTE, NO_LEADERS, RESIGN_LINE, STEP1_LINE, STEP_PLAY, SUPERGUN_POINTER_AFTER, SUPERGUN_POINTER_BEFORE, ctaFor, earlyLeaders, joinState, liveNumbers } from '$lib/finale/beta';
 	import { nf } from '$lib/finale/derive';
 	import type { Player } from '$lib/types';
 
@@ -28,7 +28,7 @@
 	<ol class="steps">
 		<li>
 			<span class="n" aria-hidden="true">1</span>
-			<div><b>Get the app</b><GetTheApp showSignin={false} /></div>
+			<div><b>Get the app</b><p class="dimp" style="margin:0 0 8px">{STEP1_LINE}</p><GetTheApp showSignin={false} /></div>
 		</li>
 		<li>
 			<span class="n" aria-hidden="true">2</span>
@@ -49,6 +49,7 @@
 			<div><b>Play</b><p class="dimp" style="margin:2px 0 0">{STEP_PLAY}</p></div>
 		</li>
 	</ol>
+	<p class="dimp sgp">{SUPERGUN_POINTER_BEFORE}<a href="#whats-next" onclick={(e) => { e.preventDefault(); onjump('whats-next'); }}>SUPERGUN</a>{SUPERGUN_POINTER_AFTER}</p>
 	<div class="early">
 		<span class="rail">Early leaders</span>
 		{#if top.length}

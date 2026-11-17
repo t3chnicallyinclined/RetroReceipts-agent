@@ -3,7 +3,7 @@
 // no Pi or board mentions; no claim that records, ratings or replays carry over; no dates; no performance numbers.
 
 export const SUPERGUN_PITCH =
-	"SUPERGUN is a side project we're testing: a menu and online-play layer for Marvel vs. Capcom 2 that runs from your own copy of the game on Steam. Plug in a controller, pick a team, and get into a match against friends or the lobby, with rollback netcode. It's an early beta and it's meant to grow into the next home for what this app does, so we'd like you to try it and tell us what breaks.";
+	"SUPERGUN is a side project we're testing: a menu and online-play layer for Marvel vs. Capcom 2 that runs from your own copy of the game on Steam. Plug in a controller, pick a team, and get into a match against friends or the lobby, with PC and browser players in the same lobbies and rollback netcode. It's an early beta and it's meant to grow into the next home for what this app does, so we'd like you to try it and tell us what breaks.";
 
 export const SUPERGUN_POINTS: { label: string; line: string }[] = [
 	{ label: 'What it is', line: 'A shell around MvC2 with quick play, a roster of the people you play with, and online lobbies.' },

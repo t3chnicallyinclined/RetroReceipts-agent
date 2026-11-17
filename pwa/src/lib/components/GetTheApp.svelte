@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { agentWinUrl, WIN_URL_FALLBACK, LINUX_CMD } from '$lib/agentUrl';
+	import { STEAM_ONLY_LINE } from '$lib/finale/beta';
 
 	// The one call to action for a season: get the app and play. The download link is the SAME one the "Get the
 	// desktop agent" banner uses (agentUrl.ts, resolved from the updater manifest), so it follows a renamed release
@@ -30,6 +31,7 @@
 			<span class="sg"><button type="button" class="sec" onclick={() => auth.login()}>Sign in through Steam</button><span class="note">{signinNote}</span></span>
 		{/if}
 	</div>
+	<p class="lin steam">{STEAM_ONLY_LINE}</p>
 	{#if isLinux}<p class="lin">On Linux or Steam Deck, run <code>{LINUX_CMD}</code></p>{/if}
 </div>
 

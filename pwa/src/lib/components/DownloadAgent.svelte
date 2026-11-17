@@ -83,7 +83,7 @@
 	<div class="dl">
 		<div class="row">
 			<span class="ic" aria-hidden="true">📥</span>
-			<span class="msg"><b>Get the desktop agent</b> — it auto-tracks your matches, ranks & money games.</span>
+			<span class="msg"><b>Get the desktop agent</b> — it auto-tracks your matches, ranks & money games on the Steam version.</span>
 			<button type="button" class="get" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
 				{expanded ? 'Hide' : 'Download ▸'}
 			</button>

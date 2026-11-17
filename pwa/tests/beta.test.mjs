@@ -105,3 +105,24 @@ test('wiring: the strip under the hero, the block after the record section, #nex
 	const route = rd('routes/season/+page.svelte');
 	assert.ok(route.includes('seasonLandingPath(base, seasons.table, Date.now(), location.hash)') && route.includes('replaceState: true'));
 });
+
+test('Steam-only copy: the app is for MvC2 on Steam; SUPERGUN is the pointer, and nothing claims other versions', () => {
+	assert.equal(B.STEAM_ONLY_LINE, 'For MvC2 on Steam (Marvel vs. Capcom Fighting Collection) on Windows, Linux and Steam Deck.');
+	assert.equal(B.STEP1_LINE, 'The app works with MvC2 in the Marvel vs. Capcom Fighting Collection on Steam, on Windows, Linux and Steam Deck.');
+	assert.equal(B.SUPERGUN_POINTER_BEFORE + 'SUPERGUN' + B.SUPERGUN_POINTER_AFTER, 'Playing another version, or want PC and browser players in the same lobby? That\u2019s where SUPERGUN is headed.');
+	const get = rd('lib/components/GetTheApp.svelte');
+	assert.ok(get.includes('{STEAM_ONLY_LINE}') && get.includes('{LINUX_CMD}'), 'the line sits with the download; the Linux command stays');
+	assert.ok(get.indexOf('{STEAM_ONLY_LINE}') > get.indexOf('class={secondary'), 'under the Download button');
+	const block = rd('lib/components/finale/BetaBlock.svelte');
+	assert.ok(block.includes('{STEP1_LINE}') && block.includes('href="#whats-next"') && block.includes("onjump('whats-next')"));
+	assert.ok(block.indexOf('{SUPERGUN_POINTER_BEFORE}') > block.indexOf('</ol>'), 'after the steps');
+	const next = rd('lib/finale/nextCopy.ts');
+	assert.ok(next.includes('runs from your own copy of the game on Steam') && next.includes('PC and browser players in the same lobbies'));
+	assert.ok(rd('lib/components/DownloadAgent.svelte').includes('on the Steam version.'));
+	// no copy claims support for another version of the game
+	for (const f of ['lib/finale/beta.ts', 'lib/finale/nextCopy.ts', 'lib/components/GetTheApp.svelte', 'lib/components/finale/BetaBlock.svelte', 'lib/components/finale/SupergunBlock.svelte']) {
+		const s = rd(f).replace(/\/\/.*$/gm, '');
+		assert.ok(!/(works|runs|supports?|plays?) (with|on) (fightcade|flycast|dreamcast|console|emulat|ps[2-5]|xbox|switch)/i.test(s), `${f} claims another version`);
+		assert.ok(!/(fightcade|flycast|dreamcast).{0,40}(supported|works|compatible)/i.test(s), `${f} claims another version`);
+	}
+});

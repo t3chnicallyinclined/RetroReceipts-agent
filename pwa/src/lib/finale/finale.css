@@ -370,6 +370,8 @@
 .fin .bstrip .bs-note{margin:0;font-size:12.5px;color:var(--dim)}
 .fin .bstrip :focus-visible,.fin .beta :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 @media(min-width:760px){.fin .bstrip{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:22px 24px;gap:22px}.fin .bstrip .bs-act{grid-template-columns:auto auto;align-items:center}.fin .bigjoin,.fin .bigsec,.fin .bstrip .bs-act .sec{width:auto;min-height:60px;padding:0 30px;font-size:17px}}
+.fin .beta .sgp{margin:0;font-size:13px}
+.fin .beta .sgp a{color:var(--ink);text-underline-offset:2px}
 .fin .beta .bfb{display:grid;gap:8px;padding-top:6px;border-top:1px solid var(--line-soft)}
 .fin .beta .bfb p{margin:0;font-size:14px;color:var(--dim)}
 .fin .beta{display:grid;gap:12px;padding:22px 16px;border-color:color-mix(in srgb,var(--stream) 50%,var(--line));background:linear-gradient(160deg,color-mix(in srgb,var(--stream) 10%,transparent),transparent 60%),var(--panel)}
