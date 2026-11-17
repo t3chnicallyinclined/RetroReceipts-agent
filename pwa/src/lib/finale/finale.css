@@ -59,16 +59,16 @@
 .fin .cta .btn{flex:1 1 150px}
 @media(min-width:760px){.fin .cta .btn{flex:0 0 auto}
 }
-.fin .hero{position:relative;padding:22px 2px 20px;overflow:hidden}
+.fin .hero{position:relative;padding:14px 2px 12px;overflow:hidden}
 .fin .hero .ghost{position:absolute;right:-6px;top:6px;font-size:clamp(84px,30vw,260px);line-height:.8;font-style:italic;font-weight:900;letter-spacing:-.04em;color:var(--ink);opacity:.045;pointer-events:none;user-select:none;text-transform:uppercase}
 .fin .hero .over{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:relative}
-.fin .hero h1{position:relative;font-size:clamp(44px,14.5vw,112px);line-height:.92;font-weight:900;font-style:italic;text-transform:uppercase;letter-spacing:-.02em;margin:12px 0 0;overflow-wrap:anywhere}
+.fin .hero h1{position:relative;font-size:clamp(40px,13vw,112px);line-height:.92;font-weight:900;font-style:italic;text-transform:uppercase;letter-spacing:-.02em;margin:8px 0 0;overflow-wrap:anywhere}
 .fin .hero .tag{position:relative;font-size:clamp(20px,6vw,34px);font-weight:900;font-style:italic;text-transform:uppercase;color:var(--dim);margin-top:4px}
 .fin .seam{height:2px;width:130px;margin:14px 0 12px;background:linear-gradient(90deg,var(--gold),transparent)}
 .fin .hero .date{color:var(--dim);font-size:13px}
 .fin .hero .lead{position:relative;font-size:17px;line-height:1.4;margin:12px 0 6px;max-width:34ch;font-weight:600}
 .fin .hero .lead b{font-weight:800}
-.fin .hero .thanks{color:var(--dim);font-size:14px;max-width:52ch;margin-bottom:16px;position:relative}
+.fin .hero .thanks{color:var(--dim);font-size:14px;max-width:52ch;margin-bottom:12px;position:relative}
 .fin .hero .pick{margin-left:auto}
 .fin .daterow{display:flex;align-items:center;gap:10px;position:relative}
 .fin .daterow .sel{padding:4px 6px;max-width:200px}
