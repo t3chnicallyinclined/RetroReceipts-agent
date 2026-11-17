@@ -38,11 +38,17 @@ export function tapeStateOf(v: unknown): TapeState | undefined {
 	return typeof v === 'string' && (TAPE_STATES as readonly string[]).includes(v) ? (v as TapeState) : undefined;
 }
 
-export type MomentKind = 'longest_game' | 'biggest_comeback' | 'biggest_combo' | 'biggest_upset' | 'perfect';
+export type MomentKind = 'longest_game' | 'biggest_comeback' | 'biggest_combo' | 'biggest_upset' | 'perfect' | 'longest_replay' | 'typical_game' | 'streak_win' | 'peak_game';
 /** the order the strip shows them in */
 // fastest_game is deliberately NOT a kind here: on real data it is a 10 s row from an old agent sitting on the server's
 // 10 s floor with several ties, and short durations read as a measurement artefact. A server that sends it is ignored.
-export const MOMENT_ORDER: readonly MomentKind[] = ['longest_game', 'biggest_combo', 'biggest_comeback', 'biggest_upset', 'perfect'];
+// Every kind the client understands (the order they are shaped in). The strip shows the first five; typical_game and
+// longest_replay join it only while it stays at six cards or fewer (see stripMoments). streak_win and peak_game live
+// on their award cards, not in the strip.
+export const MOMENT_ORDER: readonly MomentKind[] = ['longest_game', 'biggest_combo', 'biggest_comeback', 'biggest_upset', 'perfect', 'typical_game', 'longest_replay', 'streak_win', 'peak_game'];
+const STRIP_BASE: readonly MomentKind[] = ['longest_game', 'biggest_combo', 'biggest_comeback', 'biggest_upset', 'perfect'];
+const STRIP_EXTRA: readonly MomentKind[] = ['typical_game', 'longest_replay'];
+export const STRIP_MAX = 6;
 
 export interface Moment {
 	kind: MomentKind;
@@ -54,6 +60,7 @@ export interface Moment {
 	sessionId: string;
 	matchIndex?: number;
 	durationS?: number;
+	ts?: number;
 	tape?: TapeState;
 	winner: PlayerRef | null;
 	/** only for the kinds that name both players; null when the server leaves the loser out */
@@ -86,6 +93,7 @@ export function normalizeMoments(v: unknown): Moment[] {
 			sessionId,
 			matchIndex: typeof o.match_index === 'number' ? o.match_index : undefined,
 			durationS: pos(o.duration_s),
+			ts: pos(o.ts),
 			tape: tapeStateOf(o.tape),
 			winner: playerRef(o.winner),
 			loser: playerRef(o.loser),
@@ -101,7 +109,11 @@ const TITLES: Record<MomentKind, string> = {
 	biggest_comeback: 'Comeback of the season',
 	biggest_combo: 'Biggest combo',
 	biggest_upset: 'Biggest upset',
-	perfect: 'Perfect win over the top opponent'
+	perfect: 'Perfect win over the top opponent',
+	longest_replay: 'Longest game with a replay',
+	typical_game: 'A typical game',
+	streak_win: 'The win that finished the streak',
+	peak_game: 'The game that set the top rating'
 };
 export const momentTitle = (m: Pick<Moment, 'kind' | 'label'>): string => TITLES[m.kind] ?? m.label ?? 'Moment';
 
@@ -111,7 +123,13 @@ const nf = (n: number) => Math.round(n).toLocaleString('en-US');
 export function momentFigure(m: Pick<Moment, 'kind' | 'value'>): string {
 	switch (m.kind) {
 		case 'longest_game':
+		case 'longest_replay':
+		case 'typical_game':
 			return durText(m.value);
+		case 'streak_win':
+			return `${nf(m.value)} ${m.value === 1 ? 'win' : 'wins'} in a row`;
+		case 'peak_game':
+			return `rating ${nf(m.value)}`;
 		case 'biggest_combo':
 			return `${nf(m.value)} ${m.value === 1 ? 'hit' : 'hits'}`;
 		case 'biggest_upset':
@@ -150,12 +168,15 @@ export interface MomentAction {
  * One honest primary action per moment. `state` undefined = the server did not say (an older server): the plain
  * set link, no claim either way.
  */
-export function momentAction(state: TapeState | undefined, signedIn: boolean): MomentAction {
+export const WATCH_LABELS = { replay: 'Watch the replay', it: 'Watch it', one: 'Watch one', win: 'Watch the win that finished it', game: 'Watch the game that set it' } as const;
+export type WatchLabel = (typeof WATCH_LABELS)[keyof typeof WATCH_LABELS];
+
+export function momentAction(state: TapeState | undefined, signedIn: boolean, watchLabel: WatchLabel = WATCH_LABELS.replay): MomentAction {
 	switch (state) {
 		case 'ready':
-			return { kind: 'watch', label: 'Watch the replay', reason: '' };
+			return { kind: 'watch', label: watchLabel, reason: '' };
 		case 'archived':
-			return { kind: 'set', label: 'See the set', reason: signedIn ? 'This replay is in the archive. Open the set to request it.' : 'This replay is in the archive. Sign in to request it.' };
+			return { kind: 'set', label: 'See the set', reason: signedIn ? 'In the archive. Open the set to request it.' : 'In the archive. Sign in to request it.' };
 		case 'pending':
 			return { kind: 'set', label: 'See the set', reason: 'This replay is still being uploaded.' };
 		case 'none':
@@ -165,6 +186,17 @@ export function momentAction(state: TapeState | undefined, signedIn: boolean): M
 		default:
 			return { kind: 'set', label: 'See the set', reason: '' };
 	}
+}
+
+/** The "moments, with replays" strip: the five records, then typical_game and longest_replay while it stays at six or fewer. */
+export function stripMoments(ms: Moment[] | undefined): Moment[] {
+	const list = ms ?? [];
+	const out = STRIP_BASE.flatMap((k) => list.filter((m) => m.kind === k));
+	for (const k of STRIP_EXTRA) {
+		const m = list.find((x) => x.kind === k);
+		if (m && out.length < STRIP_MAX) out.push(m);
+	}
+	return out;
 }
 
 /** The moment of a kind, if the server sent it. */

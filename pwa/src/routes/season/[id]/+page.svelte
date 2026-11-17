@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { base } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -40,6 +40,11 @@
 	import AlsoComing from '$lib/components/finale/AlsoComing.svelte';
 	import SupergunBlock from '$lib/components/finale/SupergunBlock.svelte';
 	import CodeBlock from '$lib/components/finale/CodeBlock.svelte';
+	import SetLink from '$lib/components/finale/SetLink.svelte';
+	import { momentFigure, momentOf, momentWho, stripMoments } from '$lib/finale/moments';
+	import { openWatch, parseWatchHash } from '$lib/finale/watch';
+	import { preloadVerdict, runWarm, warmTargets } from '$lib/replay/preload';
+	import { getAttest, ownsLocal } from '$lib/replay/pack';
 	import { CLOSE_FEEDBACK } from '$lib/finale/repos';
 	import SpecialThanks from '$lib/components/finale/SpecialThanks.svelte';
 	import CountUp from '$lib/components/finale/CountUp.svelte';
@@ -129,6 +134,7 @@
 	const bits = $derived(heroBits(sum, hl));
 	// the players who are recorded but not on the roster: props for the high finishers, and an invitation to the rest
 	const unl = $derived(hl?.unlisted);
+	const peakGame = $derived(momentOf(hl?.moments, 'peak_game'));
 	const showProps = $derived(propsCards(unl).length > 0);
 	const pickList = $derived(
 		[...(seasons.table?.seasons ?? [])].reverse().map((s) => ({ id: s.id, label: s.label, current: s.id === seasons.table?.current }))
@@ -238,6 +244,46 @@
 			/* storage blocked: the page works without it */
 		}
 	}
+	// ── warm the replay art in the background (signed-in viewers with ownership on file only; see lib/replay/preload.ts) ──
+	let warmStarted = false;
+	let warmStop: (() => void) | null = null;
+	onDestroy(() => warmStop?.());
+	$effect(() => {
+		if (warmStarted || !done.hl || !hl?.moments?.length || !auth.ready) return;
+		warmStarted = true;
+		const items = [
+			...stripMoments(hl.moments).map((m) => ({ matchKey: m.matchKey, tape: m.tape })),
+			{ matchKey: hl.upset?.matchKey ?? '', tape: hl.upset?.tapeState },
+			{ matchKey: hl.combo?.matchKey ?? '', tape: hl.combo?.tapeState }
+		];
+		const keys = warmTargets(items);
+		if (!keys.length) return;
+		const ctl = new AbortController();
+		const conn = () => (navigator as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+		const env = (attested: boolean) => ({ authed: auth.authed, attested, saveData: !!conn()?.saveData, effectiveType: conn()?.effectiveType, hidden: document.hidden });
+		const stop = () => ctl.abort();
+		const onVis = () => {
+			if (document.hidden) stop();
+		};
+		document.addEventListener('visibilitychange', onVis);
+		addEventListener('pagehide', stop);
+		const idle = (fn: () => void) => ('requestIdleCallback' in window ? (window as unknown as { requestIdleCallback: (f: () => void, o?: object) => number }).requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 2500));
+		idle(() => {
+			void (async () => {
+				if (ctl.signal.aborted || !auth.authed) return;
+				const attested = !!ownsLocal() || (await getAttest());
+				if (preloadVerdict(env(attested)) !== 'ok') return;
+				await runWarm(keys, { signal: ctl.signal, recheck: () => preloadVerdict(env(attested)) });
+			})();
+		});
+		// torn down with the page (not with this effect: later data updates must not cancel a running warm-up)
+		warmStop = () => {
+			stop();
+			document.removeEventListener('visibilitychange', onVis);
+			removeEventListener('pagehide', stop);
+		};
+	});
+
 	let restored = false;
 	$effect(() => {
 		// once the page content has arrived: a hash wins over the remembered position
@@ -245,6 +291,13 @@
 		restored = true;
 		untrack(() => {
 			void tick().then(async () => {
+				// a shared #watch=<match_key> link opens that replay in the sheet (whatever the key is, the sheet says honestly if it cannot play)
+				const wk = parseWatchHash(location.hash);
+				if (wk) {
+					const m = hl?.moments?.find((x) => x.matchKey === wk);
+					void openWatch({ matchKey: wk, sessionId: m?.sessionId, ts: m?.ts, durationS: m?.durationS, winner: m?.winner, loser: m?.loser, wteam: m?.wteam, lteam: m?.lteam }, base);
+					return;
+				}
 				if (location.hash.length > 1) {
 					await goTo(decodeURIComponent(location.hash.slice(1)), { quiet: true });
 					return;
@@ -356,6 +409,7 @@
 			{:else}
 				<p class="ssub">The {label} ladder is closed. Ratings are as they stood when the season ended.</p>
 				<ChampionPlate player={ladder.champion} season={season.id} {label} {honours} />
+				{#if peakGame}<p class="peakline">The season's highest rating, {momentFigure(peakGame).replace('rating ', '')}{momentWho(peakGame) ? `, was reached by ${momentWho(peakGame)}` : ''}.</p><SetLink inline sessionId={peakGame.sessionId} matchKey={peakGame.matchKey} tapeState={peakGame.tape} watchLabel="Watch the game that set it" who={momentWho(peakGame)} winner={peakGame.winner?.steamid} info={{ ts: peakGame.ts, durationS: peakGame.durationS, winner: peakGame.winner, loser: peakGame.loser, wteam: peakGame.wteam, lteam: peakGame.lteam }} />{/if}
 				{#if ladder.side.length}
 					<div class="pods" class:one={ladder.side.length === 1}>
 						{#each ladder.side as p, i (p.steamid)}<PodiumPlate player={p} place={(i + 2) as 2 | 3} tab="rating" challenge={false} />{/each}

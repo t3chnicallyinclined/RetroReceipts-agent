@@ -317,3 +317,58 @@ export async function clearPackCache(): Promise<void> {
 	}
 }
 export const mbText = (n: number) => (n / 1048576).toFixed(n >= 10 * 1048576 ? 0 : 1);
+
+/**
+ * Warm Cache Storage with a manifest's files WITHOUT assembling a pack: the same files, the same sha256 check and the same
+ * cache keys `assemblePack` reads, so a later open finds them and starts at once. Files already cached cost nothing.
+ * `budget.left` is a shared byte allowance (network bytes only); a file that would not fit stops the warm-up cleanly,
+ * as does an aborted `signal`. Never throws for an expected stop; a real failure (rate limit, 403...) stops it quietly
+ * too, because a background warm-up must never become a visible error.
+ */
+export async function warmPack(
+	man: PackManifest,
+	opts: { signal?: AbortSignal; budget: { left: number }; concurrency?: number }
+): Promise<{ networkBytes: number; cachedFiles: number; stopped?: 'cap' | 'abort' | 'error' }> {
+	const cache = await packCache();
+	if (!cache) return { networkBytes: 0, cachedFiles: 0, stopped: 'error' }; // nothing to warm into
+	let networkBytes = 0;
+	let cachedFiles = 0;
+	let stopped: 'cap' | 'abort' | 'error' | undefined;
+	let next = 0;
+	const worker = async () => {
+		for (;;) {
+			if (stopped) return;
+			if (opts.signal?.aborted) {
+				stopped = 'abort';
+				return;
+			}
+			const f = man.files[next++];
+			if (!f) return;
+			const key = cacheKey(f);
+			if (await cache.match(key).catch(() => undefined)) {
+				cachedFiles++;
+				continue;
+			}
+			if ((f.bytes || 0) > opts.budget.left) {
+				stopped = 'cap';
+				return;
+			}
+			opts.budget.left -= f.bytes || 0; // reserve before the download so parallel workers cannot overshoot
+			try {
+				const res = await fetch(f.url, { headers: packHeaders(), signal: opts.signal });
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				const buf = new Uint8Array(await res.arrayBuffer());
+				if (f.sha256 && (await sha256(buf)) !== f.sha256) throw new Error('sha256 mismatch');
+				networkBytes += buf.byteLength;
+				opts.budget.left += (f.bytes || 0) - buf.byteLength;
+				await cache.put(key, new Response(buf as BlobPart)).catch(() => {});
+			} catch (e) {
+				opts.budget.left += f.bytes || 0;
+				stopped = opts.signal?.aborted || (e as Error)?.name === 'AbortError' ? 'abort' : 'error';
+				return;
+			}
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(opts.concurrency ?? 3, Math.max(1, man.files.length)) }, worker));
+	return { networkBytes, cachedFiles, stopped };
+}

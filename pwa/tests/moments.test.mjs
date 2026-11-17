@@ -24,8 +24,8 @@ test('the action: Watch only for a ready tape; every other state is See the set 
 	const arch = M.momentAction('archived', false);
 	assert.equal(arch.kind, 'set');
 	assert.equal(arch.label, 'See the set');
-	assert.equal(arch.reason, 'This replay is in the archive. Sign in to request it.');
-	assert.equal(M.momentAction('archived', true).reason, 'This replay is in the archive. Open the set to request it.');
+	assert.equal(arch.reason, 'In the archive. Sign in to request it.');
+	assert.equal(M.momentAction('archived', true).reason, 'In the archive. Open the set to request it.');
 	assert.equal(M.momentAction('pending', false).reason, 'This replay is still being uploaded.');
 	assert.equal(M.momentAction('none', true).reason, 'No replay was recorded for this game.');
 	// an older server that sends no state: the plain link and no claim at all
@@ -119,10 +119,10 @@ test('wiring: the set page passes ?game=, the receipt marks the row and opens a 
 	assert.ok(rec.includes('el?.focus({ preventScroll: true })') && rec.includes('scrollIntoView'));
 	assert.ok(rec.includes('id={g.match_key ? `game-${g.match_key}` : undefined}'));
 	const link = readFileSync(new URL('lib/components/finale/SetLink.svelte', SRC), 'utf8');
-	assert.ok(link.includes('momentAction(tapeState, auth.authed)') && link.includes('gameLink('));
+	assert.ok(link.includes('momentAction(tapeState, auth.authed, watchLabel)') && link.includes('gameLink('));
 	const bodies = readFileSync(new URL('lib/components/finale/GroupBodies.svelte', SRC), 'utf8');
 	assert.ok(!/signed in to watch/i.test(bodies), 'no false "sign in to watch" claim');
-	assert.ok(bodies.includes('{#if h?.moments?.length}'), 'the strip hides when the server sends no moments');
+	assert.ok(bodies.includes('{#if strip.length}'), 'the strip hides when the server sends no moments');
 });
 
 // ── the "legacy" tape state: recorded before tape v2, the engine cannot open it ──
@@ -136,7 +136,7 @@ test('legacy: parsed as a state, and the moment card offers See the set with the
 	assert.deepEqual(out.map((m) => m.tape), ['legacy', 'ready']);
 	// the other states are unchanged
 	assert.equal(M.momentAction('ready', false).label, 'Watch the replay');
-	assert.equal(M.momentAction('archived', false).reason, 'This replay is in the archive. Sign in to request it.');
+	assert.equal(M.momentAction('archived', false).reason, 'In the archive. Sign in to request it.');
 	// an older server never sends it: nothing about "legacy" appears anywhere
 	assert.equal(M.tapeStateOf(undefined), undefined);
 });

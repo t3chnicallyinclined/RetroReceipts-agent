@@ -16,7 +16,7 @@
 	import RivalryCard from './RivalryCard.svelte';
 	import SetLink from './SetLink.svelte';
 	import MomentCard from './MomentCard.svelte';
-	import { momentFigure, momentOf, momentWho } from '$lib/finale/moments';
+	import { momentFigure, momentOf, momentWho, stripMoments, type Moment } from '$lib/finale/moments';
 	import PlayerChip from './PlayerChip.svelte';
 	import CountUp from './CountUp.svelte';
 	import type { GroupId } from '$lib/finale/derive';
@@ -50,6 +50,14 @@
 		return f.filter((x) => x[1]);
 	});
 	const longest = $derived(momentOf(h?.moments, 'longest_game'));
+	/** the sheet's fallback chrome for a moment (the server's overlay on the tape read wins when it has names) */
+	const infoOf = (m: Moment) => ({ ts: m.ts, durationS: m.durationS, winner: m.winner, loser: m.loser, wteam: m.wteam, lteam: m.lteam });
+	const longestReplay = $derived(momentOf(h?.moments, 'longest_replay'));
+	const typical = $derived(momentOf(h?.moments, 'typical_game'));
+	const streakWin = $derived(momentOf(h?.moments, 'streak_win'));
+	const strip = $derived(stripMoments(h?.moments));
+	// "Longest game with a replay" is its own line only when it is a different game from the longest one
+	const extraReplay = $derived(longestReplay && longest && longestReplay.matchKey !== longest.matchKey ? longestReplay : undefined);
 	const bestPerfect = $derived(momentOf(h?.moments, 'perfect'));
 	const bestComeback = $derived(momentOf(h?.moments, 'biggest_comeback'));
 	const facts2 = $derived.by(() => {
@@ -126,8 +134,12 @@
 						</ul></div>
 				{/if}
 				{#if facts.length}<dl class="facts rv">{#each facts as f (f[0])}<div><dt>{f[0]}</dt><dd>{f[1]}</dd></div>{/each}</dl>{/if}
-				{#if facts2.length}<dl class="facts rv full">{#each facts2 as f (f[0])}<div><dt>{f[0]}</dt><dd>{f[1]}</dd></div>{/each}</dl>{/if}
-				{#if longest}<div class="full rv"><p class="dimp" style="margin:0 0 6px">The longest game, {momentFigure(longest)}{momentWho(longest) ? `: ${momentWho(longest)}` : ''}.</p><SetLink sessionId={longest.sessionId} matchKey={longest.matchKey} tapeState={longest.tape} winner={longest.winner?.steamid} /></div>{/if}
+				{#if facts2.length}<dl class="facts rv full">{#each facts2 as f (f[0])}<div><dt>{f[0]}</dt><dd>{f[1]}
+							{#if f[0] === 'A typical game' && typical}<SetLink inline sessionId={typical.sessionId} matchKey={typical.matchKey} tapeState={typical.tape} watchLabel="Watch one" who={momentWho(typical)} winner={typical.winner?.steamid} info={infoOf(typical)} />
+							{:else if f[0] === 'Longest game' && longest}<SetLink inline sessionId={longest.sessionId} matchKey={longest.matchKey} tapeState={longest.tape} who={momentWho(longest)} winner={longest.winner?.steamid} info={infoOf(longest)} />
+								{#if extraReplay}<span class="factlink">Longest game with a replay: {momentFigure(extraReplay)} · <SetLink inline sessionId={extraReplay.sessionId} matchKey={extraReplay.matchKey} tapeState={extraReplay.tape} watchLabel="Watch it" who={momentWho(extraReplay)} winner={extraReplay.winner?.steamid} info={infoOf(extraReplay)} /></span>{/if}
+							{:else if f[0] === 'Played 100 or more games'}<a class="wlink" href="{base}/ranks?season={encodeURIComponent(season)}">See the players</a>{/if}
+						</dd></div>{/each}</dl>{/if}
 			</div>
 		</div>
 	{/if}
@@ -156,6 +168,7 @@
 					<PipRun count={leaders[0].value} label="{nf(leaders[0].value)} wins in a row, drawn as a run of marks" />
 					{#if leaders[0].value <= 600}<p class="dimp">One mark for every win.</p>{/if}
 					{@render who(leaders[0].player, 28)}
+					{#if streakWin}<SetLink inline sessionId={streakWin.sessionId} matchKey={streakWin.matchKey} tapeState={streakWin.tape} watchLabel="Watch the win that finished it" who={momentWho(streakWin)} winner={streakWin.winner?.steamid} info={infoOf(streakWin)} />{/if}
 				</div>
 				{#if leaders.length > 1 || h?.streaks?.reached10}
 					<div class="card rv d1"><span class="rail">The longest runs</span>
@@ -231,11 +244,11 @@
 		</div>
 	{/if}
 {:else if group === 'moments'}
-	{#if h?.moments?.length}
+	{#if strip.length}
 		<div class="sub" id="moment-replays">
 			<div class="shd"><h4 id="moment-replays-h" tabindex="-1">The moments, with replays</h4></div>
 			<p class="ssub">The games behind the season’s records. A replay is the recorded match redrawn in your browser.</p>
-			<div class="moments">{#each h.moments as m (m.kind)}<MomentCard {m} />{/each}</div>
+			<div class="moments">{#each strip as m (m.kind)}<MomentCard {m} />{/each}</div>
 		</div>
 	{/if}
 	{#if h?.upset || h?.texture?.higherRatedWin || h?.texture?.firstHitWin}

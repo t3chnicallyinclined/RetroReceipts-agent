@@ -22,5 +22,5 @@
 			{#if m.loser && m.lteam.length}<span class="mvs" aria-hidden="true">vs</span><span class="mtm" role="img" aria-label={lose}>{#each m.lteam as id, i (i)}<span class="tsp"><CharSprite {id} still /></span>{/each}</span>{/if}
 		</div>
 	{/if}
-	<SetLink sessionId={m.sessionId} matchKey={m.matchKey} tapeState={m.tape} winner={m.winner?.steamid} />
+	<SetLink sessionId={m.sessionId} matchKey={m.matchKey} tapeState={m.tape} winner={m.winner?.steamid} who={who} info={{ ts: m.ts, durationS: m.durationS, winner: m.winner, loser: m.loser, wteam: m.wteam, lteam: m.lteam }} />
 </div>
