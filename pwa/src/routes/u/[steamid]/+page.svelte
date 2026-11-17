@@ -268,7 +268,6 @@
 			{#if loc}<span class="loc heroloc">{loc}</span>{/if}
 			{#if seasons.available && p.on_roster === false}<span class="pill regpill" title="Their games were recorded, but they have not run the app, so they are not on the board">Not on the board</span>{/if}
 			{#if seasons.available && !seasons.archived && p.season_registered}<span class="pill regpill" title="Registered for {seasons.currentLabel}">Registered</span>{/if}
-			{#if badgeList.length}<BadgeRow badges={badgeList} phone={3} />{/if}
 			{#if aliases.length}
 				<!-- name history on this SteamID — renaming never sheds a reputation -->
 				<span class="aka">a.k.a. <b>{aliases.slice(0, 5).join(' · ')}</b></span>
@@ -283,6 +282,7 @@
 			</div>
 		</div>
 	</section>
+	{#if badgeList.length}<div class="bdgs"><BadgeRow badges={badgeList} phone={3} /></div>{/if}
 
 	{#if cur}
 		<div class="live">
@@ -1143,5 +1143,8 @@
 	.pip.loss {
 		background: transparent;
 		border: 1.5px solid var(--line);
+	}
+	.bdgs {
+		margin: 10px 2px 0;
 	}
 </style>

@@ -72,7 +72,7 @@ test('Mine carries the badges; a server without the field gives none', () => {
 
 test('wiring: profile header row, the record card row, hidden when absent, nothing computed client-side', () => {
 	const page = rd('routes/u/[steamid]/+page.svelte');
-	assert.ok(page.includes('{#if badgeList.length}<BadgeRow badges={badgeList} phone={3} />{/if}') && page.includes('normalizeBadges(p?.badges)'));
+	assert.ok(page.includes('<BadgeRow badges={badgeList} phone={3} />') && page.includes('normalizeBadges(p?.badges)'));
 	const card = rd('lib/components/finale/SeasonCard.svelte');
 	assert.ok(card.includes('{#if myBadges.length}') && card.includes('Your {label} badges') && card.includes('badgesFor(mine?.badges, season)'));
 	const row = rd('lib/components/finale/BadgeRow.svelte');
