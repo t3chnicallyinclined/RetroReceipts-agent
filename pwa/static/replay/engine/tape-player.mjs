@@ -121,7 +121,14 @@ export class TapePlayer extends SequencePlayer {
             return new Uint8Array(await r.arrayBuffer());
         };
         let packBlob, packIndex, total = 0;
+        // A pack handed in as an object is the CALLER's cached copy (ReplayEmbed keeps it so a quality retry or a
+        // re-open never downloads the art twice). It must survive this open: transferring its buffer would detach it
+        // and the next open would throw "ArrayBuffer at index 1 is already detached". So it is CLONED to the worker
+        // (structured clone: one transient copy, no extra JS-heap buffer), never transferred. A pack this method
+        // builds itself (the URL form below) is ours alone and is still transferred.
+        let sharedPack = false;
         if (pack && typeof pack === 'object' && pack.packIndex && pack.packBlob) {
+            sharedPack = true;
             ({ packIndex, packBlob } = pack);
             total = packBlob.byteLength;
             onProgress?.(total, total, 'pack');
@@ -153,7 +160,7 @@ export class TapePlayer extends SequencePlayer {
         this.info = await new Promise((resolve, reject) => {
             this._opened = [resolve, reject];
             this.worker.postMessage({ type: 'open', tape: tape.buffer, packBlob: packBlob.buffer, packIndex, opts },
-                                    [tape.buffer, packBlob.buffer]);
+                                    sharedPack ? [tape.buffer] : [tape.buffer, packBlob.buffer]);
         });
         this.first = start;
         this._count = Math.max(0, Math.min(count, this.info.frames - start));

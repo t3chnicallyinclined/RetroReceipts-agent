@@ -261,6 +261,8 @@
 	let q = $state<'high' | 'base'>(quality); // the prop is the INITIAL quality; the embed downgrades on a GPU error
 	let posterOk = $state(true); // the interim OG card can 404 (no session / not rendered yet) → the --board ground
 	let retried = false;
+	/** the FIRST attempt's error, kept when the automatic retry at base quality runs, so a failed retry never hides why it was needed */
+	let firstErr: { code: string; message: string } | null = null;
 
 	let wrap = $state<HTMLDivElement | null>(null);
 	let picEl = $state<HTMLDivElement | null>(null);
@@ -627,14 +629,21 @@
 			}
 			const code = ((e as { code?: string })?.code ?? 'open') as 'webgpu' | 'fetch' | 'open' | 'decode' | 'gpu';
 			// any WebGPU trouble at high quality → one retry at base (res 2, nearest)
-			if (!retried && q === 'high' && (code === 'gpu' || code === 'open')) {
+			const msg = String((e as Error)?.message ?? e);
+			// a tape the engine cannot read at all (recorded before tape v2) will fail the same way at base quality:
+			// do not retry it, say so
+			const unreadable = /predates tape v2/i.test(msg);
+			if (!retried && !unreadable && q === 'high' && (code === 'gpu' || code === 'open')) {
 				retried = true;
+				firstErr = { code, message: msg };
+				console.warn(`replay: first attempt failed (${code}: ${msg}); retrying at base quality`);
 				q = 'base';
 				disposePlayer(player);
 				player = null;
 				return start();
 			}
-			fail(code, String((e as Error)?.message ?? e));
+			if (firstErr) console.warn(`replay: retry at base quality failed too (${code}: ${msg}); first error was ${firstErr.code}: ${firstErr.message}`);
+			fail(firstErr ? (firstErr.code as typeof code) : code, firstErr ? `${firstErr.message} (then the retry at base quality failed: ${msg})` : msg);
 		}
 	}
 
