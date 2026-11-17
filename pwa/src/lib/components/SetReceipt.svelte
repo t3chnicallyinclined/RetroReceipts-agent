@@ -8,6 +8,10 @@
 	import { base } from '$app/paths';
 	import ReplayAffordance from './ReplayAffordance.svelte';
 	import type { ReplayMeta } from './ReplayEmbed.svelte';
+	import { tick } from 'svelte';
+	import { availability } from '$lib/replay/source';
+	import { replayViewer } from '$lib/replay/viewer.svelte';
+	import { gameIndex } from '$lib/finale/moments';
 
 	// 🧾 THE TAPE — the one way a ranked set displays, everywhere. Renders GET /rr/session?id=<session_id>
 	// as a fight card: tale-of-the-tape head (score, squads, ratings), one line per game (time · result ·
@@ -77,11 +81,33 @@
 	let {
 		r,
 		me = null,
-		live = false // an in-progress set: no gold, no crown — nothing is won yet
-	}: { r: SetReceiptData; me?: string | null; live?: boolean } = $props();
+		live = false, // an in-progress set: no gold, no crown, nothing is won yet
+		focusGame = null // `?game=<match_key>`: scroll to that game, move focus to it, and open its replay if it can play
+	}: { r: SetReceiptData; me?: string | null; live?: boolean; focusGame?: string | null } = $props();
 
 	const games = $derived((r.games ?? []).slice().sort((a, b) => (a.match_index ?? 0) - (b.match_index ?? 0)));
 	const players = $derived(r.players ?? []);
+
+	// deep link to one game (`?game=<match_key>`). Unknown or missing key: nothing happens (the plain set page). A known
+	// key scrolls to the row, moves keyboard focus to it and marks it; the replay opens ONLY when the same availability
+	// check the row's own button uses says it can play (a ready tape). An archived, pending or missing tape just lands
+	// on the row, whose own button says why.
+	let targetKey = $state('');
+	let handled = '';
+	$effect(() => {
+		const key = focusGame;
+		const i = gameIndex(games, key);
+		if (!key || i < 0 || handled === `${r.session_id}|${key}`) return;
+		handled = `${r.session_id}|${key}`;
+		targetKey = key;
+		void tick().then(async () => {
+			const el = document.getElementById(`game-${key}`);
+			el?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+			el?.focus({ preventScroll: true });
+			const g = games[i];
+			if ((await availability(replayRow(g))) === 'ready') replayViewer.open({ row: replayRow(g), meta: replayMeta(g, i) });
+		});
+	});
 
 	// ⚠ THE SEAT MUST BELONG TO A PARTICIPANT. `me` arrives as ?p= or the signed-in viewer — but a
 	// spectator opening someone else's set is NOT in it, and comparing every game's winner against a
@@ -428,7 +454,7 @@
 			<!-- each game is a full-width VS plate — the matchup IN SPRITES, teams flanking a center VS the
 			     way the game's own versus screen does. Won rows carry a good edge + a wash from YOUR side;
 			     losses stay quiet (never red). Static portraits here; the animated squads live in the tape. -->
-			<div class="g" class:won>
+			<div class="g" class:won class:target={g.match_key === targetKey} id={g.match_key ? `game-${g.match_key}` : undefined} tabindex="-1">
 				<span class="gi"><b>{pad((g.match_index ?? i) + 1)}</b><i>{hhmm(g.ts)}</i></span>
 				<span class="tm them" class:changed={rw?.theirsNew}>
 					{#each rw?.theirs ?? [] as id, k (k)}
@@ -717,6 +743,10 @@
 	}
 	.skhint:hover {
 		color: var(--gold);
+	}
+	.g.target {
+		outline: 2px solid var(--gold, #e8b020);
+		outline-offset: 2px;
 	}
 	.g {
 		display: grid;

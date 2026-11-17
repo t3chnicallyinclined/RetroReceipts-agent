@@ -96,7 +96,7 @@
 		{#if card?.bestWin}
 			<div><span class="rail">Best win</span>
 				<p style="margin-top:4px">Beat a player rated {card.bestWin.oppRating}, {card.bestWin.gap} points above you{card.bestWin.date ? `, on ${card.bestWin.date}` : ''}.</p>
-				<SetLink sessionId={card.bestWin.sessionId} tape={card.bestWin.tape} />
+				<SetLink sessionId={card.bestWin.sessionId} matchKey={card.bestWin.matchKey} tapeState={card.bestWin.tapeState} tape={card.bestWin.tape} winner={auth.steamid ?? undefined} />
 			</div>
 		{/if}
 		{#if card && card.months.length > 1}

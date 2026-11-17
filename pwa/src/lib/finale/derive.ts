@@ -5,6 +5,7 @@ import { RANK_TIERS } from '../ranks';
 import { charName } from '../chars';
 import { dayLabel, type Summary } from '../seasonFinale';
 import type { Highlights, Mention, MentionBoard, Valued } from './highlights';
+import { tapeStateOf, type TapeState } from './moments';
 
 // ── small formatters ────────────────────────────────────────────────────────────────────────────
 
@@ -245,7 +246,7 @@ export interface SeasonCardData {
 	of?: number;
 	topPct?: number;
 	opponent?: { name: string; steamid?: string; avatar?: string; games: number };
-	bestWin?: { oppRating: number; gap: number; date?: string; sessionId?: string; tape: boolean };
+	bestWin?: { oppRating: number; gap: number; date?: string; sessionId?: string; tape: boolean; matchKey?: string; tapeState?: TapeState };
 	months: { m: string; games: number }[];
 }
 
@@ -270,7 +271,7 @@ export function normalizeSeasonCard(raw: unknown): SeasonCardData | null {
 		of: num(o.of),
 		topPct: num(o.top_pct),
 		opponent: name && games ? { name, steamid: typeof oppP?.steamid === 'string' ? oppP.steamid : undefined, avatar: typeof oppP?.avatar === 'string' ? oppP.avatar : undefined, games } : undefined,
-		bestWin: bw && num(bw.opp_rating) && num(bw.gap) ? { oppRating: bw.opp_rating as number, gap: bw.gap as number, date: dateText(bw.date), sessionId: sid, tape: bw.tape === true || bw.tape === 'ready' } : undefined,
+		bestWin: bw && num(bw.opp_rating) && num(bw.gap) ? { oppRating: bw.opp_rating as number, gap: bw.gap as number, date: dateText(bw.date), sessionId: sid, tape: bw.tape === true || bw.tape === 'ready', ...(typeof bw.match_key === 'string' && bw.match_key ? { matchKey: bw.match_key, tapeState: tapeStateOf(bw.tape_state) } : {}) } : undefined,
 		months
 	};
 }
@@ -311,6 +312,7 @@ export function presentSubs(id: GroupId, s: Summary | null, h: Highlights | null
 			add(h?.teams && (h.teams.top.length || h.teams.distinct), 'teams', 'The teams');
 			break;
 		case 'moments':
+			add(h?.moments?.length, 'moment-replays', 'The moments, with replays');
 			add(h?.upset || h?.texture?.higherRatedWin || h?.texture?.firstHitWin, 'upsets', 'Favourites and giant-killers');
 			add(h?.rivalries && (h.rivalries.most || h.rivalries.even || h.sets?.scores.length), 'rivalries', 'Rivalries and sets');
 			add(featLeaders('perfects', s, h).length || featLeaders('comebacks', s, h).length || h?.combo, 'feats', 'Perfects, comebacks and combos');

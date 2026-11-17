@@ -341,6 +341,15 @@
 .fin .riv .mid>span{font-size:11.5px;color:var(--dim)}
 .fin .vs{font-size:14px;font-weight:900;font-style:italic;color:var(--gold)}
 .fin .setlink{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.fin .setlink .why{flex-basis:100%;margin:0;font-size:12.5px;line-height:1.4}
+.fin .mcard{display:grid;gap:6px;align-content:start}
+.fin .mcard .big{font-size:clamp(22px,6.4vw,30px);line-height:1.1;font-weight:900;font-style:italic;overflow-wrap:anywhere}
+.fin .mwho{margin:0;font-size:14px;font-weight:700;overflow-wrap:anywhere}
+.fin .mteams{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.fin .mtm{display:flex;gap:3px}
+.fin .mvs{font-size:11px;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+.fin .moments{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+@media(min-width:760px){.fin .moments{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}}
 .fin .btn.sm{min-height:44px;padding:0 14px;font-size:12.5px}
 .fin .btn.tape{color:var(--stream);border-color:color-mix(in srgb,var(--stream) 45%,var(--line));background:color-mix(in srgb,var(--stream) 10%,transparent)}
 .fin .flair{color:var(--molten)}

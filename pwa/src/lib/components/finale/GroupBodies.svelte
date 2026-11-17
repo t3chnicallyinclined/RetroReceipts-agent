@@ -15,6 +15,8 @@
 	import TeamRow from './TeamRow.svelte';
 	import RivalryCard from './RivalryCard.svelte';
 	import SetLink from './SetLink.svelte';
+	import MomentCard from './MomentCard.svelte';
+	import { momentFigure, momentOf, momentWho } from '$lib/finale/moments';
 	import PlayerChip from './PlayerChip.svelte';
 	import CountUp from './CountUp.svelte';
 	import type { GroupId } from '$lib/finale/derive';
@@ -47,6 +49,9 @@
 		if (h?.peak) f.push(['Busiest day of the week', WEEKDAYS[h.peak.weekday] ?? '']);
 		return f.filter((x) => x[1]);
 	});
+	const longest = $derived(momentOf(h?.moments, 'longest_game'));
+	const bestPerfect = $derived(momentOf(h?.moments, 'perfect'));
+	const bestComeback = $derived(momentOf(h?.moments, 'biggest_comeback'));
 	const facts2 = $derived.by(() => {
 		const f: [string, string][] = [];
 		if (h?.time?.timedGames) f.push(['Timed games', nf(h.time.timedGames)]);
@@ -122,6 +127,7 @@
 				{/if}
 				{#if facts.length}<dl class="facts rv">{#each facts as f (f[0])}<div><dt>{f[0]}</dt><dd>{f[1]}</dd></div>{/each}</dl>{/if}
 				{#if facts2.length}<dl class="facts rv full">{#each facts2 as f (f[0])}<div><dt>{f[0]}</dt><dd>{f[1]}</dd></div>{/each}</dl>{/if}
+				{#if longest}<div class="full rv"><p class="dimp" style="margin:0 0 6px">The longest game, {momentFigure(longest)}{momentWho(longest) ? `: ${momentWho(longest)}` : ''}.</p><SetLink sessionId={longest.sessionId} matchKey={longest.matchKey} tapeState={longest.tape} winner={longest.winner?.steamid} /></div>{/if}
 			</div>
 		</div>
 	{/if}
@@ -225,6 +231,13 @@
 		</div>
 	{/if}
 {:else if group === 'moments'}
+	{#if h?.moments?.length}
+		<div class="sub" id="moment-replays">
+			<div class="shd"><h4 id="moment-replays-h" tabindex="-1">The moments, with replays</h4></div>
+			<p class="ssub">The games behind the season’s records. A replay is the recorded match redrawn in your browser.</p>
+			<div class="moments">{#each h.moments as m (m.kind)}<MomentCard {m} />{/each}</div>
+		</div>
+	{/if}
 	{#if h?.upset || h?.texture?.higherRatedWin || h?.texture?.firstHitWin}
 		<div class="sub" id="upsets">
 			<div class="shd"><h4 id="upsets-h" tabindex="-1">Favourites and giant-killers</h4></div>
@@ -235,7 +248,7 @@
 						<RatingScale winner={h.upset.winnerRating} opponent={h.upset.oppRating} />
 						{@render who(h.upset.winner, 28)}
 						<p class="dimp">Rated {h.upset.winnerRating}, beat a player rated {h.upset.oppRating}{h.upset.date ? ` on ${dateText(h.upset.date) ?? ''}` : ''}.{h.upset.over300 ? ` ${nf(h.upset.over300)} ranked wins this season came against a player rated 300 or more points higher.` : ''}</p>
-						<SetLink sessionId={h.upset.sessionId} tape={h.upset.tape} />
+						<SetLink sessionId={h.upset.sessionId} matchKey={h.upset.matchKey} tapeState={h.upset.tapeState} tape={h.upset.tape} winner={h.upset.winner.steamid} />
 					</div>
 				{/if}
 				{#if h.texture?.higherRatedWin || h.texture?.firstHitWin}
@@ -285,6 +298,7 @@
 						{#if h?.perfects?.total}<b class="big flair"><CountUp value={h.perfects.total} /></b><p class="dimp">ranked games won without taking a hit{h.perfects.players ? `, by ${nf(h.perfects.players)} players` : ''}</p>
 						{:else}<b class="big flair">{nf(perf[0].value)}</b><p class="dimp">the season’s most, by {perf[0].player.name}</p>{/if}
 						<BarList rows={perf.map((r, i) => ({ key: r.player.steamid + i, value: r.value, text: nf(r.value), color: 'var(--molten)', ref: r.player }))} lw={130}>{#snippet row(r)}{#if r.ref}{@render who(r.ref, 22)}{/if}{/snippet}</BarList>
+						{#if bestPerfect}<p class="dimp" style="margin:8px 0 6px">Best one: {momentWho(bestPerfect)}, a perfect {momentFigure(bestPerfect)}.</p><SetLink sessionId={bestPerfect.sessionId} matchKey={bestPerfect.matchKey} tapeState={bestPerfect.tape} winner={bestPerfect.winner?.steamid} />{/if}
 					</div>
 				{/if}
 				{#if come.length}
@@ -292,6 +306,7 @@
 						{#if h?.comebacks?.total}<b class="big flair"><CountUp value={h.comebacks.total} /></b><p class="dimp">comeback wins{h.comebacks.players ? `, by ${nf(h.comebacks.players)} players` : ''}</p>
 						{:else}<b class="big flair">{nf(come[0].value)}</b><p class="dimp">the season’s most, by {come[0].player.name}</p>{/if}
 						<BarList rows={come.map((r, i) => ({ key: r.player.steamid + i, value: r.value, text: nf(r.value), color: 'var(--molten)', ref: r.player }))} lw={130}>{#snippet row(r)}{#if r.ref}{@render who(r.ref, 22)}{/if}{/snippet}</BarList>
+						{#if bestComeback}<p class="dimp" style="margin:8px 0 6px">Biggest one: {momentWho(bestComeback)}, {momentFigure(bestComeback)}.</p><SetLink sessionId={bestComeback.sessionId} matchKey={bestComeback.matchKey} tapeState={bestComeback.tape} winner={bestComeback.winner?.steamid} />{/if}
 					</div>
 				{/if}
 				{#if h?.combo}
@@ -299,7 +314,7 @@
 						<b class="big flair"><CountUp value={h.combo.hits} /> <small>hits</small></b>
 						<PipRun count={h.combo.hits} tone="mol" cap={400} label="{h.combo.hits} hits, one mark for every hit" />
 						<p class="dimp">{h.combo.date ? `Landed on ${dateText(h.combo.date) ?? ''}. ` : ''}{h.combo.over100 ? `${nf(h.combo.over100)} games had a combo of 100 hits or more.` : ''}</p>
-						<SetLink sessionId={h.combo.sessionId} tape={h.combo.tape} />
+						<SetLink sessionId={h.combo.sessionId} matchKey={h.combo.matchKey} tapeState={h.combo.tapeState} tape={h.combo.tape} />
 					</div>
 				{/if}
 			</div>
@@ -311,10 +326,10 @@
 			<p class="ssub">A replay here is the recorded match redrawn in your browser, not a video.</p>
 			<div class="grid2">
 				<div class="card rv">
-					<p>On a set page. Each highlight above that is a single match or set has a “See the set” link.</p>
+					<p>On a set page. Each highlight above that is a single game has a “Watch the replay” or “See the set” link.</p>
 					<p>In the LIVE tab, next to results as they land.</p>
 					<p>In match history on any player’s profile.</p>
-					<p class="dimp">{auth.authed ? '' : 'You need to be signed in to watch. '}Where a match has no tape, the set page still shows the result.</p>
+					<p class="dimp">Recent replays play without signing in. Older ones are in the archive: sign in to request one. Where a match has no tape, the set page still shows the result.</p>
 					<div class="cta"><a class="btn" href="{base}/match">Open the LIVE tab</a>{#if !auth.authed}<button type="button" class="btn" onclick={() => auth.login()}>Sign in through Steam</button>{/if}</div>
 				</div>
 				{#if h.trust.confirmedShare}

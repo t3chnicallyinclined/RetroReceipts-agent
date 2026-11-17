@@ -8,6 +8,7 @@
 import { apiGet } from '../net.svelte';
 import { withSeason } from '../seasons';
 import { CHAR_NAME } from '../chars';
+import { normalizeMoments, tapeStateOf, type Moment, type TapeState } from './moments';
 
 export interface PlayerRef {
 	steamid: string;
@@ -34,6 +35,9 @@ export interface TeamRow {
 export interface SetRef {
 	sessionId: string;
 	tape: boolean;
+	/** the game itself (upset, combo, best win): its key and its tape's state, when the server says */
+	matchKey?: string;
+	tapeState?: TapeState;
 }
 export interface MentionBoard {
 	key: string;
@@ -106,6 +110,8 @@ export interface Highlights {
 	trust?: { confirmedShare?: number; taped?: number };
 	mentions: Mention[];
 	unlisted?: Unlisted;
+	/** the games behind the season's records, each with its tape state (absent on a server that does not send them) */
+	moments?: Moment[];
 }
 
 type Raw = Record<string, unknown>;
@@ -135,7 +141,9 @@ function valued(v: unknown): Valued[] {
 export const tapeReady = (v: unknown): boolean => v === true || v === 'ready';
 function setRef(o: Raw): Partial<SetRef> {
 	const sessionId = str(o.session_id);
-	return sessionId ? { sessionId, tape: tapeReady(o.tape) } : {};
+	if (!sessionId) return {};
+	const matchKey = str(o.match_key);
+	return { sessionId, tape: tapeReady(o.tape), ...(matchKey ? { matchKey, tapeState: tapeStateOf(o.tape_state) } : {}) };
 }
 /** only roster characters count: an id with no name would print as "#255" */
 const realChar = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n in CHAR_NAME;
@@ -242,6 +250,9 @@ export function normalizeHighlights(raw: unknown): Highlights | null {
 	}
 	const tr = obj(j.trust);
 	if (tr) out.trust = { confirmedShare: pos(tr.confirmed_share), taped: pos(tr.taped) };
+
+	const mo = normalizeMoments(j.moments);
+	if (mo.length) out.moments = mo;
 
 	const ul = obj(j.unlisted);
 	if (ul) {

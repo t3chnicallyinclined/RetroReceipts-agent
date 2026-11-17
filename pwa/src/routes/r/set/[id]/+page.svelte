@@ -76,7 +76,7 @@
 			<a class="back" href="{base}/match">← Back to the arcade</a>
 		</div>
 	{:else if data}
-		<SetReceipt r={data} me={perspective} />
+		<SetReceipt r={data} me={perspective} focusGame={page.url.searchParams.get('game')} />
 		{@const opp = auth.steamid && (data.players ?? []).some((pl) => pl.steamid === auth.steamid)
 			? (data.players ?? []).find((pl) => pl.steamid !== auth.steamid)
 			: null}
