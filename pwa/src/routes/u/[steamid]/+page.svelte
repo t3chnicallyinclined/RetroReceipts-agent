@@ -1,4 +1,6 @@
 <script lang="ts">
+	import BadgeRow from '$lib/components/finale/BadgeRow.svelte';
+	import { normalizeBadges } from '$lib/finale/badges';
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { page } from '$app/state';
@@ -76,6 +78,7 @@
 
 	const p = $derived(store.data);
 	const found = $derived(!!p && p.found);
+	const badgeList = $derived(normalizeBadges(p?.badges));
 	const gp = $derived(p ? gamesOf({ wins: p.wins, losses: p.losses }) : 0);
 	const r = $derived(rankOf(p?.rating, gp));
 	const acc = $derived(RK_PLATE[r.s] ?? RK_PLATE.civilian);
@@ -265,6 +268,7 @@
 			{#if loc}<span class="loc heroloc">{loc}</span>{/if}
 			{#if seasons.available && p.on_roster === false}<span class="pill regpill" title="Their games were recorded, but they have not run the app, so they are not on the board">Not on the board</span>{/if}
 			{#if seasons.available && !seasons.archived && p.season_registered}<span class="pill regpill" title="Registered for {seasons.currentLabel}">Registered</span>{/if}
+			{#if badgeList.length}<BadgeRow badges={badgeList} phone={3} />{/if}
 			{#if aliases.length}
 				<!-- name history on this SteamID — renaming never sheds a reputation -->
 				<span class="aka">a.k.a. <b>{aliases.slice(0, 5).join(' · ')}</b></span>

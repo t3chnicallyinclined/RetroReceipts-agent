@@ -5,6 +5,7 @@ import { apiGet } from '../net.svelte';
 import { withSeason } from '../seasons';
 import { obj, pos } from './highlights';
 import { normalizeSeasonCard, type SeasonCardData } from './derive';
+import { normalizeBadges, type Badge } from './badges';
 import { RANK_MIN_GAMES } from '../ranks';
 
 export interface Mine {
@@ -21,6 +22,8 @@ export interface Mine {
 	card: SeasonCardData | null;
 	/** on the season's roster (listed on its boards); undefined when the server does not say */
 	onRoster?: boolean;
+	/** the server's season badges for this player (all finished seasons); [] when the server sends none */
+	badges: Badge[];
 }
 
 export const mineGames = (m: Mine): number => m.wins + m.losses;
@@ -47,7 +50,8 @@ export function normalizeMine(raw: unknown): Mine | null {
 		peak: pos(j.peak_rating),
 		team: team?.length ? team : undefined,
 		card: normalizeSeasonCard(j.season_card),
-		onRoster: typeof j.on_roster === 'boolean' ? j.on_roster : undefined
+		onRoster: typeof j.on_roster === 'boolean' ? j.on_roster : undefined,
+		badges: normalizeBadges(j.badges)
 	};
 }
 

@@ -7,6 +7,8 @@
 	import ColumnChart from './ColumnChart.svelte';
 	import SetLink from './SetLink.svelte';
 	import GetTheApp from '$lib/components/GetTheApp.svelte';
+	import BadgeRow from './BadgeRow.svelte';
+	import { badgesFor } from '$lib/finale/badges';
 	import { NOT_LISTED_NOTE, NO_GAMES_LINE } from '$lib/finale/unlisted';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { rankOf, gamesOf } from '$lib/ranks';
@@ -22,6 +24,7 @@
 	const r = $derived(mine ? rankOf(mine.rating, gamesOf(mine)) : null);
 	const unranked = $derived(mine ? mineUnranked(mine) : false);
 	const card = $derived(mine?.card ?? null);
+	const myBadges = $derived(badgesFor(mine?.badges, season));
 	const shareUrl = $derived(typeof location === 'undefined' || !mine ? '' : `${location.origin}${base}/u/${encodeURIComponent(auth.steamid ?? '')}?season=${encodeURIComponent(season)}`);
 
 	async function share() {
@@ -74,6 +77,7 @@
 				{r.n}<small>your final tier</small>
 			{/if}
 		</div>
+		{#if myBadges.length}<div class="full"><span class="rail">Your {label} badges</span><div style="margin-top:6px"><BadgeRow badges={myBadges} phone={4} /></div></div>{/if}
 		<dl class="kv full">
 			<div><dt>Final rating</dt><dd>{Math.round(mine.rating)}</dd></div>
 			<div><dt>Record</dt><dd>{nf(mine.wins)} – {nf(mine.losses)}</dd></div>
