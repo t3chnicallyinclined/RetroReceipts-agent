@@ -68,6 +68,8 @@
 		<div class="place">
 			{#if unranked}
 				Unranked<small>{gamesOf(mine)} ranked {gamesOf(mine) === 1 ? 'game' : 'games'} played, 5 needed for a rank</small>
+			{:else if mine.onRoster === false && card?.overallPlace}
+				{ordinal(card.overallPlace)} overall<small>you would have finished here if everyone were listed. Your games were recorded; signing in puts you on the board for {nextLabel ?? 'the next season'}.</small>
 			{:else if card?.place}
 				{ordinal(card.place)} place<small>of {nf(card.of ?? 0)} ranked players{card.topPct ? ` · top ${card.topPct}%` : ''}{card.place === 1 ? ' · champion' : ''}</small>
 			{:else if r}

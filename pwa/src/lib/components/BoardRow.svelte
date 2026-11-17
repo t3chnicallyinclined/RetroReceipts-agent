@@ -61,6 +61,7 @@
 			<span class="nm">{player.name || 'Player'}</span>
 		{/if}
 		{#if me}<span class="me-tag">YOU</span>{/if}
+		{#if player.on_roster === false}<span class="unl" title="Has games this season; not signed up, so not on the board">not on the board</span>{/if}
 		{#if player.registered}<span class="regmk" role="img" aria-label="Registered for this season" title="Registered">✓</span>{/if}
 		{#if team.length}
 			<span class="subteam" aria-hidden="true">
@@ -111,6 +112,18 @@
 		text-align: center;
 	}
 	/* registered mark: a quiet outlined tick (never gold: gold marks the winner) */
+	.unl {
+		flex: none;
+		font-size: 9.5px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--dim);
+		border: 1px dashed var(--faint);
+		border-radius: 999px;
+		padding: 0 6px;
+		line-height: 15px;
+	}
 	.regmk {
 		flex: none;
 		display: inline-grid;

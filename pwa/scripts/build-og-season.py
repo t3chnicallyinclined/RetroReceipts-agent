@@ -120,15 +120,26 @@ def load(api, season):
     players = [p for p in board.get("players", []) if p.get("name")][:3]
     pos = lambda v: v if isinstance(v, (int, float)) and v > 0 else None
     totals = []
-    n = pos((summ.get("players") or {}).get("played"))
+    pl = summ.get("players") or {}
+    played = pos(pl.get("played"))
+    roster = pos(pl.get("roster"))
     g = pos((summ.get("games") or {}).get("total"))
     dd = pos(high.get("days"))
-    if n:
-        totals.append(f"{int(n):,} PLAYERS")
-    if g:
-        totals.append(f"{int(g):,} GAMES")
-    if dd:
-        totals.append(f"{int(dd)} DAYS")
+    unl = pos(pl.get("unlisted"))
+    if roster:
+        # a server with a season roster: the game total is the headline, then who played it
+        if g:
+            totals.append(f"{int(g):,} GAMES")
+        totals.append(f"{int(roster):,} PLAYERS ON THE APP")
+        if unl:
+            totals.append(f"{int(unl):,} OPPONENTS")
+    else:
+        if played:
+            totals.append(f"{int(played):,} PLAYERS")
+        if g:
+            totals.append(f"{int(g):,} GAMES")
+        if dd:
+            totals.append(f"{int(dd)} DAYS")
     return label, players, totals
 
 
@@ -213,10 +224,16 @@ def card_landscape(label, players, totals):
     d.rectangle([62, 72 + int(tf.size * 1.22) + 58, 62 + 130, 72 + int(tf.size * 1.22) + 61], fill=GOLD)
     champion_plate(img, 60, 298, W - 120, 246, players, stack=True)
     d = ImageDraw.Draw(img)
-    ff = font(F_MONO, 24)
-    foot = "  \u00b7  ".join(totals)
+    foot = "  ·  ".join(totals)
     if foot:
-        draw_tracked(d, (60, H - 62), foot, ff, MUTED, 3.0)
+        # the footer must not run into the brand mark on the right: shrink it until it fits
+        size, track = 24, 3.0
+        ff = font(F_MONO, size)
+        while tracked_w(ff, foot, track) > 780 and size > 15:
+            size -= 1
+            track = max(1.5, track - 0.15)
+            ff = font(F_MONO, size)
+        draw_tracked(d, (60, H - 62 + (24 - size) // 2), foot, ff, MUTED, track)
     wm = font(F_BOLD, 24)
     t = "RETRO RECEIPTS"
     tw = tracked_w(wm, t, 2.0)

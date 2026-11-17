@@ -14,6 +14,7 @@ export interface Player {
 	top_team?: number[]; // most-played team (char-id triple; [] / absent = never recorded)
 	stat?: number; // the active tab's stat value (server-computed)
 	registered?: boolean; // registered for the CURRENT season (ranked rows of the open season only)
+	on_roster?: boolean; // only in the `?roster=all` view: is this player on the season roster (listed by default)
 	rank?: string; // server-supplied tier name — never trusted; client derives from rating+games
 }
 

@@ -12,7 +12,10 @@
 	import { fetchFeedback, type FeedbackView } from '$lib/finale/feedback';
 	import { fetchRoster, type Roster } from '$lib/finale/players';
 	import { fetchMine, type Mine } from '$lib/finale/mine';
-	import { GROUPS, glanceTiles, groupSummary, mentionViews, nf, nf1, presentSubs, type GroupId } from '$lib/finale/derive';
+	import { GROUPS, gamesEachSentence, glanceTiles, groupSummary, heroBits, recordedBySentence, mentionViews, nf, nf1, presentSubs, type GroupId } from '$lib/finale/derive';
+	import { propsCards, wallNames } from '$lib/finale/unlisted';
+	import UnlistedProps from '$lib/components/finale/UnlistedProps.svelte';
+	import RecordCallout from '$lib/components/finale/RecordCallout.svelte';
 	import { reveal, revealAll } from '$lib/finale/motion';
 	import { DISCORD_URL } from '$lib/links';
 	import { seasonReg } from '$lib/stores/seasonreg.svelte';
@@ -122,12 +125,11 @@
 		const start = season.start_ms > 0 ? dayLabel(new Date(season.start_ms).toISOString().slice(0, 10)) : undefined;
 		return start && end ? `${start} to ${end}` : end ? `Ended ${end}` : '';
 	});
-	const bits = $derived([
-		...(sum?.games ? [{ n: sum.games, one: 'game', many: 'games' }] : []),
-		...(sum?.sets ? [{ n: sum.sets, one: 'set', many: 'sets' }] : []),
-		...(sum?.players ? [{ n: sum.players, one: 'player', many: 'players' }] : []),
-		...(hl?.days ? [{ n: hl.days, one: 'day', many: 'days' }] : [])
-	]);
+	const bits = $derived(heroBits(sum, hl));
+	// the players who are recorded but not on the roster: props for the high finishers, and an invitation to the rest
+	const unl = $derived(hl?.unlisted);
+	const showProps = $derived(propsCards(unl).length > 0);
+	const showRecord = $derived(!!unl && (unl.count > 0 || wallNames(unl).length > 0));
 	const pickList = $derived(
 		[...(seasons.table?.seasons ?? [])].reverse().map((s) => ({ id: s.id, label: s.label, current: s.id === seasons.table?.current }))
 	);
@@ -164,15 +166,17 @@
 
 	// ── navigation: sections, groups, sub-sections ──
 	const ids = $derived([
-		'top', 'podium', ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'you',
+		'top', 'podium', ...(showProps ? ['props'] : []), ...(showRecord ? ['record'] : []), ...(mentions.length ? ['mentions'] : []), ...(glance.length ? ['glance'] : []), 'you',
 		...(groups.length ? ['explore', ...groups.map((g) => g.id)] : []), 'next', ...(roster ? ['thanks'] : []), 'feedback', 'close'
 	]);
 	const titleOf = $derived<Record<string, string>>({
-		top: 'Sections', podium: 'Podium', mentions: 'Notable mentions', glance: 'At a glance', you: 'Your season', explore: 'Explore the season',
+		top: 'Sections', podium: 'Podium', props: 'Made rank without the app', record: 'You might have a record here', mentions: 'Notable mentions', glance: 'At a glance', you: 'Your season', explore: 'Explore the season',
 		...Object.fromEntries(groups.map((g) => [g.id, g.title])), next: 'What’s next', thanks: 'Special thanks', feedback: 'Feedback', close: 'Thank you'
 	});
 	const navItems = $derived<NavItem[]>([
 		{ id: 'podium', title: 'The podium', summary: ladder.champion ? `${ladder.champion.name} finished first` : undefined },
+		...(showProps ? [{ id: 'props', title: 'Made rank without the app', summary: `${propsCards(unl).length} players who never signed up and still finished high` }] : []),
+		...(showRecord ? [{ id: 'record', title: 'You might have a record here', summary: unl && unl.count ? `${nf(unl.count)} players have a record and never signed up` : 'Played someone on the app? Find your name' }] : []),
 		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions', summary: `${mentions.length} ${mentions.length === 1 ? 'player' : 'players'} outside the top 8` }] : []),
 		...(glance.length ? [{ id: 'glance', title: 'At a glance', summary: `${label} in six figures` }] : []),
 		{ id: 'you', title: 'Your season', summary: auth.authed ? 'Where you finished' : 'Sign in to see where you finished' },
@@ -183,6 +187,8 @@
 	]);
 	const wideNav = $derived([
 		...(ladder.champion ? [{ id: 'podium', title: 'Podium' }] : []),
+		...(showProps ? [{ id: 'props', title: 'Made rank without the app' }] : []),
+		...(showRecord ? [{ id: 'record', title: 'Your record' }] : []),
 		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions' }] : []),
 		...(glance.length ? [{ id: 'glance', title: 'At a glance' }] : []),
 		{ id: 'you', title: 'Your season' },
@@ -392,6 +398,22 @@
 			{/if}
 		</section>
 
+		<!-- made rank without the app: props to the unlisted players who finished high -->
+		{#if showProps && unl}
+			<section class="sec" id="props" aria-labelledby="props-h">
+				{@render hd('props', 'Made rank without the app')}
+				<UnlistedProps u={unl} {label} season={season.id} />
+			</section>
+		{/if}
+
+		<!-- you might have a record here -->
+		{#if showRecord && unl}
+			<section class="sec" id="record" aria-labelledby="record-h">
+				{@render hd('record', 'You might have a record here')}
+				<RecordCallout u={unl} {roster} season={season.id} {label} nextLabel={next?.label} {mine} />
+			</section>
+		{/if}
+
 		<!-- notable mentions -->
 		{#if mentions.length}
 			<section class="sec" id="mentions" aria-labelledby="mentions-h">
@@ -408,6 +430,7 @@
 				<dl class="glance" use:reveal>
 					{#each glance as g (g.key)}<div><dt>{g.label}</dt><dd>{#if g.pre}<span class="pre">{g.pre}</span>{/if}<CountUp value={g.n} format={(x) => (g.dec ? nf1(x) : nf(x))} /></dd></div>{/each}
 				</dl>
+				{#if recordedBySentence(sum)}<p class="ssub" style="margin-top:10px">{recordedBySentence(sum)}{#if gamesEachSentence(sum)} {gamesEachSentence(sum)}{/if}</p>{/if}
 			</section>
 		{/if}
 

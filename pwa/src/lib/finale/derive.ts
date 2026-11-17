@@ -166,8 +166,14 @@ export interface GlanceTile {
 export function glanceTiles(s: Summary | null, h: Highlights | null): GlanceTile[] {
 	const t: GlanceTile[] = [];
 	if (s?.games) t.push({ key: 'games', n: s.games, label: 'games' });
-	if (s?.sets) t.push({ key: 'sets', n: s.sets, label: 'sets' });
-	if (s?.players) t.push({ key: 'players', n: s.players, label: 'players' });
+	// with a roster the counts are honest about who is who: players on the app, and everyone recorded on the ladder
+	if (s?.roster) {
+		t.push({ key: 'roster', n: s.roster, label: s.roster === 1 ? 'player on the app' : 'players on the app' });
+		if (s.players) t.push({ key: 'players', n: s.players, label: 'on the ladder' });
+	} else {
+		if (s?.sets) t.push({ key: 'sets', n: s.sets, label: 'sets' });
+		if (s?.players) t.push({ key: 'players', n: s.players, label: 'players' });
+	}
 	if (s?.placed) t.push({ key: 'placed', n: s.placed, label: 'finished with a rank' });
 	if (h?.days) t.push({ key: 'days', n: h.days, label: h.everyDay ? 'days, a game on every one' : 'days' });
 	if (h?.time?.hours) t.push({ key: 'hours', pre: 'At least', n: h.time.hours, dec: true, label: 'hours of play' });
@@ -234,6 +240,8 @@ export function featLeaders(key: 'perfects' | 'comebacks', s: Summary | null, h:
 
 export interface SeasonCardData {
 	place?: number;
+	/** for a player who is not on the roster: where they would sit if everyone were listed */
+	overallPlace?: number;
 	of?: number;
 	topPct?: number;
 	opponent?: { name: string; steamid?: string; avatar?: string; games: number };
@@ -258,6 +266,7 @@ export function normalizeSeasonCard(raw: unknown): SeasonCardData | null {
 	const sid = typeof bw?.session_id === 'string' && bw.session_id ? bw.session_id : undefined;
 	return {
 		place: num(o.place),
+		overallPlace: num(o.overall_place),
 		of: num(o.of),
 		topPct: num(o.top_pct),
 		opponent: name && games ? { name, steamid: typeof oppP?.steamid === 'string' ? oppP.steamid : undefined, avatar: typeof oppP?.avatar === 'string' ? oppP.avatar : undefined, games } : undefined,
@@ -312,4 +321,46 @@ export function presentSubs(id: GroupId, s: Summary | null, h: Highlights | null
 			break;
 	}
 	return out;
+}
+
+// ── the hero line ───────────────────────────────────────────────────────────────────────────────
+
+export interface HeroBit {
+	n: number;
+	one: string;
+	many: string;
+	/** a second figure closing the same sentence ("..., against 530 opponents.") */
+	tail?: { n: number; one: string; many: string };
+}
+/**
+ * "{games} games. {days} days. {roster} players on the app, against {unlisted} opponents." The game total is the
+ * headline (the roster count makes it more impressive, not less). A clause drops when its number is absent. A server
+ * with no roster keeps the older line (games, sets, players, days).
+ */
+export function heroBits(s: Summary | null, h: Highlights | null): HeroBit[] {
+	const out: HeroBit[] = [];
+	if (s?.games) out.push({ n: s.games, one: 'game', many: 'games' });
+	if (s?.roster) {
+		if (h?.days) out.push({ n: h.days, one: 'day', many: 'days' });
+		out.push({ n: s.roster, one: 'player on the app', many: 'players on the app', tail: s.unlisted ? { n: s.unlisted, one: 'opponent', many: 'opponents' } : undefined });
+		return out;
+	}
+	if (s?.sets) out.push({ n: s.sets, one: 'set', many: 'sets' });
+	if (s?.players) out.push({ n: s.players, one: 'player', many: 'players' });
+	if (h?.days) out.push({ n: h.days, one: 'day', many: 'days' });
+	return out;
+}
+
+/** One plain sentence for the numbers section: every game was recorded by one of the roster players. */
+export function recordedBySentence(s: Summary | null): string | undefined {
+	return s?.roster ? `Every one of those games was recorded by one of ${nf(s.roster)} ${s.roster === 1 ? 'player' : 'players'} running Retro Receipts.` : undefined;
+}
+/**
+ * "That is about 545 games each": total games divided by the roster. Every game is recorded by at least one roster
+ * player, so this attributes each game ONCE (no summing of per-player games, which would double-count games between
+ * two roster players). Only with both numbers.
+ */
+export function gamesEachSentence(s: Summary | null): string | undefined {
+	if (!s?.roster || !s.games) return undefined;
+	return `That is about ${nf(Math.round(s.games / s.roster))} games each.`;
 }

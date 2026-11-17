@@ -19,6 +19,8 @@ export interface Mine {
 	peak?: number;
 	team?: number[];
 	card: SeasonCardData | null;
+	/** on the season's roster (listed on its boards); undefined when the server does not say */
+	onRoster?: boolean;
 }
 
 export const mineGames = (m: Mine): number => m.wins + m.losses;
@@ -44,7 +46,8 @@ export function normalizeMine(raw: unknown): Mine | null {
 		bestStreak: pos(j.best_streak),
 		peak: pos(j.peak_rating),
 		team: team?.length ? team : undefined,
-		card: normalizeSeasonCard(j.season_card)
+		card: normalizeSeasonCard(j.season_card),
+		onRoster: typeof j.on_roster === 'boolean' ? j.on_roster : undefined
 	};
 }
 

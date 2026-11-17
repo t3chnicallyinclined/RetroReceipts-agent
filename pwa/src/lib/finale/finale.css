@@ -527,3 +527,8 @@
 .fin .hdlink{white-space:nowrap}
 .fin .wall{grid-template-columns:repeat(auto-fill,minmax(min(100%,160px),1fr))}
 @media(min-width:760px){.fin .wall{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}}
+.fin .ov{font-size:12.5px;font-weight:700;color:var(--ink)}
+.fin .card.elo{margin-top:12px}
+.fin .card.rec{margin-top:4px}
+.fin .wallnames{columns:2 150px}
+@media(min-width:760px){.fin .wallnames{columns:4 170px}}

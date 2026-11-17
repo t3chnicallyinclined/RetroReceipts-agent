@@ -222,6 +222,7 @@
 {#if seasons.available && seasons.currentLabel && !seasons.archived}
 	{#if seasonReg.count}<p class="regline">{seasonReg.count} registered for {seasons.currentLabel}</p>{/if}
 	<JoinStrip label={seasons.currentLabel} current={true} />
+	<p class="regline">Your games are recorded either way. Register to appear on the board.</p>
 {/if}
 
 {#if regionView}
@@ -298,6 +299,19 @@
 	{/if}
 {/if}
 
+<!-- WHO is on the board: the roster by default. A quiet line says how many more have games; a finished season can show everyone. -->
+{#if seasons.available && !regionView && !scoped && (leaderboard.unlisted > 0 || leaderboard.everyone)}
+	<div class="rost">
+		{#if leaderboard.everyone && seasons.archived}
+			<p>Showing everyone with games this season. Players who are not on the board are marked.</p>
+			<button type="button" class="rbtn" aria-pressed="true" onclick={() => leaderboard.setEveryone(false)}>Show the board only</button>
+		{:else}
+			<p>{leaderboard.unlisted} more {leaderboard.unlisted === 1 ? 'player has' : 'players have'} games this season but {leaderboard.unlisted === 1 ? 'is' : 'are'} not listed.</p>
+			{#if seasons.archived}<button type="button" class="rbtn" aria-pressed="false" onclick={() => leaderboard.setEveryone(true)}>Show everyone</button>{/if}
+		{/if}
+	</div>
+{/if}
+
 <!-- The Marvel Ladder legend — ranked scope only (Lobby/Tournament are pure records; Regions is its own board). -->
 {#if !regionView && !scoped}
 	<TierLadder mySlug={myTier?.s ?? null} onOpen={(s) => rankInfo.open(s)} />
@@ -308,6 +322,35 @@
 {/if}
 
 <style>
+	.rost {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 6px 12px;
+		margin: 8px 2px 4px;
+		font-size: 12px;
+		color: var(--dim);
+	}
+	.rost p {
+		margin: 0;
+		flex: 1 1 220px;
+	}
+	.rbtn {
+		font: inherit;
+		font-size: 12px;
+		font-weight: 800;
+		color: var(--ink);
+		background: var(--panel-2);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		min-height: 40px;
+		padding: 0 16px;
+		cursor: pointer;
+	}
+	.rbtn:focus-visible {
+		outline: 2px solid var(--gold);
+		outline-offset: 2px;
+	}
 	.regline {
 		margin: 0 2px 6px;
 		font-size: 12px;

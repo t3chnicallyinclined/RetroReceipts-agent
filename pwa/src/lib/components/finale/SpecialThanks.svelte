@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth.svelte';
 	import { filterNames, findMe, windowNames, type Roster } from '$lib/finale/players';
 	import { nf } from '$lib/finale/derive';
+	import { rosterAware, testers } from '$lib/finale/unlisted';
 
 	// Credits, not a ranking: the regulars as a wall of name plates (days is the only figure), then every name as a
 	// plain list so nobody is forgotten. Plain anchors only (no per-row components), so 566+ links stay cheap.
@@ -17,6 +18,10 @@
 	const win = $derived(windowNames(matches, expanded, filtering));
 	const href = (id: string) => `${base}/u/${encodeURIComponent(id)}?season=${encodeURIComponent(season)}`;
 	const meIdx = $derived(findMe(roster.everyone, auth.steamid));
+	// a roster-aware server flags who is on the roster: "The testers" are those players, then everyone recorded
+	const aware = $derived(rosterAware(roster));
+	const tester = $derived(testers(roster));
+	const regById = $derived(new Map(roster.regulars.map((r) => [r.player.steamid, r])));
 
 	async function findMine() {
 		if (meIdx < 0) {
@@ -35,7 +40,21 @@
 
 <p class="ssub">Shout-out to everyone who helped shape the beta. Thank you for playing, for the feedback, and for putting up with a project that is still in testing.</p>
 
-{#if roster.regulars.length}
+{#if aware && tester.length}
+	<h3 class="rail subh">The testers</h3>
+	<p class="dimp" style="margin:0 2px 10px">{nf(tester.length)} {tester.length === 1 ? 'player' : 'players'} signed up and ran the app in {label}. Thank you for being the first people on it.</p>
+	<ul class="wall">
+		{#each tester as t (t.steamid)}
+			{@const reg = regById.get(t.steamid)}
+			<li>
+				<a class="plate" href={href(t.steamid)}>
+					<Avatar url={reg?.player.avatar} size={36} alt="" />
+					<span class="pn"><span class="pt" title={t.name}>{t.name}</span>{#if reg}<span class="pd">{nf(reg.days)} days</span>{/if}</span>
+				</a>
+			</li>
+		{/each}
+	</ul>
+{:else if roster.regulars.length}
 	<h3 class="rail subh">The regulars</h3>
 	<p class="dimp" style="margin:0 2px 10px">{nf(roster.regulars.length)} players showed up on {roster.regularDays} or more days of {label}.</p>
 	<ul class="wall">
@@ -51,7 +70,7 @@
 {/if}
 
 {#if roster.everyone.length}
-	<h3 class="rail subh" id="everyone-h">Everyone who played {label}</h3>
+	<h3 class="rail subh" id="everyone-h">{aware ? 'Everyone who showed up on the ladder' : `Everyone who played ${label}`}</h3>
 	<p class="dimp" style="margin:0 2px 10px">{nf(roster.everyone.length)} players, so nobody is forgotten.</p>
 	<div class="row finder">
 		<label class="sr" for="find-name">Find your name</label>

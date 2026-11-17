@@ -15,6 +15,10 @@ export class LeaderboardStore {
 	tab = $state<LeaderboardTab>('rating');
 	period = $state<LeaderboardPeriod>('all');
 	scope = $state<LeaderboardScope>('ranked');
+	/** show everyone with games (`?roster=all`, unlisted rows marked) instead of the season roster; finished seasons only */
+	everyone = $state(false);
+	/** players with games this season who are not on the roster (from the default board's `unlisted`) */
+	unlisted = $state(0);
 	players = $state<Player[]>([]);
 	loading = $state(false);
 	error = $state<string | null>(null);
@@ -57,6 +61,12 @@ export class LeaderboardStore {
 		void this.load(true);
 	}
 
+	setEveryone(on: boolean) {
+		if (on === this.everyone) return;
+		this.everyone = on;
+		void this.load(true);
+	}
+
 	setPeriod(p: LeaderboardPeriod) {
 		if (p === this.period || this.periodLocked) return;
 		this.period = p;
@@ -78,7 +88,8 @@ export class LeaderboardStore {
 			this.#shownSeason = season;
 		}
 		try {
-			const res = await fetchLeaderboard(tab, period, scope, 50, undefined, season);
+			const wantAll = this.everyone && !!seasons.archived;
+			const res = await fetchLeaderboard(tab, period, scope, 50, undefined, season, wantAll ? 'all' : undefined);
 			if (myReq !== this.#reqId) return; // a newer request superseded this one
 			// Skew guard: only trust rows when the server ECHOES the scope we asked for. A pre-scope
 			// server ignores &scope= (echoes 'ranked' / nothing), so under Lobby/Tournament we show the
@@ -89,6 +100,8 @@ export class LeaderboardStore {
 			const next = skew ? [] : (res.players ?? []);
 			if (!reset && !skew) this.#computeFlash(next);
 			this.players = next;
+			if (!wantAll && typeof res.unlisted === 'number') this.unlisted = res.unlisted;
+			else if (!wantAll && res.unlisted === undefined) this.unlisted = 0;
 			this.error = null;
 			this.lastLoaded = Date.now();
 		} catch (e) {

@@ -49,6 +49,27 @@ export interface Mention {
 	tier?: string;
 	boards: MentionBoard[];
 }
+export interface UnlistedRow {
+	player: PlayerRef;
+	rating: number;
+	peak?: number;
+	wins?: number;
+	losses?: number;
+	games?: number;
+	/** where they would sit if everyone were listed */
+	overallPlace?: number;
+	/** lower-case tier slug */
+	tier?: string;
+}
+/** Players with games who are NOT on the season roster (they never signed up; their games were recorded by an app user's agent). */
+export interface Unlisted {
+	count: number;
+	withWins?: number;
+	placed?: number;
+	top: UnlistedRow[];
+	mostActive: { player: PlayerRef; games: number; days?: number }[];
+}
+
 export interface Highlights {
 	days?: number;
 	everyDay: boolean;
@@ -84,6 +105,7 @@ export interface Highlights {
 	world?: { known?: number; countries?: number; crossShare?: number; topPair?: [string, string]; top: { cc: string; players: number }[] };
 	trust?: { confirmedShare?: number; taped?: number };
 	mentions: Mention[];
+	unlisted?: Unlisted;
 }
 
 type Raw = Record<string, unknown>;
@@ -221,6 +243,21 @@ export function normalizeHighlights(raw: unknown): Highlights | null {
 	const tr = obj(j.trust);
 	if (tr) out.trust = { confirmedShare: pos(tr.confirmed_share), taped: pos(tr.taped) };
 
+	const ul = obj(j.unlisted);
+	if (ul) {
+		const top = arr(ul.top).flatMap((r): UnlistedRow[] => {
+			const player = playerRef(r.player);
+			const rating = pos(r.rating);
+			return player && rating !== undefined ? [{ player, rating, peak: pos(r.peak), wins: fin(r.wins), losses: fin(r.losses), games: pos(r.games), overallPlace: pos(r.overall_place), tier: str(r.tier)?.toLowerCase() }] : [];
+		});
+		const mostActive = arr(ul.most_active).flatMap((r) => {
+			const player = playerRef(r.player);
+			const games = pos(r.games);
+			return player && games !== undefined ? [{ player, games, days: pos(r.days) }] : [];
+		});
+		const count = pos(ul.count);
+		if (count !== undefined || top.length || mostActive.length) out.unlisted = { count: count ?? Math.max(top.length, mostActive.length), withWins: pos(ul.with_wins), placed: pos(ul.placed), top, mostActive };
+	}
 	out.mentions = arr(j.mentions).flatMap((r) => {
 		const player = playerRef(r.player);
 		if (!player) return [];

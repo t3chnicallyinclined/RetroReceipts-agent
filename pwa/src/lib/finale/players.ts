@@ -15,8 +15,10 @@ export interface Regular {
 }
 export interface Roster {
 	regulars: Regular[];
-	everyone: { steamid: string; name: string }[];
+	/** `onRoster` is undefined on a server that has no roster yet */
+	everyone: { steamid: string; name: string; onRoster?: boolean }[];
 	regularDays: number;
+	counts?: { roster?: number; everyone?: number; regulars?: number };
 }
 
 export function normalizeRoster(raw: unknown): Roster | null {
@@ -35,10 +37,11 @@ export function normalizeRoster(raw: unknown): Roster | null {
 		const name = typeof o?.name === 'string' ? o.name.trim() : '';
 		if (!steamid || !name || seen.has(steamid)) return [];
 		seen.add(steamid);
-		return [{ steamid, name }];
+		return [{ steamid, name, onRoster: typeof o?.on_roster === 'boolean' ? o.on_roster : undefined }];
 	});
 	if (!regulars.length && !everyone.length) return null;
-	return { regulars, everyone, regularDays: pos(j.regular_days) ?? 10 };
+	const c = obj(j.counts);
+	return { regulars, everyone, regularDays: pos(j.regular_days) ?? 10, counts: c ? { roster: pos(c.roster), everyone: pos(c.everyone), regulars: pos(c.regulars) } : undefined };
 }
 
 export async function fetchRoster(seasonId: string): Promise<Roster | null> {

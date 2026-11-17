@@ -67,6 +67,10 @@ export interface Summary {
 	games?: number;
 	sets?: number;
 	players?: number;
+	/** players ON the season roster (signed up); absent on a server that has no roster yet */
+	roster?: number;
+	/** players with games who are not on the roster */
+	unlisted?: number;
 	/** players who finished with a rank (5+ ranked games) */
 	placed?: number;
 	/** game counts by mode; only ranked, casual lobby and tournament, and only when two or more are non-zero */
@@ -116,6 +120,8 @@ export function shapeSummary(raw: unknown): Summary | null {
 		games: pos(games?.total),
 		sets: pos(games?.sets),
 		players: pos(players?.played),
+		roster: pos(players?.roster),
+		unlisted: pos(players?.unlisted),
 		placed: pos(players?.placed),
 		modes: modes.length >= 2 ? [...modes] : [],
 		busiestDay: date && pos(bd?.games) ? { date, games: bd?.games as number } : undefined,

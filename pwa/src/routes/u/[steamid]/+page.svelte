@@ -263,6 +263,7 @@
 				link={false}
 			/>
 			{#if loc}<span class="loc heroloc">{loc}</span>{/if}
+			{#if seasons.available && p.on_roster === false}<span class="pill regpill" title="Their games were recorded, but they have not signed up, so they are not on the board">Not on the board</span>{/if}
 			{#if seasons.available && !seasons.archived && p.season_registered}<span class="pill regpill" title="Registered for {seasons.currentLabel}">Registered</span>{/if}
 			{#if aliases.length}
 				<!-- name history on this SteamID — renaming never sheds a reputation -->
