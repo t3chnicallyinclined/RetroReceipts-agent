@@ -42,7 +42,7 @@
 
 {#if aware && tester.length}
 	<h3 class="rail subh">The testers</h3>
-	<p class="dimp" style="margin:0 2px 10px">{nf(tester.length)} {tester.length === 1 ? 'player' : 'players'} signed up and ran the app in {label}. Thank you for being the first people on it.</p>
+	<p class="dimp" style="margin:0 2px 10px">{nf(tester.length)} {tester.length === 1 ? 'player' : 'players'} ran the app in {label}. Thank you for being the first people on it.</p>
 	<ul class="wall">
 		{#each tester as t (t.steamid)}
 			{@const reg = regById.get(t.steamid)}

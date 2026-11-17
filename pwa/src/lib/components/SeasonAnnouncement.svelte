@@ -3,15 +3,15 @@
 	import { base } from '$app/paths';
 	import { page } from '$app/state';
 	import { seasons } from '$lib/stores/seasons.svelte';
-	import { seasonReg } from '$lib/stores/seasonreg.svelte';
 	import { announce } from '$lib/stores/announce.svelte';
-	import { auth } from '$lib/stores/auth.svelte';
-	import { announcementFor, announcementHiddenOn, readDismissed, writeDismissed, RESIGN_COPY } from '$lib/launch';
+	import { agent } from '$lib/stores/agent.svelte';
+	import GetTheApp from '$lib/components/GetTheApp.svelte';
+	import { announcementFor, announcementHiddenOn, readDismissed, writeDismissed } from '$lib/launch';
 
 	// "Season closed, new season open": derived from the seasons table, so it reaches visitors who arrive cold
 	// (the broadcast banner only reaches people who are connected when it is sent). Shown for 21 days after a season
 	// ends; dismissal is remembered per ended season. No card on an old server or with only one season.
-	// Registration is a flag: this card says nothing about how games are treated.
+	// No registration step: the call to action is to get the app and play.
 	let dismissed = $state<Set<string>>(new Set());
 	let now = $state(Date.now());
 	onMount(() => {
@@ -22,17 +22,6 @@
 	const a = $derived(announcementHiddenOn(page.url.pathname, base) ? null : announcementFor(seasons.table, now, dismissed));
 	// a server banner may already be on screen: keep this card to a single quiet row so they do not stack heavily
 	const compact = $derived(announce.items.length > 0);
-
-	// registration status for the open season (only read while the card is up)
-	let readFor = '';
-	$effect(() => {
-		const open = a?.open.id;
-		const who = auth.steamid ?? '';
-		if (!open || readFor === `${open}|${who}`) return;
-		readFor = `${open}|${who}`;
-		seasonReg.reset();
-		void seasonReg.load(auth.steamid);
-	});
 
 	function close() {
 		if (!a) return;
@@ -47,14 +36,8 @@
 	<section class="sa" class:compact aria-label="Season announcement">
 		<div class="body">
 			<p class="l1"><b>{a.ended.label}</b> is closed. <a href="{base}/season/{encodeURIComponent(a.ended.id)}">See the final standings and the season in numbers.</a></p>
-			{#if !seasonReg.registered || seasonReg.justJoined}
-				<p class="l2">
-					{#if seasonReg.justJoined}You’re registered for {a.open.label}.
-					{:else if !auth.authed}<b>{a.open.label}</b> is open: sign in and register. <button type="button" class="act" onclick={() => auth.login()}>Sign in through Steam</button>
-					{:else if seasonReg.refusal === 'signin'}{RESIGN_COPY} <button type="button" class="act" onclick={() => auth.login()}>Sign in through Steam</button>
-					{:else if seasonReg.known}<b>{a.open.label}</b> is open: register to take part. <button type="button" class="act" disabled={seasonReg.busy} onclick={() => seasonReg.join()}>{seasonReg.busy ? 'Joining…' : `Join ${a.open.label}`}</button>
-					{/if}
-				</p>
+			{#if !agent.reporting}
+				<div class="l2"><p><b>{a.open.label}</b> is open. Download the app and just play.</p><GetTheApp small /></div>
 			{/if}
 		</div>
 		<button type="button" class="x" aria-label="Dismiss the season announcement" onclick={close}>✕</button>
@@ -92,25 +75,11 @@
 	}
 	.l2 {
 		color: var(--dim);
+		display: grid;
+		gap: 6px;
 	}
 	.l2 b {
 		color: var(--ink);
-	}
-	.act {
-		font: inherit;
-		font-weight: 800;
-		font-size: 12px;
-		color: var(--ink);
-		background: var(--panel-2);
-		border: 1px solid var(--line);
-		border-radius: 999px;
-		min-height: 36px;
-		padding: 0 14px;
-		margin-left: 4px;
-		cursor: pointer;
-	}
-	.act:disabled {
-		opacity: 0.6;
 	}
 	.x {
 		flex: none;

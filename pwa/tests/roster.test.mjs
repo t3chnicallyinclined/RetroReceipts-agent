@@ -90,9 +90,9 @@ test('props cards, wall and the copy', () => {
 	assert.equal(U.propsCards(u).length, 2);
 	assert.equal(U.overallText(u.top[0]), 'would have finished 3rd overall');
 	assert.equal(U.overallText({ ...u.top[0], overallPlace: undefined }), undefined);
-	assert.equal(U.PROPS_LEAD('Season Zero'), 'These players never signed up. Every one of their games was recorded from the other side of the match, and they still finished among the best in Season Zero.');
+	assert.equal(U.PROPS_LEAD('Season Zero'), 'These players never ran the app. Every one of their games was recorded from the other side of the match, and they still finished among the best in Season Zero.');
 	assert.ok(U.ELO_EXPLAINER.startsWith('How that happens: the ladder uses Elo.') && U.ELO_EXPLAINER.includes('someone with a few dozen games against strong opponents can out-rate someone with thousands.'));
-	assert.equal(U.RECORD_LEAD(530, 'Season Zero', 'Beta Season 1'), 'If you played someone running Retro Receipts, your games were recorded. 530 players have a Season Zero record and never signed up. Sign in with Steam to see your stats and get on the board for Beta Season 1.');
+	assert.equal(U.RECORD_LEAD(530, 'Season Zero', 'Beta Season 1'), 'If you played someone running Retro Receipts, your games were recorded. 530 players have a Season Zero record and never ran the app. Download the app and just play to get on the board for Beta Season 1, or sign in with Steam to see your stats.');
 	// the wall: most active first then top, de-duplicated (Mel_PH is in both), names as stored
 	assert.deepEqual(U.wallNames(u).map((p) => p.name), ['Mel_PH', 'Eno', 'kingkells']);
 	assert.deepEqual(U.wallNames(undefined), []);
@@ -173,7 +173,7 @@ const read = (p) => readFileSync(new URL(p, SRC), 'utf8');
 test('Ranks copy', () => {
 	const ranks = read('routes/ranks/+page.svelte');
 	assert.ok(ranks.includes('games this season but') && ranks.includes('not listed.'));
-	assert.ok(ranks.includes('Show everyone') && ranks.includes('Your games are recorded either way. Register to appear on the board.'));
+	assert.ok(ranks.includes('Show everyone') && !/Register to appear/.test(ranks) && ranks.includes('Download the app and just play.'));
 	assert.ok(read('lib/components/BoardRow.svelte').includes('not on the board'));
 });
 

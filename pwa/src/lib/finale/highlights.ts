@@ -61,7 +61,7 @@ export interface UnlistedRow {
 	/** lower-case tier slug */
 	tier?: string;
 }
-/** Players with games who are NOT on the season roster (they never signed up; their games were recorded by an app user's agent). */
+/** Players with games who are NOT on the season roster (they never ran the app; their games were recorded by an app user's agent). */
 export interface Unlisted {
 	count: number;
 	withWins?: number;

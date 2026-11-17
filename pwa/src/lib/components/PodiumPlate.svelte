@@ -44,7 +44,6 @@
 		<Avatar url={player.avatar} size={crown ? 58 : 46} alt={player.name} />
 		<b class="pnm">{#if player.cc}<Flag cc={player.cc} w={16} /> {/if}{player.name || 'Player'}</b>
 	{/if}
-	{#if player.registered}<span class="regmk" role="img" aria-label="Registered for this season" title="Registered">✓ Registered</span>{/if}
 	{#if !scoped}
 		<span class="ptier bd-tier">
 			<RankBadge rating={player.rating} games={gamesOf(player)} size={crown ? 20 : 16} />

@@ -19,8 +19,8 @@
 	import { seasons } from '$lib/stores/seasons.svelte';
 	import SeasonPicker from '$lib/components/SeasonPicker.svelte';
 	import SeasonNote from '$lib/components/SeasonNote.svelte';
-	import JoinStrip from '$lib/components/JoinStrip.svelte';
-	import { seasonReg } from '$lib/stores/seasonreg.svelte';
+	import GetTheApp from '$lib/components/GetTheApp.svelte';
+	import { agent } from '$lib/stores/agent.svelte';
 	import type { LeaderboardTab, LeaderboardPeriod } from '$lib/types';
 
 	// ── live wiring: initial fetch + subscribe to the "leaderboard" SSE channel; pause on hide ──
@@ -218,11 +218,9 @@
 
 <SeasonNote onback={onSeason} />
 
-<!-- current season only: how many have registered, and the one-tap register strip (a flag, nothing more) -->
-{#if seasons.available && seasons.currentLabel && !seasons.archived}
-	{#if seasonReg.count}<p class="regline">{seasonReg.count} registered for {seasons.currentLabel}</p>{/if}
-	<JoinStrip label={seasons.currentLabel} current={true} />
-	<p class="regline">Your games are recorded either way. Register to appear on the board.</p>
+<!-- current season only: get the app and play. No registration is needed to be on the board. -->
+{#if seasons.available && seasons.currentLabel && !seasons.archived && !agent.reporting}
+	<div class="appstrip"><GetTheApp small line="Download the app and just play. Your games are recorded and you’re on the board." /></div>
 {/if}
 
 {#if regionView}
@@ -351,10 +349,14 @@
 		outline: 2px solid var(--gold);
 		outline-offset: 2px;
 	}
-	.regline {
-		margin: 0 2px 6px;
-		font-size: 12px;
-		color: var(--dim);
+	.appstrip {
+		margin: 0 0 12px;
+		padding: 10px 12px;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--panel);
+		font-size: 12.5px;
+		color: var(--ink);
 	}
 	.controls {
 		display: flex;

@@ -98,7 +98,7 @@ export interface Profile {
 	// Game-mode records (ranked/lobby/tournament/money policy). tourney+money are public; lobby is
 	// owner-or-public (null when hidden). Rebuild-derived server-side.
 	season_registered?: boolean;
-	/** on the selected season's roster (listed on its boards); false = recorded but not signed up */
+	/** on the selected season's roster (listed on its boards); false = recorded but not on the app */
 	on_roster?: boolean;
 	tourney?: ModeRecord;
 	money?: ModeRecord;

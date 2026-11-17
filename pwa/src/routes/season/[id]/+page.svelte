@@ -18,8 +18,7 @@
 	import RecordCallout from '$lib/components/finale/RecordCallout.svelte';
 	import { reveal, revealAll } from '$lib/finale/motion';
 	import { DISCORD_URL } from '$lib/links';
-	import { seasonReg } from '$lib/stores/seasonreg.svelte';
-	import { RESIGN_COPY } from '$lib/launch';
+	import GetTheApp from '$lib/components/GetTheApp.svelte';
 	import { gamesOf, rankOf, winrateOf, winrateColor, RK_PLATE } from '$lib/ranks';
 	import type { Player } from '$lib/types';
 	import Avatar from '$lib/components/Avatar.svelte';
@@ -175,8 +174,8 @@
 	});
 	const navItems = $derived<NavItem[]>([
 		{ id: 'podium', title: 'The podium', summary: ladder.champion ? `${ladder.champion.name} finished first` : undefined },
-		...(showProps ? [{ id: 'props', title: 'Made rank without the app', summary: `${propsCards(unl).length} players who never signed up and still finished high` }] : []),
-		...(showRecord ? [{ id: 'record', title: 'You might have a record here', summary: unl && unl.count ? `${nf(unl.count)} players have a record and never signed up` : 'Played someone on the app? Find your name' }] : []),
+		...(showProps ? [{ id: 'props', title: 'Made rank without the app', summary: `${propsCards(unl).length} players who never ran the app and still finished high` }] : []),
+		...(showRecord ? [{ id: 'record', title: 'You might have a record here', summary: unl && unl.count ? `${nf(unl.count)} players have a record and never ran the app` : 'Played someone on the app? Find your name' }] : []),
 		...(mentions.length ? [{ id: 'mentions', title: 'Notable mentions', summary: `${mentions.length} ${mentions.length === 1 ? 'player' : 'players'} outside the top 8` }] : []),
 		...(glance.length ? [{ id: 'glance', title: 'At a glance', summary: `${label} in six figures` }] : []),
 		{ id: 'you', title: 'Your season', summary: auth.authed ? 'Where you finished' : 'Sign in to see where you finished' },
@@ -304,16 +303,6 @@
 			removeEventListener('resize', setTab);
 			clearTimeout(timer);
 		};
-	});
-
-	// the open season's registration: status is read on load (so a registered player sees the registered state,
-	// never "Register" again); joining is the same authed call as Settings. A flag only.
-	$effect(() => {
-		const open = next?.id;
-		const sid = auth.steamid;
-		if (!open) return;
-		seasonReg.reset();
-		void seasonReg.load(sid);
 	});
 
 	const title = $derived(season ? `${season.label} wrap-up` : 'Season wrap-up');
@@ -464,9 +453,8 @@
 					<div class="card">
 						<span class="rail">Open now</span>
 						<h3>{next.label}</h3>
-						<p>Everyone starts fresh at the same rating. Register to take part, play your first five ranked games to get a rank, and {label} stays here to look back on.</p>
-						<div class="cta">{#if seasonReg.registered}<span class="pill">Registered</span>{:else if !auth.authed}<button type="button" class="btn pri" onclick={() => auth.login()}>Sign in to register</button>{:else if seasonReg.refusal === 'signin'}<button type="button" class="btn pri" onclick={() => auth.login()}>Sign in through Steam</button>{:else}<button type="button" class="btn pri" disabled={seasonReg.busy || !seasonReg.known} onclick={() => seasonReg.join()}>Register for {next.label}</button>{/if}<a class="btn" href="{base}/ranks">See the current ladder</a></div>
-						<p class="status" role="status" aria-live="polite">{seasonReg.justJoined ? `You’re registered for ${next.label}.` : seasonReg.refusal === 'signin' ? RESIGN_COPY : seasonReg.message}</p>
+						<p>Everyone starts fresh. Download the app, play 5 ranked games and you have a rank. {label} stays here to look back on.</p>
+						<div class="cta"><GetTheApp showSignin={false} /><a class="btn" href="{base}/ranks">See the current ladder</a></div>
 						<p class="dimp">We plan to run more seasons after that.</p>
 					</div>
 				{:else}

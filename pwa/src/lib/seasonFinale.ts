@@ -67,7 +67,7 @@ export interface Summary {
 	games?: number;
 	sets?: number;
 	players?: number;
-	/** players ON the season roster (signed up); absent on a server that has no roster yet */
+	/** players ON the season roster (ran the app); absent on a server that has no roster yet */
 	roster?: number;
 	/** players with games who are not on the roster */
 	unlisted?: number;

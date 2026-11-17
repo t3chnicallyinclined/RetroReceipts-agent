@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 // Season launch: the announcement card, the join strip, registration, and the "new season started" notice.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -76,20 +77,6 @@ test('dismissal is remembered in localStorage and survives broken storage', () =
 	assert.equal(L.readDismissed().size, 0);
 	assert.doesNotThrow(() => L.writeDismissed(new Set(['x'])));
 	delete globalThis.localStorage;
-});
-
-// ── the join strip ──
-const base = { current: true, authed: true, known: true, registered: false, busy: false, justJoined: false, refusal: null };
-test('join strip states', () => {
-	assert.equal(L.joinStripState({ ...base, current: false }), 'hidden'); // a finished season never offers it
-	assert.equal(L.joinStripState({ ...base, authed: false }), 'signin');
-	assert.equal(L.joinStripState({ ...base }), 'join');
-	assert.equal(L.joinStripState({ ...base, busy: true }), 'busy');
-	assert.equal(L.joinStripState({ ...base, registered: true }), 'hidden'); // already registered before this visit
-	assert.equal(L.joinStripState({ ...base, registered: true, justJoined: true }), 'done'); // quiet confirmation
-	assert.equal(L.joinStripState({ ...base, known: false }), 'hidden'); // never offer Join before the status is known
-	assert.equal(L.joinStripState({ ...base, refusal: 'signin' }), 'resign'); // an older sign-in the server will not accept
-	assert.equal(L.joinStripState({ ...base, authed: false, known: false }), 'signin');
 });
 
 test('register refusals: an unproven sign-in is told to sign in once more', () => {
@@ -178,7 +165,7 @@ test('season change notice: flagged when the current season changes, not before,
 
 // ── copy rules ──
 const SRC = new URL('../src/', import.meta.url);
-const pieces = ['lib/launch.ts', 'lib/components/SeasonAnnouncement.svelte', 'lib/components/SeasonChangeNotice.svelte', 'lib/components/JoinStrip.svelte', 'lib/stores/seasonreg.svelte.ts'];
+const pieces = ['lib/launch.ts', 'lib/components/SeasonAnnouncement.svelte', 'lib/components/SeasonChangeNotice.svelte', 'lib/components/GetTheApp.svelte', 'lib/stores/seasonreg.svelte.ts'];
 test('registration is a flag: no copy says or implies unregistered games do not count', () => {
 	for (const p of pieces) {
 		const src = readFileSync(new URL(p, SRC), 'utf8');
@@ -189,11 +176,14 @@ test('registration is a flag: no copy says or implies unregistered games do not 
 test('the exact copy', () => {
 	const ann = readFileSync(new URL('lib/components/SeasonAnnouncement.svelte', SRC), 'utf8');
 	assert.ok(ann.includes('is closed.') && ann.includes('See the final standings and the season in numbers.'));
-	assert.ok(ann.includes('is open: sign in and register.'));
+	assert.ok(ann.includes('is open. Download the app and just play.'));
 	const notice = readFileSync(new URL('lib/components/SeasonChangeNotice.svelte', SRC), 'utf8');
 	assert.ok(notice.includes('A new season has started. Refresh to see the new ladder.'));
-	const strip = readFileSync(new URL('lib/components/JoinStrip.svelte', SRC), 'utf8');
-	assert.ok(strip.includes('Sign in to register for {label}.') && strip.includes("You’re registered for {label}."));
+	const get = readFileSync(new URL('lib/components/GetTheApp.svelte', SRC), 'utf8');
+	assert.ok(get.includes('Download the app') && get.includes('Sign in through Steam') && get.includes('to see your stats and vote'));
+	assert.ok(get.includes("agentWinUrl"), 'reuses the existing desktop-agent download link');
+	const ranks = readFileSync(new URL('routes/ranks/+page.svelte', SRC), 'utf8');
+	assert.ok(ranks.includes('Download the app and just play. Your games are recorded and you’re on the board.'));
 });
 
 test('comment plates: no "1000 Civilian" for an author with no rank in the current season', async () => {
@@ -218,4 +208,18 @@ test('count-up numbers follow their value when the data arrives after mount (no 
 	assert.ok(motion.includes('const update = (np') && motion.includes('return { update'), 'countUp action has an update hook');
 	const banner = readFileSync(new URL('lib/components/finale/FinaleBanner.svelte', SRC), 'utf8');
 	assert.ok(banner.includes('{#each bits as b (b.one)}'), 'the lead sentences are keyed by their label, not their position');
+});
+
+test('no copy anywhere asks people to register to be on a board; the download is the primary action', async () => {
+	const { readdirSync, statSync } = await import('node:fs');
+	const walk = (d) => readdirSync(d).flatMap((n) => { const f = d + '/' + n; return statSync(f).isDirectory() ? walk(f) : [f]; });
+	const skip = /settings|seasonreg|launch\.ts|admin|tournament|tourney|auth\.svelte/;
+	const root = fileURLToPath(SRC);
+	for (const f of walk(root + 'lib').concat(walk(root + 'routes'))) {
+		if (skip.test(f) || !/\.(svelte|ts)$/.test(f)) continue;
+		const src = readFileSync(f, 'utf8');
+		assert.ok(!/register to (appear|take part)|sign in to register|Register for|never signed up|signed up and ran/i.test(src), `${f} still asks people to register`);
+	}
+	const get = readFileSync(new URL('lib/components/GetTheApp.svelte', SRC), 'utf8');
+	assert.ok(get.indexOf('class="pri"') < get.indexOf('class="sec"'), 'download comes first');
 });

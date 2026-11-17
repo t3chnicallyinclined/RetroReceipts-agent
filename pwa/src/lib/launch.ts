@@ -59,42 +59,6 @@ export function writeDismissed(ids: ReadonlySet<string>): void {
 	}
 }
 
-// ── the join strip ──────────────────────────────────────────────────────────────────────────────
-
-export type JoinState =
-	/** nothing to show: finished season, old server, or already registered before this visit */
-	| 'hidden'
-	/** signed out: "Sign in to register for {label}" */
-	| 'signin'
-	/** signed in, not registered, status known: the one-tap "Join {label}" */
-	| 'join'
-	/** the join call is in flight */
-	| 'busy'
-	/** registered just now: a quiet confirmation */
-	| 'done'
-	/** the server refused an older, unproven sign-in: "Please sign in with Steam once more to register." */
-	| 'resign';
-
-export function joinStripState(a: {
-	/** the viewer is looking at the current open season */
-	current: boolean;
-	authed: boolean;
-	/** registration status has been read (never offer Join before it is known) */
-	known: boolean;
-	registered: boolean;
-	busy: boolean;
-	/** registered during this visit (the confirmation) */
-	justJoined: boolean;
-	refusal: 'signin' | 'error' | null;
-}): JoinState {
-	if (!a.current) return 'hidden';
-	if (a.justJoined) return 'done';
-	if (!a.authed) return 'signin';
-	if (a.refusal === 'signin') return 'resign';
-	if (!a.known || a.registered) return 'hidden';
-	return a.busy ? 'busy' : 'join';
-}
-
 /** Map a failed register call to what to show. 403 "Sign in with Steam to register." = an unproven sign-in. */
 export function registerRefusal(error: string | undefined): 'signin' | 'error' {
 	const e = (error ?? '').toLowerCase();

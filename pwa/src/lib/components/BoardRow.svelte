@@ -61,8 +61,7 @@
 			<span class="nm">{player.name || 'Player'}</span>
 		{/if}
 		{#if me}<span class="me-tag">YOU</span>{/if}
-		{#if player.on_roster === false}<span class="unl" title="Has games this season; not signed up, so not on the board">not on the board</span>{/if}
-		{#if player.registered}<span class="regmk" role="img" aria-label="Registered for this season" title="Registered">✓</span>{/if}
+		{#if player.on_roster === false}<span class="unl" title="Has games this season but has not run the app, so is not on the board">not on the board</span>{/if}
 		{#if team.length}
 			<span class="subteam" aria-hidden="true">
 				{#each team as id, k (k)}<span class="tchip s"><CharSprite {id} still palette={lo?.[id] ?? null} alt={charTag(id)} /></span>{/each}

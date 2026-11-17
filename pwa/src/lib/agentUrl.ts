@@ -5,6 +5,9 @@
 // release, so only a further FILENAME change would strand it.
 import { api } from '$lib/config';
 
+/** Linux / Steam Deck install: the same one-liner the Download banner shows. */
+export const LINUX_CMD = 'curl -fsSL https://nobd.net/rr/update/install-bazzite.sh | bash';
+
 export const WIN_URL_FALLBACK =
 	'https://github.com/t3chnicallyinclined/RetroReceipts-agent/releases/latest/download/rr-agent.exe';
 

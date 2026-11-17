@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
+	import GetTheApp from '$lib/components/GetTheApp.svelte';
 	import { FIND_CAP, RECORD_LEAD, findMatches, unlistedPool, wallNames } from '$lib/finale/unlisted';
 	import { nf } from '$lib/finale/derive';
 	import type { Unlisted } from '$lib/finale/highlights';
@@ -8,7 +9,7 @@
 	import type { Mine } from '$lib/finale/mine';
 
 	// "You might have a record here": a warm invitation to the recorded players. A wall of names (the most active and
-	// the top unlisted), a find-your-name filter over everyone recorded but not signed up, and the Steam sign-in.
+	// the top unlisted), a find-your-name filter over everyone recorded but not on the app, and the Steam sign-in.
 	// Plain anchors and text only: names are user text.
 	let { u, roster, season, label, nextLabel, mine }: { u: Unlisted; roster: Roster | null; season: string; label: string; nextLabel?: string; mine: Mine | null } = $props();
 	let q = $state('');
@@ -23,8 +24,8 @@
 	<p>{RECORD_LEAD(u.count, label, nextLabel)}</p>
 	{#if unlistedViewer}
 		<p class="status" role="status"><b>You have a {label} record.</b> <a class="plain" href="#you">See it in Your season</a>.</p>
-	{:else if !auth.authed}
-		<div class="cta"><button type="button" class="btn pri" onclick={() => auth.login()}>Sign in through Steam</button></div>
+	{:else}
+		<GetTheApp />
 	{/if}
 	{#if wall.length}
 		<span class="rail">Some of the names on the ladder</span>

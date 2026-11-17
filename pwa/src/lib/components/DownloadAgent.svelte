@@ -2,7 +2,7 @@
 	import { browser } from '$app/environment';
 	import { agent } from '$lib/stores/agent.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
-	import { agentWinUrl, WIN_URL_FALLBACK } from '$lib/agentUrl';
+	import { agentWinUrl, WIN_URL_FALLBACK, LINUX_CMD } from '$lib/agentUrl';
 	import { copyText, COPIED_MS } from '$lib/share';
 
 	// 📥 "Get the desktop agent" prompt. The web app only fills up once the tray agent is running (it reads
@@ -16,7 +16,6 @@
 	// happen (offline, blocked, malformed manifest); it floats to the newest release so only a further
 	// FILENAME change would strand it.
 	// Linux needs no equivalent: it installs through install-bazzite.sh, which resolves the binary itself.
-	const LINUX_CMD = 'curl -fsSL https://nobd.net/rr/update/install-bazzite.sh | bash';
 
 	let winUrl = $state(WIN_URL_FALLBACK);
 

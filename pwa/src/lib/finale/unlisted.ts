@@ -1,4 +1,4 @@
-// Season finale: the players who are RECORDED but not on the season roster ("unlisted"). They never signed up; every one
+// Season finale: the players who are RECORDED but not on the season roster ("unlisted"). They never ran the app; every one
 // of their games was recorded from the other side of the match by an app user's agent. Their ratings and records are
 // real and unchanged. This module shapes the two sections that speak to them. Pure, unit-tested. Names are user text and
 // are only ever returned as strings for the component to render as text.
@@ -9,11 +9,11 @@ import type { Roster } from './players';
 
 /** the wording of the props section (BUILD: ROSTER-SPEC "App contract"); kept here so it can be edited in one place */
 export const PROPS_LEAD = (label: string) =>
-	`These players never signed up. Every one of their games was recorded from the other side of the match, and they still finished among the best in ${label}.`;
+	`These players never ran the app. Every one of their games was recorded from the other side of the match, and they still finished among the best in ${label}.`;
 export const ELO_EXPLAINER =
 	'How that happens: the ladder uses Elo. Your rating moves by who you beat, not by how many games you play. Beat higher-rated players and you climb fast; lose to lower-rated players and you drop. That is why someone with a few dozen games against strong opponents can out-rate someone with thousands.';
 export const RECORD_LEAD = (count: number, label: string, nextLabel?: string) =>
-	`If you played someone running Retro Receipts, your games were recorded. ${count.toLocaleString('en-US')} players have a ${label} record and never signed up. Sign in with Steam to see your stats and get on the board for ${nextLabel ?? 'the next season'}.`;
+	`If you played someone running Retro Receipts, your games were recorded. ${count.toLocaleString('en-US')} players have a ${label} record and never ran the app. Download the app and just play to get on the board for ${nextLabel ?? 'the next season'}, or sign in with Steam to see your stats.`;
 
 /** "would have finished 3rd overall", or nothing when the place is unknown */
 export function overallText(r: UnlistedRow): string | undefined {

@@ -7,7 +7,7 @@
 	import { ELO_EXPLAINER, PROPS_LEAD, overallText, propsCards } from '$lib/finale/unlisted';
 	import type { Unlisted } from '$lib/finale/highlights';
 
-	// "Made rank without the app": props to the players who never signed up and still finished high. A celebration,
+	// "Made rank without the app": props to the players who never ran the app and still finished high. A celebration,
 	// not a call-out: it names strong results only. Cards: name, tier, rating, record, "would have finished Nth
 	// overall". Then the short Elo explainer (why it is possible). Names are plain text.
 	let { u, label, season }: { u: Unlisted; label: string; season: string } = $props();
