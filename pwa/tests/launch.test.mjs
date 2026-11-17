@@ -176,7 +176,7 @@ test('registration is a flag: no copy says or implies unregistered games do not 
 test('the exact copy', () => {
 	const ann = readFileSync(new URL('lib/components/SeasonAnnouncement.svelte', SRC), 'utf8');
 	assert.ok(ann.includes('is closed.') && ann.includes('See the final standings and the season in numbers.'));
-	assert.ok(ann.includes('</b> is open.</a> Download the app and just play.'));
+	assert.ok(ann.includes('ANNOUNCE_LINE(a.open.label)') && ann.includes('<GetTheApp small showSignin={false} />'));
 	const notice = readFileSync(new URL('lib/components/SeasonChangeNotice.svelte', SRC), 'utf8');
 	assert.ok(notice.includes('A new season has started. Refresh to see the new ladder.'));
 	const get = readFileSync(new URL('lib/components/GetTheApp.svelte', SRC), 'utf8');

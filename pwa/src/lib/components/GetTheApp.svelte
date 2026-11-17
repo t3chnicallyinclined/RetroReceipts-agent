@@ -10,8 +10,10 @@
 		line,
 		signinNote = 'to see your stats and vote',
 		showSignin = true,
-		small = false
-	}: { line?: string; signinNote?: string; showSignin?: boolean; small?: boolean } = $props();
+		small = false,
+		label = 'Download the app',
+		secondary = false
+	}: { line?: string; signinNote?: string; showSignin?: boolean; small?: boolean; label?: string; secondary?: boolean } = $props();
 
 	let winUrl = $state(WIN_URL_FALLBACK);
 	$effect(() => {
@@ -23,7 +25,7 @@
 <div class="gta" class:small>
 	{#if line}<p class="gl">{line}</p>{/if}
 	<div class="acts">
-		<a class="pri" href={winUrl}>Download the app</a>
+		<a class={secondary ? 'sec' : 'pri'} href={winUrl}>{label}</a>
 		{#if showSignin && !auth.authed}
 			<span class="sg"><button type="button" class="sec" onclick={() => auth.login()}>Sign in through Steam</button><span class="note">{signinNote}</span></span>
 		{/if}

@@ -1,22 +1,35 @@
 <script lang="ts">
+	import { base } from '$app/paths';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { seasonReg } from '$lib/stores/seasonreg.svelte';
-	import { IN_LINE, RESIGN_LINE, joinState, stripLine } from '$lib/finale/beta';
+	import GetTheApp from '$lib/components/GetTheApp.svelte';
+	import { BLOCK_HEAD, RESIGN_LINE, STRIP_SUB, ctaFor, joinState, joinedLine } from '$lib/finale/beta';
 
-	// The slim strip under the hero: "{label} is live · {n} joined" with Join / "You're in ✓", and the words link to the
-	// full block. One line on a phone. Not gold: gold stays for the champion. Joining is the same call as the block's.
+	// The call to action under the hero: the open season is live TODAY. A bold block (not gold: gold stays for the
+	// champion) with one BIG primary button and "Get the app" next to it. The headline links to the full block below.
 	let { label, onjump }: { label: string; onjump: (id: string) => void } = $props();
 	const st = $derived(joinState({ authed: auth.authed, known: seasonReg.known, registered: seasonReg.registered, busy: seasonReg.busy, justJoined: seasonReg.justJoined, refusal: seasonReg.refusal }));
+	const cta = $derived(ctaFor(st, label));
+	const joined = $derived(joinedLine(seasonReg.count));
+	function press() {
+		if (cta.act === 'signin') auth.login();
+		else if (cta.act === 'join') void seasonReg.join();
+	}
 </script>
 
-<div class="bstrip" role="group" aria-label="{label} is open">
-	<span class="dot" aria-hidden="true"></span>
-	<a class="txt" href="#beta" onclick={(e) => { e.preventDefault(); onjump('beta'); }}>{stripLine(label, seasonReg.count)}</a>
-	{#if st === 'in'}
-		<span class="in" role="status">{IN_LINE}</span>
-	{:else if st === 'join' || st === 'busy'}
-		<button type="button" class="bj" disabled={st === 'busy'} onclick={() => seasonReg.join()}>{st === 'busy' ? 'Joining…' : 'Join'}</button>
-	{:else if st === 'signin' || st === 'resign'}
-		<button type="button" class="bj" onclick={() => auth.login()} title={st === 'resign' ? RESIGN_LINE : undefined}>{st === 'resign' ? 'Sign in again' : 'Join'}</button>
-	{/if}
-</div>
+<section class="bstrip" aria-label="{label} is open">
+	<div class="bs-txt">
+		<a class="bs-h" href="#beta" onclick={(e) => { e.preventDefault(); onjump('beta'); }}>{BLOCK_HEAD(label)}</a>
+		<span class="bs-sub">{STRIP_SUB}</span>
+		{#if joined}<span class="bs-n">{joined}</span>{/if}
+	</div>
+	<div class="bs-act">
+		{#if cta.act === 'ladder'}
+			<a class="bigjoin" href="{base}/ranks">{cta.label}</a>
+		{:else}
+			<button type="button" class="bigjoin" disabled={cta.disabled} onclick={press}>{cta.label}</button>
+		{/if}
+		<GetTheApp showSignin={false} secondary label="Get the app" />
+		{#if st === 'resign'}<p class="bs-note" role="status">{RESIGN_LINE}</p>{/if}
+	</div>
+</section>

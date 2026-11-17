@@ -521,7 +521,7 @@
 		<!-- the open season: this page is its landing page too -->
 		{#if next}
 			<section class="sec" aria-labelledby="beta-h">
-				<BetaBlock label={next.label} games={betaGames} onBoard={betaOnBoard} leaders={betaLeaders} />
+				<BetaBlock label={next.label} games={betaGames} onBoard={betaOnBoard} leaders={betaLeaders} onjump={(t) => goTo(t)} />
 			</section>
 		{/if}
 

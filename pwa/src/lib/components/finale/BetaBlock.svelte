@@ -4,14 +4,16 @@
 	import GetTheApp from '$lib/components/GetTheApp.svelte';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { seasonReg } from '$lib/stores/seasonreg.svelte';
-	import { BLOCK_HEAD, BLOCK_LEAD, IN_LINE, JOIN_NOTE, NO_LEADERS, RESIGN_LINE, STEP_PLAY, earlyLeaders, joinState, liveNumbers } from '$lib/finale/beta';
+	import { DISCORD_URL } from '$lib/links';
+	import { BLOCK_HEAD, BLOCK_LEAD, FEEDBACK_ASK, FEEDBACK_DISCORD, FEEDBACK_IDEA, IN_LINE, JOIN_NOTE, NO_LEADERS, RESIGN_LINE, STEP_PLAY, ctaFor, earlyLeaders, joinState, liveNumbers } from '$lib/finale/beta';
 	import { nf } from '$lib/finale/derive';
 	import type { Player } from '$lib/types';
 
 	// The page's second hero: the open season is live, here is how to take part. Three numbered steps with their own
 	// state, live numbers (each hidden when absent or zero), and the early leaders. Plain text and links only.
-	let { label, games, onBoard, leaders }: { label: string; games?: number; onBoard?: number; leaders: Player[] } = $props();
+	let { label, games, onBoard, leaders, onjump }: { label: string; games?: number; onBoard?: number; leaders: Player[]; onjump: (id: string) => void } = $props();
 	const st = $derived(joinState({ authed: auth.authed, known: seasonReg.known, registered: seasonReg.registered, busy: seasonReg.busy, justJoined: seasonReg.justJoined, refusal: seasonReg.refusal }));
+	const cta = $derived(ctaFor(st, label));
 	const nums = $derived(liveNumbers({ joined: seasonReg.count, games, onBoard }));
 	const top = $derived(earlyLeaders(leaders));
 </script>
@@ -34,13 +36,9 @@
 				<b>Join {label}</b>
 				{#if st === 'in'}
 					<p class="ok" role="status">{IN_LINE}</p>
-				{:else if st === 'signin'}
-					<div class="cta"><button type="button" class="btn" onclick={() => auth.login()}>Sign in through Steam</button></div>
-				{:else if st === 'resign'}
-					<p class="dimp" role="status">{RESIGN_LINE}</p>
-					<div class="cta"><button type="button" class="btn" onclick={() => auth.login()}>Sign in through Steam</button></div>
-				{:else if st === 'join' || st === 'busy'}
-					<div class="cta"><button type="button" class="btn pri" disabled={st === 'busy'} onclick={() => seasonReg.join()}>{st === 'busy' ? 'Joining…' : `Join ${label}`}</button></div>
+				{:else}
+					{#if st === 'resign'}<p class="dimp" role="status">{RESIGN_LINE}</p>{/if}
+					<button type="button" class="bigjoin" disabled={cta.disabled} onclick={() => (cta.act === 'signin' ? auth.login() : void seasonReg.join())}>{cta.label}</button>
 				{/if}
 				{#if seasonReg.message}<p class="dimp" role="status" aria-live="polite">{seasonReg.message}</p>{/if}
 				<p class="dimp jn">{JOIN_NOTE}</p>
@@ -64,5 +62,12 @@
 			<p class="dimp">{NO_LEADERS}</p>
 			<a class="wlink" href="{base}/ranks">See the live ladder</a>
 		{/if}
+	</div>
+	<div class="bfb">
+		<p>{FEEDBACK_ASK}</p>
+		<div class="cta">
+			{#if DISCORD_URL}<a class="btn" href={DISCORD_URL} target="_blank" rel="noopener">{FEEDBACK_DISCORD}</a>{/if}
+			<a class="btn" href="#feedback" onclick={(e) => { e.preventDefault(); onjump('feedback'); }}>{FEEDBACK_IDEA}</a>
+		</div>
 	</div>
 </div>

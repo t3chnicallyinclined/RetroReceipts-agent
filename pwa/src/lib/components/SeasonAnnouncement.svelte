@@ -6,6 +6,7 @@
 	import { announce } from '$lib/stores/announce.svelte';
 	import { agent } from '$lib/stores/agent.svelte';
 	import GetTheApp from '$lib/components/GetTheApp.svelte';
+	import { ANNOUNCE_LINE } from '$lib/finale/beta';
 	import { announcementFor, announcementHiddenOn, readDismissed, writeDismissed } from '$lib/launch';
 
 	// "Season closed, new season open": derived from the seasons table, so it reaches visitors who arrive cold
@@ -37,7 +38,7 @@
 		<div class="body">
 			<p class="l1"><b>{a.ended.label}</b> is closed. <a href="{base}/season/{encodeURIComponent(a.ended.id)}">See the final standings and the season in numbers.</a></p>
 			{#if !agent.reporting}
-				<div class="l2"><p><a class="ol" href="{base}/season/{encodeURIComponent(a.ended.id)}#next"><b>{a.open.label}</b> is open.</a> Download the app and just play.</p><GetTheApp small showSignin={false} /></div>
+				<div class="l2"><p><a class="ol" href="{base}/season#next"><b>{ANNOUNCE_LINE(a.open.label)}</b></a></p><GetTheApp small showSignin={false} /></div>
 			{/if}
 		</div>
 		<button type="button" class="x" aria-label="Dismiss the season announcement" onclick={close}>✕</button>

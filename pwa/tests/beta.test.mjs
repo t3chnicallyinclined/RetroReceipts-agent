@@ -20,14 +20,29 @@ test('join state: signed out, signed in not joined, joined, 403, busy, and not-y
 	assert.equal(B.IN_LINE, "You're in ✓");
 });
 
-test('strip line and block copy', () => {
-	assert.equal(B.stripLine('Beta Season 1', 41), 'Beta Season 1 is live · 41 joined');
-	assert.equal(B.stripLine('Beta Season 1', 1234), 'Beta Season 1 is live · 1,234 joined');
-	assert.equal(B.stripLine('Beta Season 1', 0), 'Beta Season 1 is live', 'no count: no "· 0 joined"');
-	assert.equal(B.stripLine('Beta Season 1', undefined), 'Beta Season 1 is live');
-	assert.equal(B.BLOCK_HEAD('Beta Season 1'), 'Beta Season 1 is live');
-	assert.equal(B.BLOCK_LEAD, 'Everyone starts at 1000. Five ranked games gets you a rank. The board is open.');
+test('copy: the call to action, the block and the hype line', () => {
+	assert.equal(B.BLOCK_HEAD('Beta Season 1'), 'Beta Season 1 is live today');
+	assert.equal(B.STRIP_SUB, 'New season. Everyone starts fresh at 1000.');
+	assert.equal(B.BLOCK_LEAD, 'New season, clean slate. Everyone starts at 1000, five ranked games gets you a rank, and the board is open to anyone running the app.');
 	assert.equal(B.STEP_PLAY, "Play five ranked games for a rank. Your games are recorded and you're on the board.");
+	assert.equal(B.joinedLine(41), '41 joined');
+	assert.equal(B.joinedLine(1234), '1,234 joined');
+	assert.equal(B.joinedLine(0), '', 'no count: nothing');
+	assert.equal(B.joinedLine(undefined), '');
+	assert.equal(B.FEEDBACK_ASK, 'Suggestions or feedback for the new season?');
+	assert.equal(B.FEEDBACK_DISCORD, 'Tell us in the NOBD Discord');
+	assert.equal(B.FEEDBACK_IDEA, 'Share an idea');
+	assert.equal(B.ANNOUNCE_LINE('Beta Season 1'), 'Beta Season 1 is live today. Join now');
+});
+
+test('the big button: one label and one action per state', () => {
+	const L = 'Beta Season 1';
+	assert.deepEqual(B.ctaFor('signin', L), { label: 'Sign in and join Beta Season 1', act: 'signin', disabled: false });
+	assert.deepEqual(B.ctaFor('resign', L), { label: 'Sign in and join Beta Season 1', act: 'signin', disabled: false });
+	assert.deepEqual(B.ctaFor('join', L), { label: 'Join Beta Season 1', act: 'join', disabled: false });
+	assert.deepEqual(B.ctaFor('busy', L), { label: 'Joining…', act: 'join', disabled: true });
+	assert.deepEqual(B.ctaFor('in', L), { label: "You're in ✓ · See the live ladder", act: 'ladder', disabled: false });
+	assert.equal(B.ctaFor('unknown', L).disabled, true, 'never offer Join before the status is read');
 });
 
 test('truthful: joining is never said to be needed for the board or to unlock anything', () => {
@@ -80,12 +95,12 @@ test('wiring: the strip under the hero, the block after the record section, #nex
 	assert.ok(page.includes('{#if !next}'), 'the "More seasons" card remains only when nothing is open');
 	assert.ok(page.includes('fetchSummary(open)') && page.includes('fetchLadder(open)'));
 	const strip = rd('lib/components/finale/BetaStrip.svelte');
-	assert.ok(strip.includes('stripLine(label, seasonReg.count)') && strip.includes('IN_LINE') && strip.includes('seasonReg.join()'));
+	assert.ok(strip.includes('BLOCK_HEAD(label)') && strip.includes('STRIP_SUB') && strip.includes('joinedLine(seasonReg.count)') && strip.includes('seasonReg.join()') && strip.includes('label="Get the app"') && strip.includes('class="bigjoin"'));
 	const block = rd('lib/components/finale/BetaBlock.svelte');
-	for (const t of ['Get the app', 'Join {label}', '<b>Play</b>', 'Early leaders', 'See the live ladder', 'Sign in through Steam', '<GetTheApp showSignin={false} />', 'seasonReg.join()']) assert.ok(block.includes(t), t);
+	for (const t of ['Get the app', 'Join {label}', '<b>Play</b>', 'Early leaders', 'See the live ladder', '<GetTheApp showSignin={false} />', 'seasonReg.join()', 'class="bigjoin"', '{FEEDBACK_ASK}', '{FEEDBACK_DISCORD}', '{FEEDBACK_IDEA}', "onjump('feedback')", 'target="_blank" rel="noopener"']) assert.ok(block.includes(t), t);
 	assert.ok(block.includes('{#if nums.length}') && block.includes('{#if top.length}'), 'numbers and leaders hide when empty');
 	const ann = rd('lib/components/SeasonAnnouncement.svelte');
-	assert.ok(ann.includes('#next"><b>{a.open.label}</b> is open.</a>'));
+	assert.ok(ann.includes('href="{base}/season#next"><b>{ANNOUNCE_LINE(a.open.label)}</b></a>'));
 	assert.ok(existsSync(new URL('../src/routes/season/+page.svelte', import.meta.url)));
 	const route = rd('routes/season/+page.svelte');
 	assert.ok(route.includes('seasonLandingPath(base, seasons.table, Date.now(), location.hash)') && route.includes('replaceState: true'));

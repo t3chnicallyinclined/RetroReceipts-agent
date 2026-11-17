@@ -30,13 +30,43 @@ export function joinState(a: { authed: boolean; known: boolean; registered: bool
 export const RESIGN_LINE = 'Please sign in with Steam once more.';
 export const IN_LINE = "You're in ✓";
 
-/** the strip's one line: "Beta Season 1 is live · 41 joined" (the count is dropped when absent or zero) */
-export function stripLine(label: string, joined: number | undefined): string {
-	return joined && joined > 0 ? `${label} is live · ${joined.toLocaleString('en-US')} joined` : `${label} is live`;
+/** the big call to action under the hero and the headline of the full block */
+export const BLOCK_HEAD = (label: string) => `${label} is live today`;
+export const STRIP_SUB = 'New season. Everyone starts fresh at 1000.';
+/** "41 joined", or nothing when the count is absent or zero */
+export function joinedLine(joined: number | undefined): string {
+	return joined && joined > 0 ? `${joined.toLocaleString('en-US')} joined` : '';
+}
+/** the owner's voice, honest: nothing here says joining is needed for the board */
+export const BLOCK_LEAD = 'New season, clean slate. Everyone starts at 1000, five ranked games gets you a rank, and the board is open to anyone running the app.';
+
+/** the big button: what it says, and what it does */
+export interface Cta {
+	label: string;
+	/** "join" = calls the register endpoint; "signin" = Steam sign-in; "ladder" = a link to the live ladder; "wait" = disabled */
+	act: 'join' | 'signin' | 'ladder' | 'wait';
+	disabled: boolean;
+}
+export function ctaFor(state: JoinState, label: string): Cta {
+	switch (state) {
+		case 'in':
+			return { label: "You're in ✓ · See the live ladder", act: 'ladder', disabled: false };
+		case 'signin':
+		case 'resign':
+			return { label: `Sign in and join ${label}`, act: 'signin', disabled: false };
+		case 'busy':
+			return { label: 'Joining…', act: 'join', disabled: true };
+		case 'unknown':
+			return { label: `Join ${label}`, act: 'wait', disabled: true };
+		default:
+			return { label: `Join ${label}`, act: 'join', disabled: false };
+	}
 }
 
-export const BLOCK_LEAD = 'Everyone starts at 1000. Five ranked games gets you a rank. The board is open.';
-export const BLOCK_HEAD = (label: string) => `${label} is live`;
+export const FEEDBACK_ASK = 'Suggestions or feedback for the new season?';
+export const FEEDBACK_DISCORD = 'Tell us in the NOBD Discord';
+export const FEEDBACK_IDEA = 'Share an idea';
+export const ANNOUNCE_LINE = (label: string) => `${label} is live today. Join now`;
 export const STEP_PLAY = "Play five ranked games for a rank. Your games are recorded and you're on the board.";
 /** what joining does, in plain words (it says nothing about the board) */
 export const JOIN_NOTE = 'Joining adds you to the sign-up count and puts the Registered mark on your profile.';
