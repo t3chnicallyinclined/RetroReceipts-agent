@@ -396,6 +396,7 @@
 .fin .gbtn .gs{grid-column:1;font-size:12.5px;color:var(--dim);font-weight:500;line-height:1.35}
 .fin .gbtn .chev{grid-row:1/3;grid-column:2;width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;font-size:14px;color:var(--dim);transition:transform .2s}
 .fin .gbtn[aria-expanded=true] .chev{transform:rotate(180deg)}
+.fin .grp,.fin .gp,.fin .subnav{min-width:0;max-width:100%}
 .fin .gp{padding:0 12px 14px}
 .fin .grp .card,.fin .grp .facts{background:var(--panel-2)}
 :root[data-theme=light] .fin .grp .card,:root[data-theme=light] .fin .grp .facts{background:var(--panel-2)}
