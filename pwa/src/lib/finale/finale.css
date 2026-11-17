@@ -202,7 +202,7 @@
 .fin .you .who{display:flex;gap:12px;align-items:center;min-width:0}
 .fin .you .nm2{font-size:18px;font-weight:800;overflow-wrap:anywhere;line-height:1.15}
 .fin .you .place{font-size:clamp(34px,11vw,56px);line-height:.95;font-weight:900;font-style:italic;text-transform:uppercase}
-.fin .you .place small{display:block;font-size:13px;font-style:normal;font-weight:600;color:var(--dim);text-transform:none;margin-top:6px}
+.fin .you .place small{display:block;line-height:1.45;font-size:13px;font-style:normal;font-weight:600;color:var(--dim);text-transform:none;margin-top:6px}
 .fin .kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0}
 .fin .kv div{background:color-mix(in srgb,var(--panel) 70%,transparent);border:1px solid var(--line-soft);border-radius:10px;padding:9px 10px;min-width:0}
 .fin .kv dt{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
