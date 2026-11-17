@@ -52,13 +52,16 @@
 		return a ? gated(a) : null;
 	});
 
+	/** a tape from before tape v2: no button, no promise, one quiet line */
+	const LEGACY_TEXT = "Recorded by an older version of the app; this replay can't be played.";
 	const LABEL: Record<ReplayAvail, string> = {
 		ready: '▶ REPLAY',
 		saved: '▶ REPLAY',
 		pending: '⏳ TAPE INCOMING',
 		archived: '📼 REQUEST REPLAY',
 		none: '—',
-		expired: '—'
+		expired: '—',
+		legacy: ''
 	};
 	const TITLE: Record<ReplayAvail, string> = {
 		ready: 'Watch the replay',
@@ -66,7 +69,8 @@
 		pending: 'Tape not in yet — the agent uploads it after the set',
 		archived: 'In the archives — one click pulls it back',
 		none: 'No tape for this one',
-		expired: 'Tape gone'
+		expired: 'Tape gone',
+		legacy: LEGACY_TEXT
 	};
 
 	async function click(e: MouseEvent) {
@@ -90,7 +94,9 @@
 </script>
 
 {#if shown}
-	{#if as === 'span' || shown === 'none' || shown === 'expired'}
+	{#if shown === 'legacy'}
+		<span class="ra legacy {size}">{LEGACY_TEXT}</span>
+	{:else if as === 'span' || shown === 'none' || shown === 'expired'}
 		<span class="ra {shown} {size}" title={TITLE[shown]} aria-hidden={shown === 'none' || shown === 'expired' ? 'true' : undefined}>{LABEL[shown]}</span>
 	{:else}
 		<button type="button" class="ra {shown} {size}" class:busy title={note || TITLE[shown]} aria-label={LABEL[shown].replace(/^\S+\s/, '')} onclick={click} disabled={busy}>
@@ -155,6 +161,17 @@
 	}
 	button.ra.archived:hover {
 		background: color-mix(in srgb, var(--stream) 22%, transparent);
+	}
+	.ra.legacy {
+		border: 0;
+		padding: 0;
+		color: var(--faint);
+		font-family: inherit;
+		font-size: 11px;
+		font-weight: 500;
+		letter-spacing: 0;
+		white-space: normal;
+		text-transform: none;
 	}
 	.ra.none,
 	.ra.expired {

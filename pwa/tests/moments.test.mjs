@@ -124,3 +124,48 @@ test('wiring: the set page passes ?game=, the receipt marks the row and opens a 
 	assert.ok(!/signed in to watch/i.test(bodies), 'no false "sign in to watch" claim');
 	assert.ok(bodies.includes('{#if h?.moments?.length}'), 'the strip hides when the server sends no moments');
 });
+
+// ── the "legacy" tape state: recorded before tape v2, the engine cannot open it ──
+const LEGACY_LINE = "Recorded by an older version of the app; this replay can't be played.";
+
+test('legacy: parsed as a state, and the moment card offers See the set with the reason, never Watch', () => {
+	assert.equal(M.tapeStateOf('legacy'), 'legacy');
+	assert.deepEqual(M.momentAction('legacy', false), { kind: 'set', label: 'See the set', reason: LEGACY_LINE });
+	assert.deepEqual(M.momentAction('legacy', true), { kind: 'set', label: 'See the set', reason: LEGACY_LINE });
+	const out = M.normalizeMoments([mk('longest_game', { tape: 'legacy' }), mk('biggest_combo', { tape: 'ready' })]);
+	assert.deepEqual(out.map((m) => m.tape), ['legacy', 'ready']);
+	// the other states are unchanged
+	assert.equal(M.momentAction('ready', false).label, 'Watch the replay');
+	assert.equal(M.momentAction('archived', false).reason, 'This replay is in the archive. Sign in to request it.');
+	// an older server never sends it: nothing about "legacy" appears anywhere
+	assert.equal(M.tapeStateOf(undefined), undefined);
+});
+
+test('legacy: the replay resolver never plays or requests it', async () => {
+	const S = await import('$lib/replay/source');
+	const row = { match_key: 'k_legacy', session_id: 's', ts: 1, replay: { state: 'legacy' } };
+	assert.equal(await S.availability(row), 'legacy');
+	assert.deepEqual(await S.resolveSource(row), { kind: 'none', reason: 'legacy' });
+	// the per-key read (a row with no projection) maps the server's word through
+	globalThis.fetch = async () => ({ ok: true, json: async () => ({ ok: true, state: 'legacy', session_id: 's' }) });
+	const probe = await S.probeServer('k_probe_legacy', true);
+	assert.deepEqual([probe.state, probe.known], ['legacy', true]);
+	assert.deepEqual(await S.resolveSource({ match_key: 'k_probe_legacy', ts: 1 }), { kind: 'none', reason: 'legacy' });
+	assert.equal(await S.availability({ match_key: 'k_probe_legacy', ts: 1 }), 'legacy');
+	// the other words still pass through
+	for (const st of ['ready', 'pending', 'archived', 'none']) {
+		globalThis.fetch = async () => ({ ok: true, json: async () => ({ ok: true, state: st, tape_url: '/t' }) });
+		assert.equal((await S.probeServer(`k_${st}`, true)).state, st);
+	}
+});
+
+test('legacy: the set-page row shows the quiet line and no button; the feed keeps the word', async () => {
+	const { readFileSync } = await import('node:fs');
+	const aff = readFileSync(new URL('../src/lib/components/ReplayAffordance.svelte', import.meta.url), 'utf8');
+	assert.ok(aff.includes(LEGACY_LINE), 'the exact line');
+	assert.ok(/\{#if shown === 'legacy'\}\s*<span class="ra legacy/.test(aff.replace(/\r/g, '')), 'a span, checked before any button branch');
+	const feed = readFileSync(new URL('../src/lib/stores/matchfeed.svelte.ts', import.meta.url), 'utf8');
+	assert.ok(feed.includes("st !== 'legacy'"), 'the feed does not drop the projection');
+	const emb = readFileSync(new URL('../src/lib/components/ReplayEmbed.svelte', import.meta.url), 'utf8');
+	assert.ok(emb.includes("reason === 'legacy'") && emb.includes('predates tape v2'), 'the sheet says so, and the honest engine error stays the fallback');
+});

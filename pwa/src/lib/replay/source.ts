@@ -33,11 +33,12 @@ export type ReplaySource =
 	| { kind: 'tape'; tapeUrl: string; packUrl: string; start?: number; count?: number; frames?: number; overlay?: TapeOverlay | null; pack?: TapePackRef | null }
 	| { kind: 'stream'; url: string; frames: number } // phones, M-interim keyed frames — C9, not built
 	| { kind: 'none'; reason: NoneReason };
-export type NoneReason = 'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported';
+export type NoneReason = 'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'legacy';
 
 /** Row-level replay availability — what the affordance shows. No auth gate: replays are open to everyone
  *  (Tris 2026-09-04: "let's not make it so you have to sign in to play the replays"). */
-export type ReplayAvail = 'ready' | 'pending' | 'archived' | 'none' | 'expired' | 'saved';
+/** `legacy` = recorded before tape v2: the engine cannot open it, so it is never offered as a replay (older servers never send it). */
+export type ReplayAvail = 'ready' | 'pending' | 'archived' | 'none' | 'expired' | 'saved' | 'legacy';
 
 export interface LocalTapeSide {
 	steamid: string;
@@ -101,7 +102,7 @@ export interface RowLike {
 	/** The server's own availability projection, carried on every `match_result` row (app.rs `replay_avail`).
 	 *  When present it is AUTHORITATIVE and `availability()` answers from it with no network at all — that is the
 	 *  whole point of LIVE-TAB-V2-SPEC P0: a list of 100 rows costs 0 probes instead of 100. */
-	replay?: { state: 'ready' | 'pending' | 'archived' | 'none'; tape_url?: string; bytes?: number; frames?: number };
+	replay?: { state: 'ready' | 'pending' | 'archived' | 'none' | 'legacy'; tape_url?: string; bytes?: number; frames?: number };
 	/** server-resolved physical seats (app.rs `seat_sid`) — skins paint the right side with no reporter arithmetic */
 	p1?: string;
 	p2?: string;
@@ -128,7 +129,7 @@ async function packFor(matchKey: string): Promise<string> {
 export const TAPE_READ_PATH = '/rr/tape';
 export const TAPE_REQUEST_PATH = '/rr/tape/request';
 export interface TapeProbe {
-	state: 'ready' | 'pending' | 'archived' | 'none';
+	state: 'ready' | 'pending' | 'archived' | 'none' | 'legacy';
 	tape_url?: string;
 	frames?: number;
 	ts?: number;
@@ -155,7 +156,7 @@ export function probeServer(matchKey: string, force = false): Promise<TapeProbe>
 			if (!res.ok) return { state: 'none', known: false };
 			const j = (await res.json()) as Partial<TapeProbe> & { ok?: boolean };
 			if (j?.ok === false || !j.state) return { state: 'none', known: false };
-			const state = (['ready', 'pending', 'archived', 'none'] as const).includes(j.state) ? j.state : 'none';
+			const state = (['ready', 'pending', 'archived', 'none', 'legacy'] as const).includes(j.state) ? j.state : 'none';
 			return { state, tape_url: j.tape_url, frames: j.frames, ts: j.ts, session_id: j.session_id, overlay: j.overlay, pack: j.pack, known: true };
 		} catch {
 			return { state: 'none', known: false };

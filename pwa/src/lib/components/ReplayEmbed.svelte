@@ -153,7 +153,7 @@
 	$effect(() => {
 		onstate?.(st);
 	});
-	let reason = $state<'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported'>('none');
+	let reason = $state<'pending' | 'archived' | 'requested' | 'expired' | 'none' | 'unsupported' | 'legacy'>('none');
 	let requesting = $state(false);
 	let requestNote = $state('');
 	let err = $state<{ code: string; message: string } | null>(null);
@@ -1436,6 +1436,8 @@
 					<span class="big">⏳</span><span class="h">Tape incoming.</span><span class="s">Pulled from the archives — usually under a minute.</span>
 				{:else if reason === 'expired'}
 					<span class="h">Tape gone.</span><span class="s">Only the last 100 live results keep a replay.</span>
+				{:else if reason === 'legacy'}
+					<span class="h">Recorded by an older version of the app.</span><span class="s">This replay can't be played.</span>
 				{:else if reason === 'unsupported'}
 					<span class="big">⛔</span><span class="h">This browser can't play tapes yet.</span><span class="s">Needs WebGPU — Chrome, Edge, or Safari 26+.</span>
 				{:else}

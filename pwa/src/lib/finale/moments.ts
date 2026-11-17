@@ -8,6 +8,7 @@
 //   state "archived" the tape is in cold storage. Watching needs it pulled back first, and that pull is an
 //                    account action (POST /rr/tape/request): signed out there is no way to start it.
 //   state "pending"  the upload has not landed yet.  "none": no tape was ever recorded.
+//   state "legacy"   recorded before tape v2: the engine cannot open it, so it is never offered as a replay.
 // So "Watch the replay" is offered ONLY for "ready"; every other state offers "See the set" (always works) with one
 // quiet line saying why. Nothing here weakens the sign-in or ownership rules.
 // (self-contained on purpose: highlights.ts and derive.ts import from here, so this file imports neither)
@@ -29,8 +30,8 @@ const durText = (s: number): string => {
 	return m ? `${m} min ${t % 60} s` : `${t} s`;
 };
 
-export type TapeState = 'ready' | 'pending' | 'archived' | 'none';
-export const TAPE_STATES: readonly TapeState[] = ['ready', 'pending', 'archived', 'none'];
+export type TapeState = 'ready' | 'pending' | 'archived' | 'none' | 'legacy';
+export const TAPE_STATES: readonly TapeState[] = ['ready', 'pending', 'archived', 'none', 'legacy'];
 
 /** A tape state string from the server, or undefined when it did not send one (older server). A boolean is not a state. */
 export function tapeStateOf(v: unknown): TapeState | undefined {
@@ -159,6 +160,8 @@ export function momentAction(state: TapeState | undefined, signedIn: boolean): M
 			return { kind: 'set', label: 'See the set', reason: 'This replay is still being uploaded.' };
 		case 'none':
 			return { kind: 'set', label: 'See the set', reason: 'No replay was recorded for this game.' };
+		case 'legacy':
+			return { kind: 'set', label: 'See the set', reason: "Recorded by an older version of the app; this replay can't be played." };
 		default:
 			return { kind: 'set', label: 'See the set', reason: '' };
 	}

@@ -55,7 +55,7 @@ export interface MatchResult {
 	 *  knowing this is what lets a LIVE list render its affordance with ZERO `GET /rr/tape?key=` probes
 	 *  (LIVE-TAB-V2-SPEC section 0 and 6); the probe stays the one source of `pack`/`overlay`, so OPENING a
 	 *  replay still reads the tape. */
-	replay?: { state: 'ready' | 'pending' | 'archived' | 'none'; tape_url?: string; bytes?: number; frames?: number };
+	replay?: { state: 'ready' | 'pending' | 'archived' | 'none' | 'legacy'; tape_url?: string; bytes?: number; frames?: number };
 	/** ranked ELO for each player at match time — drives the rank badge (client-derived tier). */
 	winner_rating?: number;
 	loser_rating?: number;
@@ -198,7 +198,7 @@ function toReplay(x: unknown): MatchResult['replay'] {
 	if (!x || typeof x !== 'object') return undefined;
 	const o = x as { state?: unknown; tape_url?: unknown; bytes?: unknown; frames?: unknown };
 	const st = String(o.state ?? '');
-	if (st !== 'ready' && st !== 'pending' && st !== 'archived' && st !== 'none') return undefined;
+	if (st !== 'ready' && st !== 'pending' && st !== 'archived' && st !== 'none' && st !== 'legacy') return undefined;
 	return {
 		state: st,
 		tape_url: typeof o.tape_url === 'string' && o.tape_url ? o.tape_url : undefined,

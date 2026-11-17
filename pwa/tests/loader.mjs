@@ -22,6 +22,9 @@ function probe(base) {
 }
 
 export async function resolve(specifier, context, next) {
+	if (specifier === '$app/paths') {
+		return { url: pathToFileURL(pathResolve(here, 'paths-stub.mjs')).href, shortCircuit: true };
+	}
 	if (specifier === '$env/static/public') {
 		return { url: pathToFileURL(pathResolve(here, 'env-stub.mjs')).href, shortCircuit: true };
 	}

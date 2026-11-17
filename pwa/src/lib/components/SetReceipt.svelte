@@ -771,6 +771,11 @@
 		align-items: center;
 		margin-left: 6px;
 	}
+	/* a legacy tape's quiet line is a sentence, not a chip: give it the whole row width */
+	.rep:has(:global(.ra.legacy)) {
+		grid-column: 1 / -1;
+		margin: 2px 0 0 0;
+	}
 	.gi {
 		display: flex;
 		flex-direction: column;
