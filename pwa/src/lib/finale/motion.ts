@@ -66,7 +66,12 @@ export function revealAll(root: HTMLElement): () => void {
 export function countUp(node: HTMLElement, p: { value: number; format: (n: number) => string }) {
 	node.textContent = p.format(p.value);
 	const root = node.closest('.fin');
-	if (!root || !root.classList.contains('anim') || typeof IntersectionObserver === 'undefined') return {};
+	// the value can change after mount (the data arrives in any order): always show the current one
+	const update = (np: { value: number; format: (n: number) => string }) => {
+		p = np;
+		node.textContent = np.format(np.value);
+	};
+	if (!root || !root.classList.contains('anim') || typeof IntersectionObserver === 'undefined') return { update };
 	let raf = 0;
 	const run = () => {
 		const t0 = performance.now();
@@ -86,5 +91,5 @@ export function countUp(node: HTMLElement, p: { value: number; format: (n: numbe
 		}
 	});
 	io.observe(node);
-	return { destroy: () => { io.disconnect(); cancelAnimationFrame(raf); } };
+	return { update, destroy: () => { io.disconnect(); cancelAnimationFrame(raf); } };
 }

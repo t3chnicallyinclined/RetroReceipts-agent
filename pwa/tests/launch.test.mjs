@@ -212,3 +212,10 @@ test('announcement card stays off the LIVE tab and the finale', () => {
 	assert.equal(L.announcementHiddenOn('/u/765'), false);
 	assert.equal(L.announcementHiddenOn('/app/r/set/s_1', '/app'), false);
 });
+
+test('count-up numbers follow their value when the data arrives after mount (no stale "97 games")', () => {
+	const motion = readFileSync(new URL('lib/finale/motion.ts', SRC), 'utf8');
+	assert.ok(motion.includes('const update = (np') && motion.includes('return { update'), 'countUp action has an update hook');
+	const banner = readFileSync(new URL('lib/components/finale/FinaleBanner.svelte', SRC), 'utf8');
+	assert.ok(banner.includes('{#each bits as b (b.one)}'), 'the lead sentences are keyed by their label, not their position');
+});
