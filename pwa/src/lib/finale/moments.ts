@@ -37,9 +37,11 @@ export function tapeStateOf(v: unknown): TapeState | undefined {
 	return typeof v === 'string' && (TAPE_STATES as readonly string[]).includes(v) ? (v as TapeState) : undefined;
 }
 
-export type MomentKind = 'longest_game' | 'fastest_game' | 'biggest_comeback' | 'biggest_combo' | 'biggest_upset' | 'perfect';
+export type MomentKind = 'longest_game' | 'biggest_comeback' | 'biggest_combo' | 'biggest_upset' | 'perfect';
 /** the order the strip shows them in */
-export const MOMENT_ORDER: readonly MomentKind[] = ['longest_game', 'biggest_combo', 'biggest_comeback', 'biggest_upset', 'perfect', 'fastest_game'];
+// fastest_game is deliberately NOT a kind here: on real data it is a 10 s row from an old agent sitting on the server's
+// 10 s floor with several ties, and short durations read as a measurement artefact. A server that sends it is ignored.
+export const MOMENT_ORDER: readonly MomentKind[] = ['longest_game', 'biggest_combo', 'biggest_comeback', 'biggest_upset', 'perfect'];
 
 export interface Moment {
 	kind: MomentKind;
@@ -95,8 +97,7 @@ export function normalizeMoments(v: unknown): Moment[] {
 
 const TITLES: Record<MomentKind, string> = {
 	longest_game: 'Longest game',
-	fastest_game: 'Fastest game',
-	biggest_comeback: 'Biggest comeback',
+	biggest_comeback: 'Comeback of the season',
 	biggest_combo: 'Biggest combo',
 	biggest_upset: 'Biggest upset',
 	perfect: 'Perfect win over the top opponent'
@@ -109,15 +110,14 @@ const nf = (n: number) => Math.round(n).toLocaleString('en-US');
 export function momentFigure(m: Pick<Moment, 'kind' | 'value'>): string {
 	switch (m.kind) {
 		case 'longest_game':
-		case 'fastest_game':
 			return durText(m.value);
 		case 'biggest_combo':
 			return `${nf(m.value)} ${m.value === 1 ? 'hit' : 'hits'}`;
 		case 'biggest_upset':
 			return `${nf(m.value)} points apart`;
 		case 'biggest_comeback':
-			// the server's unit is the winner's deepest deficit; the scale is the game's own health units
-			return `back from ${nf(m.value)} down`;
+			// the server's value is a count of CHARACTERS down (the data only has 1 and 2), never health
+			return m.value === 1 ? 'From one character down' : m.value === 2 ? 'From two characters down' : `From ${nf(m.value)} characters down`;
 		case 'perfect':
 			return `over a ${nf(m.value)}-rated player`;
 	}

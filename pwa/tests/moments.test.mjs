@@ -44,10 +44,12 @@ test('links: the set page at that game, pinned to the winner\'s seat when it is 
 
 test('figures', () => {
 	assert.equal(M.momentFigure({ kind: 'longest_game', value: 333 }), '5 min 33 s');
-	assert.equal(M.momentFigure({ kind: 'fastest_game', value: 42 }), '42 s');
 	assert.equal(M.momentFigure({ kind: 'biggest_combo', value: 148 }), '148 hits');
 	assert.equal(M.momentFigure({ kind: 'biggest_upset', value: 681 }), '681 points apart');
-	assert.equal(M.momentFigure({ kind: 'biggest_comeback', value: 1500 }), 'back from 1,500 down');
+	assert.equal(M.momentFigure({ kind: 'biggest_comeback', value: 2 }), 'From two characters down');
+	assert.equal(M.momentFigure({ kind: 'biggest_comeback', value: 1 }), 'From one character down');
+	assert.equal(M.momentTitle({ kind: 'biggest_comeback' }), 'Comeback of the season');
+	assert.ok(!/ down$|health|damage/i.test(M.momentFigure({ kind: 'biggest_comeback', value: 2 }).replace('characters down', '')));
 	assert.equal(M.momentFigure({ kind: 'perfect', value: 1742 }), 'over a 1,742-rated player');
 });
 
@@ -59,11 +61,12 @@ test('normalizeMoments: known kinds in order, one per kind, malformed entries dr
 		mk('mystery_kind'), // unknown kind
 		mk('perfect', { match_key: '' }), // no key
 		mk('biggest_combo', { session_id: '' }), // no session
-		mk('fastest_game', { value: 0 }), // no figure
+		mk('fastest_game', { value: 10 }), // never featured, even when the server sends it
 		mk('biggest_comeback', { tape: 'weird', winner: { steamid: '', name: 'x' }, wteam: [23, 999, 'a', 52, 1, 2] }),
 		null, 'x', 7
 	]);
 	assert.deepEqual(out.map((m) => m.kind), ['longest_game', 'biggest_comeback', 'biggest_upset']);
+	assert.equal(out.some((m) => m.kind === 'fastest_game'), false);
 	assert.equal(out[0].value, 333);
 	assert.equal(out[0].loser?.name, 'Wenzel');
 	assert.equal(out[1].tape, undefined); // an unknown state is "not said", never "ready"

@@ -306,7 +306,7 @@
 						{#if h?.comebacks?.total}<b class="big flair"><CountUp value={h.comebacks.total} /></b><p class="dimp">comeback wins{h.comebacks.players ? `, by ${nf(h.comebacks.players)} players` : ''}</p>
 						{:else}<b class="big flair">{nf(come[0].value)}</b><p class="dimp">the season’s most, by {come[0].player.name}</p>{/if}
 						<BarList rows={come.map((r, i) => ({ key: r.player.steamid + i, value: r.value, text: nf(r.value), color: 'var(--molten)', ref: r.player }))} lw={130}>{#snippet row(r)}{#if r.ref}{@render who(r.ref, 22)}{/if}{/snippet}</BarList>
-						{#if bestComeback}<p class="dimp" style="margin:8px 0 6px">Biggest one: {momentWho(bestComeback)}, {momentFigure(bestComeback)}.</p><SetLink sessionId={bestComeback.sessionId} matchKey={bestComeback.matchKey} tapeState={bestComeback.tape} winner={bestComeback.winner?.steamid} />{/if}
+						{#if bestComeback}<p class="dimp" style="margin:8px 0 6px">The comeback of the season: {momentWho(bestComeback)}. {momentFigure(bestComeback)}.</p><SetLink sessionId={bestComeback.sessionId} matchKey={bestComeback.matchKey} tapeState={bestComeback.tape} winner={bestComeback.winner?.steamid} />{/if}
 					</div>
 				{/if}
 				{#if h?.combo}
