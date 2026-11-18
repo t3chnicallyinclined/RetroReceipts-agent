@@ -169,6 +169,7 @@ struct MenuHandles {
     updates_id: MenuId,
     report_id: MenuId,
     logs_id: MenuId,
+    steam_id: MenuId,
     autostart_id: MenuId,
     quit_id: MenuId,
     // Item handles whose state/text we mutate at runtime.
@@ -177,11 +178,23 @@ struct MenuHandles {
     host_item: CheckMenuItem,
     autostart_item: CheckMenuItem,
     updates_item: MenuItem,
+    steam_item: MenuItem,
     // Disabled rows refreshed each second from the reader.
     status_item: MenuItem,
     signed_item: MenuItem,
     // Disabled banner row: shows the "don't play on this machine" warning while HOST_MODE is on, else blank.
     host_indicator: MenuItem,
+}
+
+/// The Connect Steam row: (text, clickable). Clickable only while not yet proven and no attempt is running.
+fn steam_row() -> (String, bool) {
+    if reader::VERIFIED.load(Ordering::Relaxed) {
+        ("✓ Steam connected — quarter matches on".into(), false)
+    } else if crate::steam_connect::CONNECTING.load(Ordering::Relaxed) {
+        ("Connecting Steam… finish in your browser".into(), false)
+    } else {
+        ("Connect Steam for quarter matches".into(), true)
+    }
 }
 
 /// "Signed in as {name}" / "Steam not detected" — the identity row text, sourced from the reader.
@@ -216,6 +229,8 @@ fn build_menu() -> (Menu, MenuHandles) {
     let sep1 = PredefinedMenuItem::separator();
 
     let open = MenuItem::new("Open Retro Receipts", true, None);
+    let (steam_text, steam_on) = steam_row();
+    let steam = MenuItem::new(steam_text, steam_on, None);
     // Initial check states read the flags main.rs already restored (skins) / the process default (pause).
     let apply_skins = CheckMenuItem::new(
         // "Skin sync" by name (Tris 2026-08-25): stats-only users must be able to FIND the off switch.
@@ -257,6 +272,7 @@ fn build_menu() -> (Menu, MenuHandles) {
         &host_indicator,
         &sep1,
         &open,
+        &steam,
         &apply_skins,
         &pause,
         &host_toggle,
@@ -277,6 +293,7 @@ fn build_menu() -> (Menu, MenuHandles) {
         updates_id: updates.id().clone(),
         report_id: report.id().clone(),
         logs_id: logs.id().clone(),
+        steam_id: steam.id().clone(),
         autostart_id: autostart_item.id().clone(),
         quit_id: quit.id().clone(),
         apply_skins_item: apply_skins,
@@ -284,6 +301,7 @@ fn build_menu() -> (Menu, MenuHandles) {
         host_item: host_toggle,
         autostart_item,
         updates_item: updates,
+        steam_item: steam,
         status_item: status,
         signed_item: signed,
         host_indicator,
@@ -301,6 +319,9 @@ fn refresh_dynamic(handles: &MenuHandles, tray: &Option<TrayIcon>, updates_busy_
     handles.status_item.set_text(&line);
     handles.signed_item.set_text(signed_in_text());
     handles.host_indicator.set_text(host_indicator_text());
+    let (steam_text, steam_on) = steam_row();
+    handles.steam_item.set_text(steam_text);
+    handles.steam_item.set_enabled(steam_on);
 
     // A newer version that couldn't auto-apply (MvC2 open) surfaces here: the menu row + tooltip tell the user
     // it's waiting and will install when they close the game. When nothing is pending the row keeps its normal
@@ -510,6 +531,8 @@ pub fn run() -> ! {
                             }
                         }
                     });
+                } else if ev.id == handles.steam_id {
+                    crate::steam_connect::start();
                 } else if ev.id == handles.logs_id {
                     if let Err(e) = open::that(crate::runtime_dir()) {
                         eprintln!("[tray] failed to open logs folder: {e}");

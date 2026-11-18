@@ -49,6 +49,8 @@ const STEAMID_HI: u32 = 0x0110_0001; // universe=public, type=individual, instan
 //    %LOCALAPPDATA%\RetroReceipts\auth.json and attached (Bearer) to every write request. The SteamID is read
 //    locally (self_ident → Steam registry) and can't be edited in the UI, so writes can't spoof another id. ──
 static AUTH: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None); // (token, steamid)
+/// The held token was minted by a Steam sign-in (tray "Connect Steam"), so the server accepts coin actions on it.
+pub(crate) static VERIFIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 // Shared root for the reader's durable state (auth.json + gs-cache + result-outbox). Windows keeps the
 // per-user app-data dir (%LOCALAPPDATA%\RetroReceipts, moved by the rename migration). On Linux LOCALAPPDATA
@@ -70,8 +72,28 @@ fn load_auth() {
     if let Some(v) = std::fs::read_to_string(auth_path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()) {
         let tok = v.get("token").and_then(|x| x.as_str()).unwrap_or("").to_string();
         let sid = v.get("steamid").and_then(|x| x.as_str()).unwrap_or("").to_string();
-        if !tok.is_empty() && sid.len() == 17 { *AUTH.lock().unwrap() = Some((tok, sid)); }
+        if !tok.is_empty() && sid.len() == 17 {
+            let verified = v.get("verified").and_then(|x| x.as_bool()).unwrap_or(false);
+            *AUTH.lock().unwrap() = Some((tok, sid));
+            VERIFIED.store(verified, std::sync::atomic::Ordering::Relaxed);
+        }
     }
+}
+
+/// The Steam account running on this PC (17-digit SteamID64), if Steam is up.
+pub(crate) fn local_steamid() -> Option<String> {
+    let (id, _) = self_ident();
+    if id == 0 { None } else { Some(format!("{:017}", id)).filter(|s| s.len() == 17) }
+}
+
+/// Adopt a PROVEN token from the tray's Connect Steam flow (steam_connect.rs): replaces the claimed one and
+/// persists `verified` so coin actions keep working across restarts.
+pub(crate) fn adopt_verified(token: String, steamid: String) -> Result<(), String> {
+    std::fs::write(auth_path(), serde_json::json!({ "token": token, "steamid": steamid, "verified": true }).to_string())
+        .map_err(|e| format!("could not save the sign-in: {e}"))?;
+    *AUTH.lock().unwrap() = Some((token, steamid));
+    VERIFIED.store(true, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
 }
 fn auth_token() -> Option<String> { AUTH.lock().unwrap().as_ref().map(|(t, _)| t.clone()) }
 fn auth_steamid_stored() -> Option<String> { AUTH.lock().unwrap().as_ref().map(|(_, s)| s.clone()) }
@@ -137,6 +159,7 @@ pub fn ensure_registered(steamid: String) -> Result<(), String> {
     let token = resp.get("token").and_then(|x| x.as_str()).unwrap_or("").to_string();
     if token.is_empty() { return Err("no token".into()); }
     *AUTH.lock().unwrap() = Some((token.clone(), steamid.clone()));
+    VERIFIED.store(false, std::sync::atomic::Ordering::Relaxed); // a fresh /register token is claimed, not proven
     let _ = std::fs::write(auth_path(), serde_json::json!({ "token": token, "steamid": steamid }).to_string());
     Ok(())
 }

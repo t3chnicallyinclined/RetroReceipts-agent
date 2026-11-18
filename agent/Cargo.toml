@@ -63,6 +63,10 @@ flate2 = "1"
 # base64-decodes them back to raw minisign text before verifying. See updater::verify_signature.
 base64 = "0.22"
 
+# Connect Steam (steam_connect.rs): PKCE S256 challenge + an OS-RNG verifier. Both already in the tree transitively.
+sha2 = "0.10"
+getrandom = "0.2"
+
 # Windows-only: process-memory + toolhelp APIs used by mem.rs (ported verbatim from src-tauri). Same version
 # + feature set as the shipped app so the proven RE compiles byte-for-byte. Autostart uses winreg (below),
 # so the Registry/Shell features are intentionally NOT pulled here — kept minimal.

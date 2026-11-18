@@ -50,6 +50,7 @@ mod prefs;
 // Machine-wide single-instance guard (named mutex on Windows / flock on Unix). Called first in main().
 mod single_instance;
 mod tray;
+mod steam_connect; // tray "Connect Steam for quarter matches" (RFC 8252 loopback + PKCE)
 
 // Runtime data dir. The reader's call sites (`crate::runtime_dir()`) stay byte-identical to sync.rs; only the
 // returned PATH changes here. On WINDOWS we deliberately do NOT reuse the app's legacy `C:\g` — that path only
